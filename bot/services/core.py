@@ -81,7 +81,13 @@ class BotServices:
 
     async def initialize(self):
         from .llm import LLMService
+        from .analysis import AnalysisService
+        
         self.llm = LLMService(self.config)
+        self.llm.set_redis(self.redis)
+        
+        self.analysis = AnalysisService(self.llm, self.redis)
+        
         logger.info("Services initialized")
 
     async def close(self):

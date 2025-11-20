@@ -341,7 +341,8 @@ These fundamental decisions guide the baseline's design and deployment strategy:
 
 ## 5.0 Technical Stack
 
-* **Backend**: Python 3.10+
+* **Backend**: Python 3.11+ (Always use latest stable version)
+* **Libraries**: Always use latest stable versions unless there is a specific conflict
 * **Discord API Wrapper**: discord.py
 * **Database ORM**: SQLAlchemy
 * **Backend API Framework**: FastAPI
