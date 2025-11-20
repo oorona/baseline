@@ -8,15 +8,46 @@ from typing import Optional
 logger = structlog.get_logger()
 
 class Config(BaseSettings):
-    DATABASE_URL: str
-    REDIS_URL: str
-    DISCORD_BOT_TOKEN: str
+    # Database configuration
+    DB_HOST: str
+    DB_PORT: int = 5432
+    DB_USER: str
+    DB_NAME: str
+    DB_PASSWORD: Optional[str] = None  # Loaded from secret via POSTGRES_PASSWORD
+    
+    # Redis configuration  
+    REDIS_HOST: str
+    REDIS_PORT: int = 6379
+    REDIS_DB: int = 0
+    REDIS_PASSWORD: Optional[str] = None
+    
+    # LLM API Keys (loaded from secrets)
     OPENAI_API_KEY: Optional[str] = None
     GOOGLE_API_KEY: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None
     XAI_API_KEY: Optional[str] = None
-    TARGET_USER_ID: Optional[str] = None
+    
+    # Discord configuration
+    DISCORD_BOT_TOKEN: Optional[str] = None
     DISCORD_INTENTS: Optional[str] = None
+    DISCORD_GUILD_ID: Optional[int] = None
+    TARGET_USER_ID: Optional[str] = None
+    
+    @property
+    def DATABASE_URL(self) -> str:
+        """Construct DATABASE_URL from components"""
+        password = self.DB_PASSWORD or ""
+        password_part = f":{password}" if password else ""
+        return f"postgresql://{self.DB_USER}{password_part}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+    
+    @property
+    def REDIS_URL(self) -> str:
+        """Construct REDIS_URL from components"""
+        password_part = f":{self.REDIS_PASSWORD}@" if self.REDIS_PASSWORD else ""
+        return f"redis://{password_part}{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
+    
+    class Config:
+        env_file = ".env"
 
 class BotServices:
     def __init__(self):
@@ -32,17 +63,21 @@ class BotServices:
         self.llm = None
 
     def _load_secrets(self):
-        """Load secrets from files specified in _FILE environment variables."""
+        """Load secrets from Docker secret files into environment variables."""
         for key, value in os.environ.items():
             if key.endswith('_FILE'):
                 env_var = key[:-5]
-                if env_var not in os.environ:
-                    try:
-                        with open(value, 'r') as f:
-                            os.environ[env_var] = f.read().strip()
-                        logger.info(f"Loaded secret {env_var} from {value}")
-                    except Exception as e:
-                        logger.warning(f"Failed to load secret from {value}: {e}")
+                try:
+                    with open(value, 'r') as f:
+                        secret_value = f.read().strip()
+                    os.environ[env_var] = secret_value
+                    logger.info(f"Loaded secret {env_var} from {value}")
+                except Exception as e:
+                    logger.error(f"Failed to load secret {env_var}: {e}")
+        
+        # Map POSTGRES_PASSWORD to DB_PASSWORD
+        if "POSTGRES_PASSWORD" in os.environ:
+            os.environ["DB_PASSWORD"] = os.environ["POSTGRES_PASSWORD"]
 
     async def initialize(self):
         from .llm import LLMService
