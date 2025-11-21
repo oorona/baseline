@@ -4,6 +4,8 @@ import structlog
 
 from app.api.auth import router as auth_router
 from app.api.guilds import router as guilds_router
+from app.api.guilds import router as guilds_router
+from app.api.shards import router as shards_router
 from app.core.config import settings
 
 app = FastAPI(title=settings.PROJECT_NAME, openapi_url=f"{settings.API_V1_STR}/openapi.json")
@@ -30,6 +32,17 @@ else:
 
 app.include_router(auth_router, prefix=f"{settings.API_V1_STR}/auth", tags=["auth"])
 app.include_router(guilds_router, prefix=f"{settings.API_V1_STR}/guilds", tags=["guilds"])
+app.include_router(shards_router, prefix=f"{settings.API_V1_STR}")
+
+@app.on_event("startup")
+async def startup_event():
+    for route in app.routes:
+        if hasattr(route, "methods"):
+            logger.info(f"Route: {route.path} {route.methods}")
+        else:
+            logger.info(f"Route: {route.path}")
+
+
 
 @app.get(f"{settings.API_V1_STR}/health")
 async def health_check():

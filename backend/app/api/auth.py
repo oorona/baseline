@@ -1,7 +1,7 @@
 import uuid
 import json
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Cookie
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, HTMLResponse
 import httpx
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,27 +18,60 @@ router = APIRouter()
 DISCORD_API_BASE = "https://discord.com/api/v10"
 
 @router.get("/discord/login")
-async def login_discord():
+async def login_discord(state: str = "redirect"):
     if not settings.DISCORD_CLIENT_ID or not settings.DISCORD_REDIRECT_URI:
         raise HTTPException(status_code=500, detail="Discord OAuth not configured")
     
+    from urllib.parse import urlencode, quote
+    
     scope = "identify guilds"
-    login_url = (
-        f"{DISCORD_API_BASE}/oauth2/authorize"
-        f"?client_id={settings.DISCORD_CLIENT_ID}"
-        f"&redirect_uri={settings.DISCORD_REDIRECT_URI}"
-        f"&response_type=code"
-        f"&scope={scope}"
-    )
+    base_params = {
+        "client_id": settings.DISCORD_CLIENT_ID,
+        "redirect_uri": settings.DISCORD_REDIRECT_URI,
+        "response_type": "code",
+        "scope": scope,
+        "state": state,
+    }
+    
+    # Try with prompt=none first to skip consent if already authorized
+    params = base_params.copy()
+    params["prompt"] = "none"
+    
+    login_url = f"{DISCORD_API_BASE}/oauth2/authorize?{urlencode(params, quote_via=quote)}"
+    print(f"DEBUG: Login URL: {login_url}")
+    print(f"DEBUG: Redirect URI: {settings.DISCORD_REDIRECT_URI}")
     return RedirectResponse(login_url)
 
 @router.get("/discord/callback")
 async def callback_discord(
-    code: str,
-    response: Response,
+    code: str = None,
+    error: str = None,
+    state: str = "redirect",
+    response: Response = None,
     db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis)
 ):
+    if error == "interaction_required":
+        # User needs to consent, redirect to auth without prompt=none
+        from urllib.parse import urlencode, quote
+        scope = "identify guilds"
+        params = {
+            "client_id": settings.DISCORD_CLIENT_ID,
+            "redirect_uri": settings.DISCORD_REDIRECT_URI,
+            "response_type": "code",
+            "scope": scope,
+            "state": state,
+            # No prompt param = default (ask for consent if needed)
+        }
+        login_url = f"{DISCORD_API_BASE}/oauth2/authorize?{urlencode(params, quote_via=quote)}"
+        return RedirectResponse(login_url)
+        
+    if error:
+        raise HTTPException(status_code=400, detail=f"Discord Error: {error}")
+        
+    if not code:
+        raise HTTPException(status_code=400, detail="No code provided")
+
     if not settings.DISCORD_CLIENT_ID or not settings.DISCORD_CLIENT_SECRET:
         raise HTTPException(status_code=500, detail="Discord OAuth not configured")
 
@@ -112,7 +145,26 @@ async def callback_discord(
         secure=False # Set to True in production with HTTPS
     )
     
-    return {"message": "Login successful", "user": session_data}
+    if state == "popup":
+        html_content = f"""
+        <html>
+            <body>
+                <script>
+                    window.opener.postMessage({{
+                        type: 'DISCORD_LOGIN_SUCCESS',
+                        token: '{session_id}'
+                    }}, '*');
+                    window.close();
+                </script>
+                <p>Login successful! Closing window...</p>
+            </body>
+        </html>
+        """
+        return HTMLResponse(content=html_content)
+    
+    # Redirect to frontend with token
+    frontend_url = "http://localhost:3000"
+    return RedirectResponse(f"{frontend_url}?token={session_id}")
 
 @router.get("/me")
 async def read_users_me(current_user: dict = Depends(get_current_user)):

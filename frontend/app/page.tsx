@@ -3,13 +3,25 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
-import { LogOut, Bot, Settings } from 'lucide-react';
+import { LogOut, Bot, Settings, Activity } from 'lucide-react';
 
 export default function Home() {
   const { user, loading, logout } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
+    // Check for token in URL (from OAuth callback)
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    if (token) {
+      localStorage.setItem('access_token', token);
+      // Clean up URL
+      window.history.replaceState({}, '', '/');
+      // Force reload to pick up new token in AuthContext
+      window.location.reload();
+      return;
+    }
+
     if (!loading && !user) {
       router.push('/login');
     }
@@ -57,17 +69,29 @@ export default function Home() {
             Your bot platform is ready. Configure your bots and manage your Discord servers.
           </p>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-white/5 rounded-xl p-6 border border-white/10 hover:bg-white/10 transition-all cursor-pointer">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div
+              onClick={() => (document.querySelector('button[class*="lg:hidden"]') as HTMLElement)?.click()}
+              className="bg-white/5 rounded-xl p-6 border border-white/10 hover:bg-white/10 transition-all cursor-pointer"
+            >
               <Bot className="w-12 h-12 text-white mb-4" />
-              <h3 className="text-xl font-semibold text-white mb-2">Bots</h3>
-              <p className="text-white/70">Manage your Discord bots and their configurations</p>
+              <h3 className="text-xl font-semibold text-white mb-2">Manage Servers</h3>
+              <p className="text-white/70">Select a server from the sidebar to configure settings</p>
             </div>
 
-            <div className="bg-white/5 rounded-xl p-6 border border-white/10 hover:bg-white/10 transition-all cursor-pointer">
+            <div
+              onClick={() => router.push('/admin/shards')}
+              className="bg-white/5 rounded-xl p-6 border border-white/10 hover:bg-white/10 transition-all cursor-pointer"
+            >
+              <Activity className="w-12 h-12 text-white mb-4" />
+              <h3 className="text-xl font-semibold text-white mb-2">System Status</h3>
+              <p className="text-white/70">Monitor bot shards, latency, and uptime</p>
+            </div>
+
+            <div className="bg-white/5 rounded-xl p-6 border border-white/10 hover:bg-white/10 transition-all cursor-pointer opacity-50">
               <Settings className="w-12 h-12 text-white mb-4" />
-              <h3 className="text-xl font-semibold text-white mb-2">Settings</h3>
-              <p className="text-white/70">Configure platform settings and permissions</p>
+              <h3 className="text-xl font-semibold text-white mb-2">Platform Settings</h3>
+              <p className="text-white/70">Global platform configuration (Coming Soon)</p>
             </div>
           </div>
         </div>

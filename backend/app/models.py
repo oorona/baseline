@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, BigInteger, Boolean, DateTime, ForeignKey, Enum as SQLEnum
+from sqlalchemy import Column, String, BigInteger, Boolean, DateTime, ForeignKey, Enum as SQLEnum, Text, JSON
 from sqlalchemy.orm import relationship, declarative_base
 from sqlalchemy.sql import func
 import enum
@@ -28,6 +28,7 @@ class Guild(Base):
     is_active = Column(Boolean, default=True)
 
     authorized_users = relationship("AuthorizedUser", back_populates="guild")
+    settings = relationship("GuildSettings", back_populates="guild", uselist=False)
 
 class PermissionLevel(enum.Enum):
     OWNER = "owner"
@@ -46,3 +47,24 @@ class AuthorizedUser(Base):
 
     user = relationship("User", back_populates="authorized_guilds")
     guild = relationship("Guild", back_populates="authorized_users")
+
+class GuildSettings(Base):
+    __tablename__ = "guild_settings"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    guild_id = Column(BigInteger, ForeignKey("guilds.id"), unique=True, nullable=False)
+    settings_json = Column(JSON, default={})  # Flexible JSON storage for any settings
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_by = Column(BigInteger, nullable=True)  # User ID who last updated
+
+    guild = relationship("Guild", back_populates="settings")
+
+class Shard(Base):
+    __tablename__ = "shards"
+
+    shard_id = Column(BigInteger, primary_key=True)
+    status = Column(String, default="CONNECTING")  # READY, CONNECTING, DISCONNECTED, etc.
+    latency = Column(BigInteger, default=0)  # in milliseconds
+    guild_count = Column(BigInteger, default=0)
+    last_heartbeat = Column(DateTime(timezone=True), server_default=func.now())
+

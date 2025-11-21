@@ -1,5 +1,5 @@
 from typing import Generator, Optional
-from fastapi import Depends, HTTPException, status, Cookie
+from fastapi import Depends, HTTPException, status, Cookie, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from redis.asyncio import Redis
 import json
@@ -10,9 +10,15 @@ from app.models import User
 
 async def get_current_user(
     session_id: Optional[str] = Cookie(None),
+    authorization: Optional[str] = Header(None),
     redis: Redis = Depends(get_redis),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
+    # Try to get session_id from Authorization header if not in cookie
+    if not session_id and authorization:
+        if authorization.startswith("Bearer "):
+            session_id = authorization.split(" ")[1]
+            
     if not session_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
