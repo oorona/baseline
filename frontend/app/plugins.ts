@@ -9,6 +9,12 @@ export interface Plugin {
     name: string;
     routes: PluginRoute[];
     navItems?: NavItem[];
+    settingsComponent?: React.ComponentType<{
+        guildId: string;
+        settings: Record<string, any>;
+        onUpdate: (key: string, value: any) => void;
+        isReadOnly: boolean;
+    }>;
 }
 
 export interface PluginRoute {

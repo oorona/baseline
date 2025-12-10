@@ -1,3 +1,4 @@
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -6,16 +7,24 @@ from typing import List, Dict, Any
 from pydantic import BaseModel
 
 from app.db.session import get_db
-from app.models import Guild, GuildSettings, AuthorizedUser, User
-from app.schemas import GuildCreate, Guild as GuildSchema
+from ..models import Guild, User, AuthorizedUser, PermissionLevel, GuildSettings, AuditLog
+from ..schemas import (
+    Guild as GuildSchema,
+    GuildCreate,
+    User as UserSchema,
+    AuthorizedUser as AuthorizedUserSchema,
+    AddUserRequest,
+    GuildSettings as GuildSettingsSchema,
+    SettingsUpdate,
+    AuditLog as AuditLogSchema,
+    DiscordChannel,
+    DiscordRole
+)
+from ..core.config import settings as app_settings
+from app.core.discord import discord_client
 from app.api.deps import get_current_user
 
 router = APIRouter()
-
-
-
-class SettingsUpdate(BaseModel):
-    settings: Dict[str, Any]
 
 class AddUserRequest(BaseModel):
     user_id: int
@@ -96,10 +105,17 @@ async def update_guild_settings(
                 AuthorizedUser.user_id == user_id
             )
         )
-        if not auth_check.scalar_one_or_none():
+        auth_user = auth_check.scalar_one_or_none()
+        if not auth_user:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You do not have access to this guild"
+            )
+        
+        if auth_user.permission_level != PermissionLevel.ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only admins can update settings"
             )
     
     # Get or create settings
@@ -108,17 +124,29 @@ async def update_guild_settings(
     )
     settings = settings_result.scalar_one_or_none()
     
+    # Validate settings against schema
+    settings_data = settings_update.settings.model_dump()
+
     if not settings:
         settings = GuildSettings(
             guild_id=guild_id,
-            settings_json=settings_update.settings,
+            settings_json=settings_data,
             updated_by=user_id
         )
         db.add(settings)
     else:
-        settings.settings_json = settings_update.settings
+        settings.settings_json = settings_data
         settings.updated_by = user_id
     
+    # Log action
+    log = AuditLog(
+        guild_id=guild_id,
+        user_id=user_id,
+        action="UPDATE_SETTINGS",
+        details={"settings": settings_data}
+    )
+    db.add(log)
+
     await db.commit()
     await db.refresh(settings)
     
@@ -199,10 +227,17 @@ async def add_authorized_user(
                 AuthorizedUser.user_id == user_id
             )
         )
-        if not auth_check.scalar_one_or_none():
+        auth_user = auth_check.scalar_one_or_none()
+        if not auth_user:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You do not have permission to add users"
+            )
+        
+        if auth_user.permission_level != PermissionLevel.ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only admins can add users"
             )
     
     # Check if user is already authorized
@@ -243,6 +278,16 @@ async def add_authorized_user(
         created_by=user_id
     )
     db.add(new_auth)
+    
+    # Log action
+    log = AuditLog(
+        guild_id=guild_id,
+        user_id=user_id,
+        action="ADD_AUTHORIZED_USER",
+        details={"added_user_id": request.user_id}
+    )
+    db.add(log)
+    
     await db.commit()
     
     return {"message": "User authorized successfully"}
@@ -272,10 +317,17 @@ async def remove_authorized_user(
                 AuthorizedUser.user_id == current_user_id
             )
         )
-        if not auth_check.scalar_one_or_none():
+        auth_user = auth_check.scalar_one_or_none()
+        if not auth_user:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You do not have permission to remove users"
+            )
+            
+        if auth_user.permission_level != PermissionLevel.ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only admins can remove users"
             )
     
     # Find the user to remove
@@ -293,7 +345,6 @@ async def remove_authorized_user(
             detail="User is not authorized for this guild"
         )
     
-    # Prevent removing the guild owner (though owner isn't in authorized_users usually)
     if user_id == guild.owner_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -301,9 +352,136 @@ async def remove_authorized_user(
         )
     
     await db.delete(target_auth)
+    
+    # Log action
+    log = AuditLog(
+        guild_id=guild_id,
+        user_id=current_user_id,
+        action="REMOVE_AUTHORIZED_USER",
+        details={"removed_user_id": user_id}
+    )
+    db.add(log)
     await db.commit()
     
     return {"message": "User removed successfully"}
+
+@router.get("/{guild_id}/audit-logs", response_model=List[AuditLogSchema])
+async def get_audit_logs(
+    guild_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """Get audit logs for a guild."""
+    user_id = int(current_user["user_id"])
+    
+    # Check if guild exists
+    guild = await db.get(Guild, guild_id)
+    if not guild:
+        raise HTTPException(status_code=404, detail="Guild not found")
+
+    # Check if user has access (Owner or Authorized)
+    is_owner = guild.owner_id == user_id
+    
+    if not is_owner:
+        auth_check = await db.execute(
+            select(AuthorizedUser).where(
+                AuthorizedUser.guild_id == guild_id,
+                AuthorizedUser.user_id == user_id
+            )
+        )
+        auth_user = auth_check.scalar_one_or_none()
+        if not auth_user:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have access to this guild"
+            )
+            
+        if auth_user.permission_level != PermissionLevel.ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only admins can view audit logs"
+            )
+            
+    # Fetch logs
+    result = await db.execute(
+        select(AuditLog)
+        .where(AuditLog.guild_id == guild_id)
+        .order_by(AuditLog.created_at.desc())
+        .limit(100)
+    )
+    return result.scalars().all()
+
+@router.get("/{guild_id}/channels", response_model=List[DiscordChannel])
+async def get_guild_channels(
+    guild_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """Get list of channels for a guild from Discord API."""
+    user_id = int(current_user["user_id"])
+    
+    # Check if guild exists
+    guild = await db.get(Guild, guild_id)
+    if not guild:
+        raise HTTPException(status_code=404, detail="Guild not found")
+
+    # Check if user has access (Owner or Authorized)
+    is_owner = guild.owner_id == user_id
+    
+    if not is_owner:
+        auth_check = await db.execute(
+            select(AuthorizedUser).where(
+                AuthorizedUser.guild_id == guild_id,
+                AuthorizedUser.user_id == user_id
+            )
+        )
+        if not auth_check.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have access to this guild"
+            )
+
+    try:
+        channels = await discord_client.get_guild_channels(str(guild_id))
+        return channels
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{guild_id}/roles", response_model=List[DiscordRole])
+async def get_guild_roles(
+    guild_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """Get list of roles for a guild from Discord API."""
+    user_id = int(current_user["user_id"])
+    
+    # Check if guild exists
+    guild = await db.get(Guild, guild_id)
+    if not guild:
+        raise HTTPException(status_code=404, detail="Guild not found")
+
+    # Check if user has access (Owner or Authorized)
+    is_owner = guild.owner_id == user_id
+    
+    if not is_owner:
+        auth_check = await db.execute(
+            select(AuthorizedUser).where(
+                AuthorizedUser.guild_id == guild_id,
+                AuthorizedUser.user_id == user_id
+            )
+        )
+        if not auth_check.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have access to this guild"
+            )
+
+    try:
+        roles = await discord_client.get_guild_roles(str(guild_id))
+        return roles
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # --- Generic Guild Endpoints (Must be defined AFTER specific /{guild_id}/*) ---
 
@@ -319,11 +497,18 @@ async def list_guilds(
     stmt_owner = select(Guild).where(Guild.owner_id == user_id)
     result_owner = await db.execute(stmt_owner)
     owned_guilds = result_owner.scalars().all()
+    for g in owned_guilds:
+        setattr(g, "permission_level", "owner")
     
     # Get guilds where user is authorized
-    stmt_auth = select(Guild).join(AuthorizedUser).where(AuthorizedUser.user_id == user_id)
+    stmt_auth = select(Guild, AuthorizedUser.permission_level).join(AuthorizedUser).where(AuthorizedUser.user_id == user_id)
     result_auth = await db.execute(stmt_auth)
-    authorized_guilds = result_auth.scalars().all()
+    auth_rows = result_auth.all()
+    
+    authorized_guilds = []
+    for guild, perm_level in auth_rows:
+        setattr(guild, "permission_level", perm_level.value)
+        authorized_guilds.append(guild)
     
     # Combine and deduplicate
     all_guilds = {g.id: g for g in owned_guilds + authorized_guilds}
@@ -334,17 +519,24 @@ async def create_or_update_guild(
     guild_in: GuildCreate,
     db: AsyncSession = Depends(get_db)
 ):
-    stmt = select(Guild).where(Guild.id == guild_in.id)
+    # Convert string IDs to int for DB
+    guild_id = int(guild_in.id)
+    owner_id = int(guild_in.owner_id)
+
+    stmt = select(Guild).where(Guild.id == guild_id)
     result = await db.execute(stmt)
     guild = result.scalar_one_or_none()
 
     if not guild:
-        guild = Guild(**guild_in.model_dump())
+        guild_data = guild_in.model_dump()
+        guild_data["id"] = guild_id
+        guild_data["owner_id"] = owner_id
+        guild = Guild(**guild_data)
         db.add(guild)
     else:
         guild.name = guild_in.name
         guild.icon_url = guild_in.icon_url
-        guild.owner_id = guild_in.owner_id
+        guild.owner_id = owner_id
         guild.is_active = True
     
     await db.commit()
@@ -354,12 +546,36 @@ async def create_or_update_guild(
 @router.get("/{guild_id}", response_model=GuildSchema)
 async def read_guild(
     guild_id: int,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
 ):
+    user_id = int(current_user["user_id"])
+    
     stmt = select(Guild).where(Guild.id == guild_id)
     result = await db.execute(stmt)
     guild = result.scalar_one_or_none()
     
     if not guild:
         raise HTTPException(status_code=404, detail="Guild not found")
+        
+    if guild.owner_id == user_id:
+        setattr(guild, "permission_level", "owner")
+    else:
+        auth_check = await db.execute(
+            select(AuthorizedUser).where(
+                AuthorizedUser.guild_id == guild_id,
+                AuthorizedUser.user_id == user_id
+            )
+        )
+        auth_user = auth_check.scalar_one_or_none()
+        if auth_user:
+            setattr(guild, "permission_level", auth_user.permission_level.value)
+        else:
+             # Not authorized, but maybe we shouldn't even return the guild?
+             # For now, let's return it but with no permission level (or maybe "none")
+             # Actually, if they are not authorized, they shouldn't see it at all?
+             # But list_guilds only returns what they have access to.
+             # Let's enforce access here too.
+             raise HTTPException(status_code=403, detail="You do not have access to this guild")
+
     return guild

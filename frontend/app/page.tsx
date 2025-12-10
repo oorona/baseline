@@ -1,13 +1,15 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
+import { apiClient } from '@/app/api-client';
 import { LogOut, Bot, Settings, Activity } from 'lucide-react';
 
 export default function Home() {
   const { user, loading, logout } = useAuth();
   const router = useRouter();
+  const [guilds, setGuilds] = useState<any[]>([]);
 
   useEffect(() => {
     // Check for token in URL (from OAuth callback)
@@ -24,6 +26,10 @@ export default function Home() {
 
     if (!loading && !user) {
       router.push('/login');
+    }
+
+    if (user) {
+      apiClient.getGuilds().then(setGuilds).catch(console.error);
     }
   }, [user, loading, router]);
 
@@ -71,7 +77,11 @@ export default function Home() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div
-              onClick={() => (document.querySelector('button[class*="lg:hidden"]') as HTMLElement)?.click()}
+              onClick={() => {
+                if (guilds.length > 0) {
+                  router.push(`/dashboard/${guilds[0].id}/settings`);
+                }
+              }}
               className="bg-white/5 rounded-xl p-6 border border-white/10 hover:bg-white/10 transition-all cursor-pointer"
             >
               <Bot className="w-12 h-12 text-white mb-4" />
@@ -80,7 +90,7 @@ export default function Home() {
             </div>
 
             <div
-              onClick={() => router.push('/admin/shards')}
+              onClick={() => router.push('/dashboard/status')}
               className="bg-white/5 rounded-xl p-6 border border-white/10 hover:bg-white/10 transition-all cursor-pointer"
             >
               <Activity className="w-12 h-12 text-white mb-4" />

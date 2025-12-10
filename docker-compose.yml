@@ -13,8 +13,9 @@ services:
       - google_api_key
       - anthropic_api_key
       - xai_api_key
+      - discord_bot_token
     env_file:
-      - .env  # Contains DATABASE_URL and REDIS_URL for external services
+      - .env # Contains DATABASE_URL and REDIS_URL for external services
     environment:
       # Secrets loaded from files
       DISCORD_CLIENT_SECRET_FILE: /run/secrets/discord_client_secret
@@ -24,10 +25,11 @@ services:
       GOOGLE_API_KEY_FILE: /run/secrets/google_api_key
       ANTHROPIC_API_KEY_FILE: /run/secrets/anthropic_api_key
       XAI_API_KEY_FILE: /run/secrets/xai_api_key
+      DISCORD_BOT_TOKEN_FILE: /run/secrets/discord_bot_token
     networks:
-      - internet   # For OAuth callbacks (publicly accessible endpoint)
-      - intranet   # For frontend and bot communication
-      - dbnet      # For database access
+      - internet # For OAuth callbacks (publicly accessible endpoint)
+      - intranet # For frontend and bot communication
+      - dbnet # For database access
     ports:
       - "8000:8000"
     volumes:
@@ -35,7 +37,7 @@ services:
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/api/v1/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -55,7 +57,7 @@ services:
       - anthropic_api_key
       - xai_api_key
     env_file:
-      - .env  # Contains DATABASE_URL and REDIS_URL for external services
+      - .env # Contains DATABASE_URL and REDIS_URL for external services
     environment:
       # Secrets loaded from files
       DISCORD_BOT_TOKEN_FILE: /run/secrets/discord_bot_token
@@ -65,11 +67,11 @@ services:
       ANTHROPIC_API_KEY_FILE: /run/secrets/anthropic_api_key
       XAI_API_KEY_FILE: /run/secrets/xai_api_key
     networks:
-      - internet   # For Discord API access
-      - intranet   # For backend API communication (if needed)
-      - dbnet      # For database access
+      - internet # For Discord API access
+      - intranet # For backend API communication (if needed)
+      - dbnet # For database access
     ports:
-      - "8080:8080"  # Health check endpoint
+      - "8080:8080" # Health check endpoint
     depends_on:
       backend:
         condition: service_healthy
@@ -79,7 +81,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -92,10 +94,10 @@ services:
       dockerfile: Dockerfile
     container_name: bot-frontend
     env_file:
-      - .env  # Frontend config (non-sensitive)
+      - .env # Frontend config (non-sensitive)
     networks:
-      - internet   # Public facing
-      - intranet   # For backend API calls
+      - internet # Public facing
+      - intranet # For backend API calls
     ports:
       - "3000:3000"
     depends_on:
@@ -103,9 +105,10 @@ services:
         condition: service_healthy
     environment:
       - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:3000/api/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -125,16 +128,18 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./postgres-init:/docker-entrypoint-initdb.d:ro
       - ./postgres-init/entrypoint-wrapper.sh:/usr/local/bin/entrypoint-wrapper.sh:ro
+    ports:
+      - 5432:5432
     networks:
       - dbnet
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d bot_platform"]
+      test: [ "CMD-SHELL", "pg_isready -U user -d bot_platform" ]
       interval: 10s
       timeout: 5s
       retries: 5
     restart: unless-stopped
-    entrypoint: ["/usr/local/bin/entrypoint-wrapper.sh"]
-    command: ["postgres"]
+    entrypoint: [ "/usr/local/bin/entrypoint-wrapper.sh" ]
+    command: [ "postgres" ]
 
   # Redis
   redis:
@@ -144,7 +149,7 @@ services:
       - intranet
       - dbnet
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -166,21 +171,22 @@ networks:
 volumes:
   postgres_data:
 
+
 secrets:
   # Discord secrets
   discord_bot_token:
     file: ./secrets/discord_bot_token.txt
   discord_client_secret:
     file: ./secrets/discord_client_secret.txt
-  
+
   # API secrets
   api_secret_key:
     file: ./secrets/api_secret_key.txt
-  
+
   # Database secrets
   postgres_password:
     file: ./secrets/postgres_password.txt
-  
+
   # LLM API Keys
   openai_api_key:
     file: ./secrets/openai_api_key.txt

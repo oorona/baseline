@@ -58,7 +58,7 @@ export function GuildSwitcher({ currentGuildId }: { currentGuildId?: string }) {
                         {guilds.map((guild) => (
                             <a
                                 key={guild.id}
-                                href={`/guilds/${guild.id}/settings`}
+                                href={`/dashboard/${guild.id}/settings`}
                                 className={cn(
                                     'flex items-center justify-between px-4 py-3 hover:bg-gray-700 transition-colors',
                                     guild.id === currentGuildId && 'bg-gray-700'

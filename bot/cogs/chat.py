@@ -2,6 +2,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import structlog
+import aiohttp
 from typing import Optional, Literal
 
 logger = structlog.get_logger()
@@ -20,16 +21,66 @@ class Chat(commands.Cog):
         self, 
         interaction: discord.Interaction, 
         message: str, 
-        provider: Optional[Literal["openai", "anthropic", "google", "xai"]] = "openai",
+        provider: Optional[Literal["openai", "anthropic", "google", "xai"]] = None,
         model: Optional[str] = None
     ):
         await interaction.response.defer(thinking=True)
         
         user_id = interaction.user.id
+        guild_id = interaction.guild_id
+        channel_id = str(interaction.channel_id)
+        
+        # Default settings
+        system_prompt = None
+        target_provider = provider or "openai"
+        
+        # Fetch guild settings if in a guild
+        if guild_id:
+            try:
+                # TODO: Cache this to avoid API call on every message
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(f"http://backend:8000/api/v1/guilds/{guild_id}/settings") as resp: # Internal URL
+                        if resp.status == 200:
+                            data = await resp.json()
+                            settings = data.get("settings", {})
+                            
+                            # Check allowed channels
+                            allowed_channels = settings.get("allowed_channels", [])
+                            if allowed_channels and channel_id not in allowed_channels:
+                                await interaction.followup.send("I am not allowed to chat in this channel.", ephemeral=True)
+                                return
+
+                            # Apply system prompt
+                            if settings.get("system_prompt"):
+                                system_prompt = settings.get("system_prompt")
+                                # Inject context immediately for this turn (or we could persist it)
+                                # For now, let's prepend it to the message or use a specific method if LLM service supports it
+                                # simpler approach: prepend to message for this request if no history context
+                                # But better: use inject_context logic or pass as separate arg to chat()
+                                pass 
+
+                            # Apply default model/provider if not specified
+                            if not provider and settings.get("model"):
+                                # Map model name to provider if possible, or just pass model
+                                # The current chat signature takes provider and model.
+                                # If settings.model is "openai", "anthropic", etc (provider names from UI)
+                                if settings.get("model") in ["openai", "anthropic", "google", "xai"]:
+                                    target_provider = settings.get("model")
+                                else:
+                                    # It might be a specific model name, we'd need to know the provider
+                                    # For now UI sends provider names as 'model'
+                                    target_provider = settings.get("model")
+
+            except Exception as e:
+                logger.error("failed_to_fetch_settings", error=str(e))
         
         try:
+            # Inject system prompt if exists (temporary way, ideally LLM service handles system prompt)
+            if system_prompt:
+                 await self.bot.services.llm.inject_context(user_id, f"System Instruction: {system_prompt}")
+
             # 1. Generate Response
-            response = await self.bot.services.llm.chat(user_id, message, provider, model)
+            response = await self.bot.services.llm.chat(user_id, message, target_provider, model)
             
             # 2. Send Response (handle long messages)
             if len(response) > 2000:

@@ -23,7 +23,10 @@ class Settings(BaseSettings):
     
     DISCORD_CLIENT_ID: Optional[str] = None
     DISCORD_CLIENT_SECRET: Optional[str] = None
+    DISCORD_BOT_TOKEN: Optional[str] = None
     DISCORD_REDIRECT_URI: Optional[str] = None
+    FRONTEND_URL: str = "http://localhost:3000"
+    ADMIN_USER_IDS: Optional[str] = None
     
     SECRET_KEY: str = "development_secret_key" # Change in production
     ALGORITHM: str = "HS256"

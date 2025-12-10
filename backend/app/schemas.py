@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Dict, Any
 from pydantic import BaseModel, field_validator
 from datetime import datetime
 
@@ -35,6 +35,53 @@ class GuildCreate(GuildBase):
 class Guild(GuildBase):
     joined_at: datetime
     is_active: bool
+    permission_level: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+class AuthorizedUser(BaseModel):
+    user_id: int
+    permission_level: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class AddUserRequest(BaseModel):
+    user_id: int
+
+class GuildSettings(BaseModel):
+    allowed_channels: list[str] = []
+    system_prompt: Optional[str] = None
+    model: Optional[str] = "openai"
+
+class SettingsUpdate(BaseModel):
+    settings: Dict[str, Any]
+
+class AuditLogBase(BaseModel):
+    guild_id: int
+    user_id: int
+    action: str
+    details: Dict[str, Any] = {}
+
+class AuditLogCreate(AuditLogBase):
+    pass
+
+class AuditLog(AuditLogBase):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class DiscordChannel(BaseModel):
+    id: str
+    name: str
+    type: int
+
+class DiscordRole(BaseModel):
+    id: str
+    name: str
+    color: int
+    position: int

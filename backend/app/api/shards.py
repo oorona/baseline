@@ -14,7 +14,20 @@ async def get_all_shards(
     current_user: dict = Depends(get_current_user)
 ):
     """Get status of all shards. Restricted to admins."""
-    # TODO: Add admin check here
+    # Simple admin check via env var for now
+    # In production, this should probably be a database flag or role
+    from app.core.config import settings
+    
+    # Assuming settings.ADMIN_USER_IDS is a comma-separated string of IDs
+    admin_ids = [int(id.strip()) for id in (settings.ADMIN_USER_IDS or "").split(",") if id.strip()]
+    
+    if int(current_user["user_id"]) not in admin_ids:
+        # For now, let's allow it for testing if no admins are configured
+        if admin_ids:
+             raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to view system status"
+            )
     
     # Scan for all shard keys
     keys = []

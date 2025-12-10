@@ -47,6 +47,13 @@ class APIClient {
                             window.location.href = '/login';
                         }
                     }
+                } else if (error.response?.status === 403) {
+                    // Forbidden - redirect to access denied page
+                    if (typeof window !== 'undefined') {
+                        if (window.location.pathname !== '/access-denied') {
+                            window.location.href = '/access-denied';
+                        }
+                    }
                 }
                 return Promise.reject(error);
             }
@@ -102,6 +109,11 @@ class APIClient {
 
     async removeAuthorizedUser(guildId: string, userId: string) {
         const response = await this.client.delete(`/guilds/${guildId}/authorized-users/${userId}`);
+        return response.data;
+    }
+
+    async getAuditLogs(guildId: string) {
+        const response = await this.client.get(`/guilds/${guildId}/audit-logs`);
         return response.data;
     }
 

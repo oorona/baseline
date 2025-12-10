@@ -12,6 +12,8 @@ class User(Base):
     username = Column(String, nullable=False)
     discriminator = Column(String, nullable=True) # Nullable as Discord is removing them
     avatar_url = Column(String, nullable=True)
+    refresh_token = Column(String, nullable=True)
+    token_expires_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -67,4 +69,17 @@ class Shard(Base):
     latency = Column(BigInteger, default=0)  # in milliseconds
     guild_count = Column(BigInteger, default=0)
     last_heartbeat = Column(DateTime(timezone=True), server_default=func.now())
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    guild_id = Column(BigInteger, ForeignKey("guilds.id"), nullable=False)
+    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=False)
+    action = Column(String, nullable=False) # e.g. "UPDATE_SETTINGS", "ADD_USER"
+    details = Column(JSON, default={})
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    guild = relationship("Guild")
+    user = relationship("User")
 

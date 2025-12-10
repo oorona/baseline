@@ -5,27 +5,37 @@ import { usePathname } from 'next/navigation';
 import { Home, Settings, Shield, Activity, Menu, X } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '../utils';
+import { useAuth } from '@/lib/auth-context';
 import { GuildSwitcher } from './GuildSwitcher';
 
-const navigation = [
+import { usePlugins } from '../plugins';
+
+const defaultNavigation = [
     { name: 'Home', href: '/', icon: Home },
-    { name: 'Settings', href: '/guilds/[guildId]/settings', icon: Settings },
-    { name: 'Permissions', href: '/guilds/[guildId]/permissions', icon: Shield },
-    { name: 'Shard Monitor', href: '/admin/shards', icon: Activity, adminOnly: true },
+    { name: 'Settings', href: '/dashboard/[guildId]/settings', icon: Settings },
+    { name: 'Permissions', href: '/dashboard/[guildId]/permissions', icon: Shield },
+    { name: 'Shard Monitor', href: '/dashboard/status', icon: Activity, adminOnly: true },
 ];
 
 export function Sidebar({ guildId, isAdmin }: { guildId?: string; isAdmin?: boolean }) {
     const pathname = usePathname();
     const [isOpen, setIsOpen] = useState(false);
+    const { user, loading } = useAuth();
+    const { navItems: pluginNavItems } = usePlugins();
 
     // Extract guildId from pathname if not provided
-    const match = pathname?.match(/\/guilds\/(\d+)/);
+    const match = pathname?.match(/\/dashboard\/(\d+)/);
     const currentGuildId = guildId || (match ? match[1] : undefined);
 
-    if (pathname === '/login') {
+    if (pathname === '/login' || pathname === '/access-denied') {
         return null;
     }
 
+    if (!loading && !user) {
+        return null;
+    }
+
+    const navigation = [...defaultNavigation, ...pluginNavItems];
     const filteredNav = navigation.filter((item) => !item.adminOnly || isAdmin);
 
     const getHref = (href: string) => {
@@ -82,7 +92,7 @@ export function Sidebar({ guildId, isAdmin }: { guildId?: string; isAdmin?: bool
                                     )}
                                     onClick={() => setIsOpen(false)}
                                 >
-                                    <item.icon size={20} />
+                                    {item.icon && <item.icon size={20} />}
                                     <span>{item.name}</span>
                                 </Link>
                             );
