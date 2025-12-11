@@ -35,4 +35,53 @@ class DiscordClient:
             response.raise_for_status()
             return response.json()
 
+    async def search_guild_members(self, guild_id: str, query: str, limit: int = 20) -> List[Dict]:
+        if not self.token:
+            raise ValueError("Discord Bot Token is not set")
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.base_url}/guilds/{guild_id}/members/search",
+                headers=self.headers,
+                params={"query": query, "limit": limit}
+            )
+            response.raise_for_status()
+            return response.json()
+
+    async def get_guild_member(self, guild_id: str, user_id: str) -> Dict:
+        if not self.token:
+            raise ValueError("Discord Bot Token is not set")
+            
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.base_url}/guilds/{guild_id}/members/{user_id}",
+                headers=self.headers
+            )
+            response.raise_for_status()
+            return response.json()
+
+    async def get_user(self, user_id: str) -> Dict:
+        if not self.token:
+            raise ValueError("Discord Bot Token is not set")
+            
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.base_url}/users/{user_id}",
+                headers=self.headers
+            )
+            response.raise_for_status()
+            return response.json()
+
+    async def get_guild(self, guild_id: str) -> Dict:
+        if not self.token:
+            raise ValueError("Discord Bot Token is not set")
+            
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.base_url}/guilds/{guild_id}",
+                headers=self.headers
+            )
+            response.raise_for_status()
+            return response.json()
+
 discord_client = DiscordClient()

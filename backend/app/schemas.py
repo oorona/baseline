@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, field_validator
 from datetime import datetime
 
@@ -14,6 +14,7 @@ class UserCreate(UserBase):
 class User(UserBase):
     created_at: datetime
     updated_at: Optional[datetime] = None
+    preferences: Dict[str, Any] = {}
 
     class Config:
         from_attributes = True
@@ -55,6 +56,7 @@ class GuildSettings(BaseModel):
     allowed_channels: list[str] = []
     system_prompt: Optional[str] = None
     model: Optional[str] = "openai"
+    admin_role_id: Optional[str] = None # Level 3 Access Control
 
 class SettingsUpdate(BaseModel):
     settings: Dict[str, Any]
@@ -85,3 +87,13 @@ class DiscordRole(BaseModel):
     name: str
     color: int
     position: int
+
+class DiscordMember(BaseModel):
+    id: str
+    username: str
+    discriminator: Optional[str] = None
+    avatar: Optional[str] = None
+    roles: List[str] = []
+    
+    # Computed/Optional fields
+    avatar_url: Optional[str] = None

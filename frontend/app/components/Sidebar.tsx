@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Settings, Shield, Activity, Menu, X } from 'lucide-react';
-import { useState } from 'react';
+import { Home, Settings, Shield, Activity, Menu, X, User } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { cn } from '../utils';
 import { useAuth } from '@/lib/auth-context';
 import { GuildSwitcher } from './GuildSwitcher';
@@ -12,8 +12,8 @@ import { usePlugins } from '../plugins';
 
 const defaultNavigation = [
     { name: 'Home', href: '/', icon: Home },
-    { name: 'Settings', href: '/dashboard/[guildId]/settings', icon: Settings },
     { name: 'Permissions', href: '/dashboard/[guildId]/permissions', icon: Shield },
+    { name: 'Account Settings', href: '/dashboard/account', icon: User },
     { name: 'Shard Monitor', href: '/dashboard/status', icon: Activity, adminOnly: true },
 ];
 
@@ -25,7 +25,26 @@ export function Sidebar({ guildId, isAdmin }: { guildId?: string; isAdmin?: bool
 
     // Extract guildId from pathname if not provided
     const match = pathname?.match(/\/dashboard\/(\d+)/);
-    const currentGuildId = guildId || (match ? match[1] : undefined);
+    const urlGuildId = guildId || (match ? match[1] : undefined);
+
+    // Persistence Logic
+    const [activeGuildId, setActiveGuildId] = useState<string | undefined>(urlGuildId);
+
+    const defaultGuildId = user?.preferences?.default_guild_id;
+
+    useEffect(() => {
+        if (urlGuildId) {
+            setActiveGuildId(urlGuildId);
+            localStorage.setItem('lastGuildId', urlGuildId);
+        } else {
+            const last = localStorage.getItem('lastGuildId');
+            if (last) {
+                setActiveGuildId(last);
+            } else if (defaultGuildId) {
+                setActiveGuildId(defaultGuildId);
+            }
+        }
+    }, [urlGuildId, defaultGuildId]);
 
     if (pathname === '/login' || pathname === '/access-denied') {
         return null;
@@ -39,8 +58,8 @@ export function Sidebar({ guildId, isAdmin }: { guildId?: string; isAdmin?: bool
     const filteredNav = navigation.filter((item) => !item.adminOnly || isAdmin);
 
     const getHref = (href: string) => {
-        if (currentGuildId && href.includes('[guildId]')) {
-            return href.replace('[guildId]', currentGuildId);
+        if (activeGuildId && href.includes('[guildId]')) {
+            return href.replace('[guildId]', activeGuildId);
         }
         return href;
     };
@@ -67,7 +86,7 @@ export function Sidebar({ guildId, isAdmin }: { guildId?: string; isAdmin?: bool
                     </div>
 
                     <div className="px-4 py-4">
-                        <GuildSwitcher currentGuildId={currentGuildId} />
+                        <GuildSwitcher currentGuildId={activeGuildId} />
                     </div>
 
                     <nav className="flex-1 p-4 space-y-2">
@@ -75,8 +94,9 @@ export function Sidebar({ guildId, isAdmin }: { guildId?: string; isAdmin?: bool
                             const href = getHref(item.href);
                             const isActive = pathname === href;
 
-                            // Disable links if no guild selected and link requires guildId
-                            const isDisabled = item.href.includes('[guildId]') && !currentGuildId;
+                            // Disable links if no guild selected AND link requires guildId
+                            // But since we use activeGuildId (persisted), this should rarely happen unless new user
+                            const isDisabled = item.href.includes('[guildId]') && !activeGuildId;
 
                             if (isDisabled) return null;
 

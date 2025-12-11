@@ -43,17 +43,19 @@ When asked to create a feature (e.g., "Add a Welcome Message feature"), follow t
 5.  Access settings via `self.services.db.get_guild_settings`.
 
 ### Step 2: Define the Frontend Plugin
-1.  Create `frontend/app/plugins/welcome.tsx`.
-2.  Export a `Plugin` object with `id: 'welcome'`.
-3.  Define `settingsComponent` to render inputs for required settings (e.g., `welcome_message`, `welcome_channel_id`).
-4.  Define `navItems` only if a full custom page is required.
+1.  Create `frontend/app/plugins/<plugin-id>.tsx`.
+2.  If a full page is needed, create `frontend/app/plugins/<plugin-id>-page.tsx`.
+3.  Export a `Plugin` object with `id`.
+4.  **CRITICAL**: If using settings, use `settingsComponent` and fetch data (roles/channels) via `apiClient`. DO NOT ask users to manually input IDs.
+5.  **CRITICAL**: If needing a page, use `pageComponent` and point `navItems` to `/dashboard/[guildId]/plugins/<plugin-id>`.
 
 ### Step 3: Register the Plugin
 1.  Append an import to `frontend/app/plugins/registry.tsx`.
 2.  Call `pluginRegistry.register(welcomePlugin)` inside the `registerPlugins` function.
 
-### Step 4: Create Custom Pages (Optional)
-1.  If `navItems` were defined, create the corresponding page file at `frontend/app/dashboard/[guildId]/<path>/page.tsx`.
+### Step 4: Verify Backend Integration
+1.  Ensure `api-client.ts` has methods to fetch any required data (e.g., `getGuildRoles`).
+2.  Ensure backend cogs expose necessary endpoints if standard ones are insufficient.
 
 ## 4. Code Templates
 

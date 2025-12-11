@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { Save } from 'lucide-react';
+import { Save, Shield } from 'lucide-react';
 import { apiClient } from '@/app/api-client';
 import { usePlugins } from '@/app/plugins';
 
@@ -12,8 +12,10 @@ export default function GuildSettingsPage() {
     const { plugins } = usePlugins();
 
     // Unified settings state
-    const [settings, setSettings] = useState<Record<string, any>>({});
+    const [settings, setSettings] = useState<any>(null);
     const [permissionLevel, setPermissionLevel] = useState<string | null>(null);
+    const [canModifyLevel3, setCanModifyLevel3] = useState(false);
+    const [roles, setRoles] = useState<any[]>([]); // For Admin Role selector
 
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -21,15 +23,19 @@ export default function GuildSettingsPage() {
 
     useEffect(() => {
         const fetchData = async () => {
+            if (!guildId) return;
             try {
-                const [settingsData, guildData] = await Promise.all([
+                const [settingsData, guildData, rolesData] = await Promise.all([
                     apiClient.getGuildSettings(guildId),
-                    apiClient.getGuild(guildId)
+                    apiClient.getGuild(guildId),
+                    apiClient.getGuildRoles(guildId)
                 ]);
 
                 // Initialize settings with defaults if empty
                 setSettings(settingsData.settings || {});
                 setPermissionLevel(guildData.permission_level || null);
+                setCanModifyLevel3(settingsData.can_modify_level_3 || false);
+                setRoles(rolesData);
             } catch (err) {
                 console.error('Failed to load settings:', err);
                 setMessage({ type: 'error', text: 'Failed to load settings' });
@@ -44,7 +50,7 @@ export default function GuildSettingsPage() {
     }, [guildId]);
 
     const handleSettingChange = (key: string, value: any) => {
-        setSettings(prev => ({
+        setSettings((prev: Record<string, any>) => ({
             ...prev,
             [key]: value
         }));
@@ -67,11 +73,13 @@ export default function GuildSettingsPage() {
     };
 
     const isReadOnly = permissionLevel !== 'owner' && permissionLevel !== 'admin';
+    const isRestrictedReadOnly = isReadOnly || !canModifyLevel3;
 
     // Helper for core settings to maintain backward compatibility with UI
-    const allowedChannels = Array.isArray(settings.allowed_channels)
+    // Helper for core settings to maintain backward compatibility with UI
+    const allowedChannels = settings && Array.isArray(settings.allowed_channels)
         ? settings.allowed_channels.join(', ')
-        : (settings.allowed_channels || '');
+        : (settings?.allowed_channels || '');
 
     const setAllowedChannels = (val: string) => {
         const channelsList = val.split(',').map(id => id.trim()).filter(id => id);
@@ -103,97 +111,46 @@ export default function GuildSettingsPage() {
             )}
 
             <form onSubmit={handleSave} className="space-y-8">
-                {/* Core Settings Section */}
+                {/* Core/Restricted Settings */}
                 <div className="space-y-6">
-                    <h2 className="text-xl font-semibold border-b border-gray-700 pb-2">Core Settings</h2>
-
-                    <div className="space-y-2">
-                        <label className="block text-sm font-medium text-gray-300">
-                            Allowed Channels (IDs)
-                        </label>
-                        <input
-                            type="text"
-                            value={allowedChannels}
-                            onChange={(e) => setAllowedChannels(e.target.value)}
-                            disabled={isReadOnly}
-                            className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                            placeholder="123456789, 987654321"
-                        />
-                        <p className="text-xs text-gray-500">
-                            Comma-separated list of channel IDs where the bot is allowed to respond.
-                        </p>
+                    <div className="space-y-6 border-b border-gray-700 pb-8">
+                        <h2 className="text-xl font-semibold">General Settings (Level 1)</h2>
+                        <div>
+                            <label className="block text-sm font-medium mb-2">Allowed Channels</label>
+                            <input
+                                type="text"
+                                value={allowedChannels}
+                                onChange={(e) => setAllowedChannels(e.target.value)}
+                                placeholder="e.g. 123456789, 987654321"
+                                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white"
+                                disabled={isReadOnly}
+                            />
+                            <p className="text-xs text-gray-500 mt-1">Comma-separated list of channel IDs where the bot is active.</p>
+                        </div>
                     </div>
 
-                    <div className="space-y-2">
-                        <label className="block text-sm font-medium text-gray-300">
-                            System Prompt
-                        </label>
-                        <textarea
-                            value={settings.system_prompt || ''}
-                            onChange={(e) => handleSettingChange('system_prompt', e.target.value)}
-                            disabled={isReadOnly}
-                            rows={4}
-                            className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                            placeholder="You are a helpful assistant..."
-                        />
-                        <p className="text-xs text-gray-500">
-                            Custom instructions for the bot's personality and behavior.
-                        </p>
-                    </div>
 
-                    <div className="space-y-2">
-                        <label className="block text-sm font-medium text-gray-300">
-                            LLM Model
-                        </label>
-                        <select
-                            value={settings.model || 'openai'}
-                            onChange={(e) => handleSettingChange('model', e.target.value)}
-                            disabled={isReadOnly}
-                            className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            <option value="openai">OpenAI (GPT-4)</option>
-                            <option value="anthropic">Anthropic (Claude 3)</option>
-                            <option value="google">Google (Gemini Pro)</option>
-                            <option value="xai">xAI (Grok)</option>
-                        </select>
-                    </div>
                 </div>
 
-                {/* Plugin Settings Sections */}
-                {plugins.map(plugin => {
-                    const PluginSettingsComponent = plugin.settingsComponent;
-                    if (!PluginSettingsComponent) return null;
-
-                    return (
-                        <div key={plugin.id} className="space-y-6 pt-4">
-                            <h2 className="text-xl font-semibold border-b border-gray-700 pb-2">{plugin.name} Settings</h2>
-                            <PluginSettingsComponent
-                                guildId={guildId}
-                                settings={settings}
-                                onUpdate={handleSettingChange}
-                                isReadOnly={isReadOnly}
-                            />
-                        </div>
-                    );
-                })}
-
-                <button
-                    type="submit"
-                    disabled={saving || isReadOnly}
-                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                    {saving ? (
-                        <>
-                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                            Saving...
-                        </>
-                    ) : (
-                        <>
-                            <Save className="w-5 h-5" />
-                            Save Settings
-                        </>
-                    )}
-                </button>
+                <div className="pt-6">
+                    <button
+                        type="submit"
+                        disabled={saving || isReadOnly}
+                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                        {saving ? (
+                            <>
+                                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                Saving...
+                            </>
+                        ) : (
+                            <>
+                                <Save className="w-5 h-5" />
+                                Save Settings
+                            </>
+                        )}
+                    </button>
+                </div>
             </form>
         </div>
     );

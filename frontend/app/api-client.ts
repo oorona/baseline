@@ -2,6 +2,35 @@ import axios, { AxiosError, AxiosInstance } from 'axios';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+export interface DiscordUser {
+    id: string;
+    username: string;
+    discriminator: string;
+    avatar_url: string;
+    bot?: boolean;
+    preferences?: UserSettings;
+}
+
+export interface UserSettings {
+    theme?: 'light' | 'dark' | 'system';
+    language?: 'en' | 'es';
+    default_guild_id?: string;
+}
+
+export interface DiscordMember {
+    id: string;
+    username: string;
+    discriminator: string;
+    avatar_url: string | null;
+    roles: string[];
+}
+
+export interface AuthorizedUser {
+    user_id: string;
+    permission_level: string;
+    created_at: string;
+}
+
 class APIClient {
     private client: AxiosInstance;
 
@@ -74,6 +103,17 @@ class APIClient {
         return response.data;
     }
 
+    // User Settings
+    async getUserSettings() {
+        const response = await this.client.get('/users/me/settings');
+        return response.data;
+    }
+
+    async updateUserSettings(settings: UserSettings) {
+        const response = await this.client.put('/users/me/settings', settings);
+        return response.data;
+    }
+
     // Guild endpoints
     async getGuilds() {
         const response = await this.client.get('/guilds');
@@ -96,8 +136,35 @@ class APIClient {
         return response.data;
     }
 
+    async getPlatformSettings() {
+        const response = await this.client.get('/platform/settings');
+        return response.data;
+    }
+
+    async updatePlatformSettings(settings: Record<string, any>) {
+        const response = await this.client.put('/platform/settings', { settings });
+        return response.data;
+    }
+
+    async getGuildChannels(guildId: string) {
+        const response = await this.client.get(`/guilds/${guildId}/channels`);
+        return response.data;
+    }
+
+    async getGuildRoles(guildId: string): Promise<any[]> {
+        const response = await this.client.get(`/guilds/${guildId}/roles`);
+        return response.data;
+    }
+
+    async searchGuildMembers(guildId: string, query: string): Promise<any[]> {
+        const response = await this.client.get(`/guilds/${guildId}/members/search`, {
+            params: { query }
+        });
+        return response.data;
+    }
+
     // Permission endpoints
-    async getAuthorizedUsers(guildId: string) {
+    async getAuthorizedUsers(guildId: string): Promise<AuthorizedUser[]> {
         const response = await this.client.get(`/guilds/${guildId}/authorized-users`);
         return response.data;
     }

@@ -4,11 +4,13 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { apiClient } from '@/app/api-client';
+import { usePlugins } from '@/app/plugins';
 import { LogOut, Bot, Settings, Activity } from 'lucide-react';
 
 export default function Home() {
   const { user, loading, logout } = useAuth();
   const router = useRouter();
+  const { navItems } = usePlugins();
   const [guilds, setGuilds] = useState<any[]>([]);
 
   useEffect(() => {
@@ -78,8 +80,20 @@ export default function Home() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div
               onClick={() => {
-                if (guilds.length > 0) {
-                  router.push(`/dashboard/${guilds[0].id}/settings`);
+                const defaultGuildId = user?.preferences?.default_guild_id;
+                // Prefer default guild, fallback to first available guild
+                const targetGuildId = defaultGuildId || (guilds.length > 0 ? guilds[0].id : null);
+
+                if (targetGuildId) {
+                  // Find the "Bot Settings" plugin route
+                  const botSettingsItem = navItems.find(item => item.name === 'Bot Settings');
+                  let targetRoute = `/dashboard/${targetGuildId}/permissions`; // Fallback
+
+                  if (botSettingsItem) {
+                    targetRoute = botSettingsItem.href.replace('[guildId]', targetGuildId);
+                  }
+
+                  router.push(targetRoute);
                 }
               }}
               className="bg-white/5 rounded-xl p-6 border border-white/10 hover:bg-white/10 transition-all cursor-pointer"
@@ -95,14 +109,19 @@ export default function Home() {
             >
               <Activity className="w-12 h-12 text-white mb-4" />
               <h3 className="text-xl font-semibold text-white mb-2">System Status</h3>
-              <p className="text-white/70">Monitor bot shards, latency, and uptime</p>
+              <p className="text-white/70">Monitor bot shards (Level 3)</p>
             </div>
 
-            <div className="bg-white/5 rounded-xl p-6 border border-white/10 hover:bg-white/10 transition-all cursor-pointer opacity-50">
+            <div
+              onClick={() => router.push('/dashboard/platform')}
+              className="bg-white/5 rounded-xl p-6 border border-white/10 hover:bg-white/10 transition-all cursor-pointer"
+            >
               <Settings className="w-12 h-12 text-white mb-4" />
               <h3 className="text-xl font-semibold text-white mb-2">Platform Settings</h3>
-              <p className="text-white/70">Global platform configuration (Coming Soon)</p>
+              <p className="text-white/70">Global configuration (Level 3)</p>
             </div>
+
+
           </div>
         </div>
       </main>

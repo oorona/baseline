@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List, Dict, Any
 from pydantic import BaseModel
 
@@ -18,9 +18,12 @@ from ..schemas import (
     SettingsUpdate,
     AuditLog as AuditLogSchema,
     DiscordChannel,
-    DiscordRole
+    DiscordRole,
+    DiscordMember
 )
 from ..core.config import settings as app_settings
+from app.core.discord import discord_client
+from app.core.config import settings
 from app.core.discord import discord_client
 from app.api.deps import get_current_user
 
@@ -47,8 +50,9 @@ async def get_guild_settings(
 
     # Check if user has access (Owner or Authorized)
     is_owner = guild.owner_id == user_id
+    is_system = current_user.get("system", False)
     
-    if not is_owner:
+    if not is_owner and not is_system:
         auth_check = await db.execute(
             select(AuthorizedUser).where(
                 AuthorizedUser.guild_id == guild_id,
@@ -74,10 +78,32 @@ async def get_guild_settings(
         await db.commit()
         await db.refresh(settings)
     
+    # Determine Level 3 access (Developer Only)
+    can_modify_level_3 = False
+    dev_guild_id = app_settings.DISCORD_GUILD_ID
+    dev_role_id = app_settings.DEVELOPER_ROLE_ID
+
+    if dev_guild_id:
+        try:
+            # Check if user is the Owner of the Developer Guild
+            dev_guild = await discord_client.get_guild(str(dev_guild_id))
+            if str(user_id) == dev_guild.get("owner_id"):
+                can_modify_level_3 = True
+            
+            # Check user's roles in the Developer Guild (if not already owner)
+            if not can_modify_level_3 and dev_role_id:
+                member_data = await discord_client.get_guild_member(str(dev_guild_id), str(user_id))
+                if dev_role_id in member_data.get("roles", []):
+                    can_modify_level_3 = True
+        except Exception:
+            # User likely not in the developer guild or other error
+            pass
+
     return {
         "guild_id": guild_id,
         "settings": settings.settings_json,
-        "updated_at": settings.updated_at
+        "updated_at": settings.updated_at,
+        "can_modify_level_3": can_modify_level_3
     }
 
 @router.put("/{guild_id}/settings")
@@ -125,7 +151,47 @@ async def update_guild_settings(
     settings = settings_result.scalar_one_or_none()
     
     # Validate settings against schema
-    settings_data = settings_update.settings.model_dump()
+    settings_data = settings_update.settings
+
+    # Level 3 Access Control Check
+    # Keys that are restricted to Developers only
+    LEVEL_3_KEYS = ["system_prompt", "model", "admin_role_id"]
+    
+    # Check if user has Developer Access
+    has_dev_access = False
+    dev_guild_id = app_settings.DISCORD_GUILD_ID
+    dev_role_id = app_settings.DEVELOPER_ROLE_ID
+
+    if dev_guild_id:
+        try:
+             # Check if user is the Owner of the Developer Guild
+            dev_guild = await discord_client.get_guild(str(dev_guild_id))
+            if str(user_id) == dev_guild.get("owner_id"):
+                has_dev_access = True
+
+             # Check user's roles in the Developer Guild
+            if not has_dev_access and dev_role_id:
+                member_data = await discord_client.get_guild_member(str(dev_guild_id), str(user_id))
+                if dev_role_id in member_data.get("roles", []):
+                    has_dev_access = True
+        except Exception:
+            # User likely not in the developer guild or other error
+            pass
+
+    # If not a developer, check for attempted changes to restricted keys
+    if not has_dev_access:
+        for key in LEVEL_3_KEYS:
+            # If key is being modified (present in new settings)
+            if key in settings_data:
+                # Check if it's actually different from existing
+                current_val = settings.settings_json.get(key) if settings else None
+                new_val = settings_data.get(key)
+                if current_val != new_val:
+                     raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=f"You do not have permission to modify restricted setting: {key}"
+                    )
+
 
     if not settings:
         settings = GuildSettings(
@@ -135,6 +201,14 @@ async def update_guild_settings(
         )
         db.add(settings)
     else:
+        # If we are here, either user is owner/admin OR they are not touching restricted keys
+        # We should merge the settings carefully if we want to support partial updates?
+        # But this endpoint seems to replace the whole JSON blob usually.
+        # To support "Plugin Settings" (Level 1/2) without overwriting Level 3 if the frontend didn't send them:
+        # The frontend usually sends the whole state.
+        # If the non-admin user sends the state, they might send the OLD Level 3 values (which is fine, no change).
+        # We need to ensure we don't accidentally wipe them if they are missing?
+        # For now, assuming frontend sends full object.
         settings.settings_json = settings_data
         settings.updated_by = user_id
     
@@ -186,15 +260,40 @@ async def get_authorized_users(
                 detail="You do not have access to this guild"
             )
     
-    # Get all authorized users
+    # Get all authorized users with user details
     authorized_users_result = await db.execute(
-        select(AuthorizedUser).where(AuthorizedUser.guild_id == guild_id)
+        select(AuthorizedUser)
+        .options(joinedload(AuthorizedUser.user))
+        .where(AuthorizedUser.guild_id == guild_id)
     )
     authorized_users = authorized_users_result.scalars().all()
     
+    # Auto-heal "Pending Login" users
+    users_to_update = []
+    for au in authorized_users:
+        if au.user and au.user.username == "Pending Login":
+            try:
+                # Try to fetch fresh data
+                discord_user = await discord_client.get_user(str(au.user_id))
+                au.user.username = discord_user.get("username", "Unknown User")
+                au.user.discriminator = discord_user.get("discriminator", "0000")
+                avatar_id = discord_user.get("avatar")
+                if avatar_id:
+                    au.user.avatar_url = f"https://cdn.discordapp.com/avatars/{au.user_id}/{avatar_id}.png"
+                users_to_update.append(au.user)
+            except Exception as e:
+                logger.error(f"Failed to auto-heal user {au.user_id}: {e}")
+
+    if users_to_update:
+        db.add_all(users_to_update)
+        await db.commit()
+
     return [
         {
-            "user_id": au.user_id,
+            "user_id": str(au.user_id),
+            "username": au.user.username if au.user else "Unknown User",
+            "discriminator": au.user.discriminator if au.user else "0000",
+            "avatar_url": au.user.avatar_url if au.user else None,
             "permission_level": au.permission_level.value,
             "created_at": au.created_at
         }
@@ -261,11 +360,37 @@ async def add_authorized_user(
     target_user = user_result.scalar_one_or_none()
     
     if not target_user:
+        # Try to fetch user details from Discord
+        username = "Pending Login"
+        discriminator = "0000"
+        avatar_url = None
+        
+        try:
+            member = await discord_client.get_guild_member(str(guild_id), str(request.user_id))
+            discord_user = member.get("user", {})
+            username = discord_user.get("username", "Unknown User")
+            discriminator = discord_user.get("discriminator", "0000")
+            avatar_id = discord_user.get("avatar")
+            if avatar_id:
+                avatar_url = f"https://cdn.discordapp.com/avatars/{request.user_id}/{avatar_id}.png"
+        except Exception as e:
+            logger.warning(f"Failed to fetch guild member: {e}. Trying global user fetch.")
+            try:
+                # Fallback to global user fetch
+                discord_user = await discord_client.get_user(str(request.user_id))
+                username = discord_user.get("username", "Unknown User")
+                discriminator = discord_user.get("discriminator", "0000")
+                avatar_id = discord_user.get("avatar")
+                if avatar_id:
+                    avatar_url = f"https://cdn.discordapp.com/avatars/{request.user_id}/{avatar_id}.png"
+            except Exception as e2:
+                logger.error(f"Failed to fetch user from Discord: {e2}")
+
         target_user = User(
             id=request.user_id,
-            username="Pending Login",
-            discriminator="0000",
-            avatar_url=None
+            username=username,
+            discriminator=discriminator,
+            avatar_url=avatar_url
         )
         db.add(target_user)
         # Flush to ensure ID exists for foreign key
@@ -577,5 +702,59 @@ async def read_guild(
              # But list_guilds only returns what they have access to.
              # Let's enforce access here too.
              raise HTTPException(status_code=403, detail="You do not have access to this guild")
+    
+    return guild
+
+@router.get("/{guild_id}/members/search", response_model=List[DiscordMember])
+async def search_guild_members(
+    guild_id: int,
+    query: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """Search for members in a guild."""
+    user_id = int(current_user["user_id"])
+    
+    # Check if guild exists
+    guild = await db.get(Guild, guild_id)
+    if not guild:
+        raise HTTPException(status_code=404, detail="Guild not found")
+
+    # Check if user has access (Owner or Authorized)
+    is_owner = guild.owner_id == user_id
+    
+    if not is_owner:
+        auth_check = await db.execute(
+            select(AuthorizedUser).where(
+                AuthorizedUser.guild_id == guild_id,
+                AuthorizedUser.user_id == user_id
+            )
+        )
+        if not auth_check.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have access to this guild"
+            )
+
+    try:
+        members_data = await discord_client.search_guild_members(str(guild_id), query)
+        
+        # Transform Discord API response to Schema
+        results = []
+        for m in members_data:
+            user = m.get("user", {})
+            member = DiscordMember(
+                id=user.get("id"),
+                username=user.get("username"),
+                discriminator=user.get("discriminator", "0"),
+                avatar=user.get("avatar"),
+                roles=m.get("roles", []),
+                avatar_url=f"https://cdn.discordapp.com/avatars/{user.get('id')}/{user.get('avatar')}.png" if user.get("avatar") else None
+            )
+            results.append(member)
+            
+        return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
     return guild

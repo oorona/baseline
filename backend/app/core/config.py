@@ -1,5 +1,6 @@
 import os
 from typing import Optional
+from pydantic import Field
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
@@ -8,12 +9,12 @@ class Settings(BaseSettings):
     
     BACKEND_CORS_ORIGINS: list[str] = []
 
-    # Database configuration
-    DB_HOST: str
-    DB_PORT: int = 5432
-    DB_USER: str
-    DB_NAME: str
-    DB_PASSWORD: Optional[str] = None  # Loaded from secret
+    # Database configuration (Aliased to match Bot config)
+    DB_HOST: str = Field(alias="POSTGRES_HOST")
+    DB_PORT: int = Field(default=5432, alias="POSTGRES_PORT")
+    DB_USER: str = Field(alias="POSTGRES_USER")
+    DB_NAME: str = Field(alias="POSTGRES_DB")
+    DB_PASSWORD: Optional[str] = Field(default=None, alias="POSTGRES_PASSWORD")
     
     # Redis configuration
     REDIS_HOST: str
@@ -27,6 +28,10 @@ class Settings(BaseSettings):
     DISCORD_REDIRECT_URI: Optional[str] = None
     FRONTEND_URL: str = "http://localhost:3000"
     ADMIN_USER_IDS: Optional[str] = None
+    
+    # Level 3 Access Control (Platform Settings)
+    DISCORD_GUILD_ID: Optional[str] = None # Unified Developer/Main Guild ID
+    DEVELOPER_ROLE_ID: Optional[str] = None
     
     SECRET_KEY: str = "development_secret_key" # Change in production
     ALGORITHM: str = "HS256"
@@ -64,10 +69,15 @@ def load_secrets():
             except Exception as e:
                 print(f"Failed to load secret {env_var} from {value}: {e}")
     
-    # Map POSTGRES_PASSWORD to DB_PASSWORD
-    if "POSTGRES_PASSWORD" in os.environ:
-        os.environ["DB_PASSWORD"] = os.environ["POSTGRES_PASSWORD"]
 
 # Load secrets before initializing settings
 load_secrets()
-settings = Settings()
+
+try:
+    settings = Settings()
+except Exception as e:
+    print("CRITICAL: Failed to load configuration. Please check your .env file.")
+    print(f"Error details: {e}")
+    # We re-raise to ensure the app doesn't start with invalid state, 
+    # but now we have logged the actual error.
+    raise

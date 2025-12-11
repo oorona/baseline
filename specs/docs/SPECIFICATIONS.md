@@ -255,6 +255,36 @@ These fundamental decisions guide the baseline's design and deployment strategy:
     - Discord automatically manages shard allocation and load distribution
     - Bot scales as it joins more servers
 
+### 4.8 Settings Hierarchy
+
+The platform implements a four-level hierarchy for configuration and settings management:
+
+*   **Level 1: Plugin Settings (Guild-Specific)**
+    *   **Scope**: Specific to a single guild and a single plugin/feature.
+    *   **Access**: Authorized Users (Owner + Delegated Admins).
+    *   **Storage**: Database (`guild_settings` table).
+    *   **Example**: "Responder Plugin" settings, enabled channels for a specific feature.
+
+*   **Level 2: User Settings (User-Specific)**
+    *   **Scope**: Specific to a single user across the bot (or per guild).
+    *   **Access**: The individual user.
+    *   **Storage**: Database (`user_settings` table - *Future Implementation*).
+    *   **Example**: Language preference, time zone, notification preferences.
+
+*   **Level 3: Platform Settings (Developer Team)**
+    *   **Scope**: Core behavioral settings that affect the bot's operation for a guild (or globally).
+    *   **Access**: Framework Developers only (validated via `DISCORD_GUILD_ID` & `DEVELOPER_ROLE_ID`).
+    *   **Storage**: Database (`guild_settings` table) but gated by strict permissions.
+    *   **Example**: LLM Model selection, System Prompts, Token limits.
+    *   **Management**: Accessible via the "Platform Settings" UI section.
+
+*   **Level 4: Deployment Settings (Infrastructure)**
+    *   **Scope**: Static infrastructure configuration.
+    *   **Access**: DevOps / Deployment Engineer.
+    *   **Storage**: Environment Variables (`.env`) or Docker Secrets.
+    *   **Example**: `DISCORD_GUILD_ID` (Dev Server), Database URL, API Keys, Redis Host.
+    *   **Management**: **Not accessible via Frontend**. Must be set at deployment time.
+
 ***
 
 ## 4.0 Non-Functional Requirements

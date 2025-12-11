@@ -4,31 +4,9 @@
  * Allows bot developers to register custom pages and navigation items
  */
 
-export interface Plugin {
-    id: string;
-    name: string;
-    routes: PluginRoute[];
-    navItems?: NavItem[];
-    settingsComponent?: React.ComponentType<{
-        guildId: string;
-        settings: Record<string, any>;
-        onUpdate: (key: string, value: any) => void;
-        isReadOnly: boolean;
-    }>;
-}
+import { Plugin, PluginRoute, NavItem } from './plugins/types';
 
-export interface PluginRoute {
-    path: string;
-    component: React.ComponentType<any>;
-    title?: string;
-}
-
-export interface NavItem {
-    name: string;
-    href: string;
-    icon?: React.ComponentType<{ size?: number }>;
-    adminOnly?: boolean;
-}
+// Interfaces moved to ./plugins/types.ts to avoid circular dependencies
 
 class PluginRegistry {
     private plugins: Map<string, Plugin> = new Map();
@@ -98,7 +76,10 @@ export function usePlugins() {
 
 // Example usage:
 // import { pluginRegistry } from '@/app/plugins';
-//
+// import { RoleResponderPlugin } from './plugins/role-responder';
+
+// pluginRegistry.register(RoleResponderPlugin);
+
 // pluginRegistry.register({
 //   id: 'my-custom-plugin',
 //   name: 'My Custom Plugin',

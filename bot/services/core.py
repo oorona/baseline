@@ -2,6 +2,7 @@ import structlog
 import os
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from redis.asyncio import Redis
+from pydantic import Field
 from pydantic_settings import BaseSettings
 from typing import Optional
 
@@ -9,11 +10,11 @@ logger = structlog.get_logger()
 
 class Config(BaseSettings):
     # Database configuration
-    DB_HOST: str
-    DB_PORT: int = 5432
-    DB_USER: str
-    DB_NAME: str
-    DB_PASSWORD: Optional[str] = None  # Loaded from secret via POSTGRES_PASSWORD
+    DB_HOST: str = Field(alias="POSTGRES_HOST")
+    DB_PORT: int = Field(default=5432, alias="POSTGRES_PORT")
+    DB_USER: str = Field(alias="POSTGRES_USER")
+    DB_NAME: str = Field(alias="POSTGRES_DB")
+    DB_PASSWORD: Optional[str] = Field(default=None, alias="POSTGRES_PASSWORD")  # Loaded from secret
     
     # Redis configuration  
     REDIS_HOST: str
@@ -75,9 +76,6 @@ class BotServices:
                 except Exception as e:
                     logger.error(f"Failed to load secret {env_var}: {e}")
         
-        # Map POSTGRES_PASSWORD to DB_PASSWORD
-        if "POSTGRES_PASSWORD" in os.environ:
-            os.environ["DB_PASSWORD"] = os.environ["POSTGRES_PASSWORD"]
 
     async def initialize(self):
         from .llm import LLMService

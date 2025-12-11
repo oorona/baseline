@@ -5,12 +5,15 @@ import { Check, ChevronsUpDown } from 'lucide-react';
 import { cn } from '../utils';
 import { apiClient } from '../api-client';
 
+import { usePathname } from 'next/navigation';
+
 interface Guild {
     id: string;
     name: string;
 }
 
 export function GuildSwitcher({ currentGuildId }: { currentGuildId?: string }) {
+    const pathname = usePathname();
     const [isOpen, setIsOpen] = useState(false);
     const [guilds, setGuilds] = useState<Guild[]>([]);
     const [loading, setLoading] = useState(true);
@@ -31,6 +34,14 @@ export function GuildSwitcher({ currentGuildId }: { currentGuildId?: string }) {
     }, []);
 
     const currentGuild = guilds.find((g) => g.id === currentGuildId);
+
+    const getTargetHref = (targetGuildId: string) => {
+        if (currentGuildId && pathname?.includes(currentGuildId)) {
+            return pathname.replace(currentGuildId, targetGuildId);
+        }
+        // Default to permissions or settings if not currently in a guild context
+        return `/dashboard/${targetGuildId}/permissions`;
+    };
 
     return (
         <div className="relative">
@@ -58,22 +69,21 @@ export function GuildSwitcher({ currentGuildId }: { currentGuildId?: string }) {
                         {guilds.map((guild) => (
                             <a
                                 key={guild.id}
-                                href={`/dashboard/${guild.id}/settings`}
+                                href={getTargetHref(guild.id)}
                                 className={cn(
                                     'flex items-center justify-between px-4 py-3 hover:bg-gray-700 transition-colors',
                                     guild.id === currentGuildId && 'bg-gray-700'
                                 )}
                                 onClick={() => setIsOpen(false)}
-                            >
-                                <span className="text-sm truncate">{guild.name}</span>
+                            ><span className="text-sm truncate">{guild.name}</span>
                                 {guild.id === currentGuildId && (
                                     <Check size={16} className="text-green-500" />
                                 )}
                             </a>
                         ))}
-                    </div>
+                    </div >
                 </>
             )}
-        </div>
+        </div >
     );
 }

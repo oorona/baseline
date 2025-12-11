@@ -4,30 +4,16 @@ import json
 from typing import List, Dict, Any
 
 from ..db.redis import get_redis
-from .deps import get_current_user
+from .deps import get_current_user, verify_platform_admin
 
 router = APIRouter(prefix="/shards", tags=["shards"])
 
 @router.get("")
 async def get_all_shards(
     redis: Redis = Depends(get_redis),
-    current_user: dict = Depends(get_current_user)
+    admin: dict = Depends(verify_platform_admin)
 ):
-    """Get status of all shards. Restricted to admins."""
-    # Simple admin check via env var for now
-    # In production, this should probably be a database flag or role
-    from app.core.config import settings
-    
-    # Assuming settings.ADMIN_USER_IDS is a comma-separated string of IDs
-    admin_ids = [int(id.strip()) for id in (settings.ADMIN_USER_IDS or "").split(",") if id.strip()]
-    
-    if int(current_user["user_id"]) not in admin_ids:
-        # For now, let's allow it for testing if no admins are configured
-        if admin_ids:
-             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You do not have permission to view system status"
-            )
+    """Get status of all shards. Restricted to platform admins."""
     
     # Scan for all shard keys
     keys = []
@@ -57,7 +43,7 @@ async def get_all_shards(
 async def get_shard(
     shard_id: int,
     redis: Redis = Depends(get_redis),
-    current_user: dict = Depends(get_current_user)
+    admin: dict = Depends(verify_platform_admin)
 ):
     """Get status of a specific shard."""
     key = f"shard:status:{shard_id}"

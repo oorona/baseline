@@ -18,26 +18,35 @@ Frontend plugins allow you to add pages to the dashboard and custom settings.
 Create a file in `frontend/app/plugins/my-plugin.tsx`:
 
 ```tsx
-import { Plugin } from '../plugins';
+import { Plugin } from './types'; // Correct import path
+import MyPluginPage from './my-plugin-page'; // Your page component
 
 export const myPlugin: Plugin = {
     id: 'my-feature',
     name: 'My Feature',
     
-    // Add items to the Sidebar
+    // Links your page component to the dynamic route
+    pageComponent: MyPluginPage, 
+
+    // Add items to the Sidebar (Standard Route Pattern)
     navItems: [
         {
-            name: 'My Page',
-            href: '/guilds/[guildId]/my-page',
+            name: 'My Feature',
+            href: '/dashboard/[guildId]/plugins/my-feature',
             // icon: MyIcon // Optional Lucide icon
         }
     ],
 
-    // Add routes (Note: Next.js App Router uses file-system routing, 
-    // so this is mostly for metadata, but future extensions might use it)
-    routes: [],
+    // Routes metadata (Required for internal routing logic)
+    routes: [
+         {
+             path: '/dashboard/[guildId]/plugins/my-feature',
+             component: MyPluginPage,
+             title: 'My Feature'
+         }
+    ],
 
-    // Add a Custom Settings Section
+    // Optional: Add a Custom Settings Section in the Main Settings Page
     settingsComponent: ({ guildId, settings, onUpdate, isReadOnly }) => {
         return (
             <div className="space-y-2">
@@ -59,35 +68,62 @@ export const myPlugin: Plugin = {
 
 ### Step 2: Register the Plugin
 
-Edit `frontend/app/plugins/registry.tsx`:
+Edit `frontend/app/plugins.ts` (The Registry File):
 
-```tsx
-import { registerPlugins } from '../plugins';
-import { myPlugin } from './my-plugin';
+```typescript
+// 1. Import your plugin definition
+import { myPlugin } from './plugins/my-plugin';
 
-export function registerPlugins() {
-    pluginRegistry.register(myPlugin);
-}
+// 2. Register it
+pluginRegistry.register(myPlugin);
 ```
 
-### Step 3: Create the Page (Next.js App Router)
+### Step 3: Create the Page Component (Dynamic Routing)
 
-Since we use Next.js App Router, you must physically create the page file.
+Instead of creating a new route file manually, you can use the dynamic plugin route system.
 
-Create `frontend/app/dashboard/[guildId]/my-page/page.tsx`:
+1.  **Create your Page Component**:
+    Defined in `frontend/app/plugins/my-plugin-page.tsx`. This component receives `guildId` as a prop.
 
-```tsx
-'use client';
+    ```tsx
+    'use client';
+    import { apiClient } from '@/app/api-client';
+    
+    export default function MyPluginPage({ guildId }: { guildId: string }) {
+        // Fetch data using apiClient.getGuildRoles(guildId), etc.
+        return <div>My Plugin Page</div>;
+    }
+    ```
 
-export default function MyPage({ params }: { params: { guildId: string } }) {
-    return (
-        <div className="p-8">
-            <h1 className="text-3xl font-bold">My Custom Page</h1>
-            <p>Guild ID: {params.guildId}</p>
-        </div>
-    );
-}
-```
+2.  **Register the Page in Plugin Definition**:
+    Update `frontend/app/plugins/my-plugin.tsx`:
+
+    ```tsx
+    import MyPluginPage from './my-plugin-page';
+
+    export const myPlugin: Plugin = {
+        id: 'my-feature',
+        name: 'My Feature',
+        pageComponent: MyPluginPage, // <--- Links the component to the dynamic route
+        routes: [
+             {
+                 path: '/dashboard/[guildId]/plugins/my-feature',
+                 component: MyPluginPage,
+                 title: 'My Feature'
+             }
+        ],
+        navItems: [
+            {
+                name: 'My Feature',
+                href: '/dashboard/[guildId]/plugins/my-feature',
+                icon: MyIcon
+            }
+        ],
+        // ... settingsComponent
+    };
+    ```
+
+This will automatically serve your page at `/dashboard/[guildId]/plugins/my-feature`.
 
 ## 2. Creating a Backend Cog
 

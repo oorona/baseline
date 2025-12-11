@@ -9,29 +9,22 @@ services:
     container_name: bot-backend
     secrets:
       - discord_client_secret
+      - discord_bot_token
       - api_secret_key
-      - openai_api_key
-      - google_api_key
-      - anthropic_api_key
-      - xai_api_key
     env_file:
-      - .env  # Contains DATABASE_URL and REDIS_URL for external services
+      - .env # Contains DATABASE_URL and REDIS_URL for external services
     environment:
       # Secrets loaded from files
+      DISCORD_BOT_TOKEN_FILE: /run/secrets/discord_bot_token
       DISCORD_CLIENT_SECRET_FILE: /run/secrets/discord_client_secret
       API_SECRET_KEY_FILE: /run/secrets/api_secret_key
-      OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
-      GOOGLE_API_KEY_FILE: /run/secrets/google_api_key
-      ANTHROPIC_API_KEY_FILE: /run/secrets/anthropic_api_key
-      XAI_API_KEY_FILE: /run/secrets/xai_api_key
     networks:
-      - internet   # For OAuth callbacks (publicly accessible endpoint)
-      - intranet   # For frontend and bot communication
+      - intranet # For frontend and bot communication
     ports:
       - "8000:8000"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/api/v1/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -50,7 +43,7 @@ services:
       - anthropic_api_key
       - xai_api_key
     env_file:
-      - .env  # Contains DATABASE_URL and REDIS_URL for external services
+      - .env # Contains DATABASE_URL and REDIS_URL for external services
     environment:
       # Secrets loaded from files
       DISCORD_BOT_TOKEN_FILE: /run/secrets/discord_bot_token
@@ -59,15 +52,15 @@ services:
       ANTHROPIC_API_KEY_FILE: /run/secrets/anthropic_api_key
       XAI_API_KEY_FILE: /run/secrets/xai_api_key
     networks:
-      - intranet   # For backend API communication (if needed)
+      - intranet # For backend API communication (if needed)
     ports:
-      - "8080:8080"  # Health check endpoint
+      - "8080:8080" # Health check endpoint
     depends_on:
       backend:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -80,10 +73,10 @@ services:
       dockerfile: Dockerfile
     container_name: bot-frontend
     env_file:
-      - .env  # Frontend config (non-sensitive)
+      - .env # Frontend config (non-sensitive)
     networks:
-      - internet   # Public facing
-      - intranet   # For backend API calls
+      - internet # Public facing
+      - intranet # For backend API calls
     ports:
       - "3000:3000"
     depends_on:
@@ -93,7 +86,7 @@ services:
       - NODE_ENV=production
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:3000/api/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -115,11 +108,11 @@ secrets:
     file: ./secrets/discord_bot_token.txt
   discord_client_secret:
     file: ./secrets/discord_client_secret.txt
-  
+
   # API secrets
   api_secret_key:
     file: ./secrets/api_secret_key.txt
-  
+
   # LLM API Keys
   openai_api_key:
     file: ./secrets/openai_api_key.txt

@@ -16,6 +16,7 @@ class User(Base):
     token_expires_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    preferences = Column(JSON, default={})
 
     authorized_guilds = relationship("AuthorizedUser", back_populates="user")
 

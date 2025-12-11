@@ -9,16 +9,33 @@ from app.db.redis import get_redis
 from app.models import User
 
 async def get_current_user(
-    session_id: Optional[str] = Cookie(None),
+    cookie_session_id: Optional[str] = Cookie(None, alias="session_id"),
     authorization: Optional[str] = Header(None),
     redis: Redis = Depends(get_redis),
     db: AsyncSession = Depends(get_db)
 ) -> dict:
-    # Try to get session_id from Authorization header if not in cookie
-    if not session_id and authorization:
+    session_id = None
+
+    # Prioritize Authorization header
+    if authorization:
         if authorization.startswith("Bearer "):
             session_id = authorization.split(" ")[1]
-            
+        elif authorization.startswith("Bot "):
+            # Bot Authentication
+            from app.core.config import settings
+            token = authorization.split(" ")[1]
+            if token == settings.DISCORD_BOT_TOKEN:
+                # Return a synthetic system user
+                return {
+                    "user_id": 0, # System ID
+                    "username": "System Bot",
+                    "discriminator": "0000",
+                    "avatar_url": None,
+                    "permission_level": "admin", # Bot is admin
+                    "system": True
+                }
+    
+    
     if not session_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -107,3 +124,45 @@ async def get_current_user(
                 pass
 
     return user_data
+
+async def verify_platform_admin(
+    current_user: dict = Depends(get_current_user)
+) -> dict:
+    """Verify that the user has Level 3 (Platform Admin) access."""
+    from app.core.config import settings
+    from app.core.discord import discord_client
+    
+    user_id = current_user["user_id"]
+    dev_guild_id = settings.DISCORD_GUILD_ID
+    dev_role_id = settings.DEVELOPER_ROLE_ID
+    
+    if not dev_guild_id:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Platform not configured (DISCORD_GUILD_ID missing)"
+        )
+        
+    has_access = False
+    
+    try:
+        # Check if user is the Owner of the Developer Guild
+        dev_guild = await discord_client.get_guild(str(dev_guild_id))
+        if str(user_id) == dev_guild.get("owner_id"):
+            has_access = True
+        
+        # Check user's roles in the Developer Guild
+        if not has_access and dev_role_id:
+            member_data = await discord_client.get_guild_member(str(dev_guild_id), str(user_id))
+            if dev_role_id in member_data.get("roles", []):
+                has_access = True
+    except Exception as e:
+        print(f"Platform admin check failed: {e}")
+        pass
+        
+    if not has_access:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Requires Platform Admin privileges"
+        )
+        
+    return current_user
