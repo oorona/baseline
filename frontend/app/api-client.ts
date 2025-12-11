@@ -146,6 +146,21 @@ class APIClient {
         return response.data;
     }
 
+    async getDbStatus() {
+        const response = await this.client.get('/platform/db-status');
+        return response.data;
+    }
+
+    async getFrontendStatus() {
+        const response = await this.client.get('/platform/frontend-status');
+        return response.data;
+    }
+
+    async getBackendStatus() {
+        const response = await this.client.get('/platform/backend-status');
+        return response.data;
+    }
+
     async getGuildChannels(guildId: string) {
         const response = await this.client.get(`/guilds/${guildId}/channels`);
         return response.data;
@@ -192,6 +207,12 @@ class APIClient {
 
     async getShardForGuild(guildId: string) {
         const response = await this.client.get(`/shards/${guildId}`);
+        return response.data;
+    }
+
+    // Bot endpoints
+    async getBotReport() {
+        const response = await this.client.get('/bot/report');
         return response.data;
     }
 

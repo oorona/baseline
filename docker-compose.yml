@@ -4,7 +4,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: bot-backend
+    # container_name: bot-backend # Removed to allow scaling
     secrets:
       - discord_client_secret
       - api_secret_key
@@ -27,11 +27,12 @@ services:
       XAI_API_KEY_FILE: /run/secrets/xai_api_key
       DISCORD_BOT_TOKEN_FILE: /run/secrets/discord_bot_token
     networks:
-      - internet # For OAuth callbacks (publicly accessible endpoint)
+      # - internet # Removed for security (Ingress via Gateway only)
       - intranet # For frontend and bot communication
       - dbnet # For database access
-    ports:
-      - "8000:8000"
+    # Ports removed: Accessed via Gateway on port 8000
+    expose:
+      - "8000"
     volumes:
       - ./backend:/app
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
@@ -42,6 +43,22 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+  # Load Balancer Gateway
+  gateway:
+    image: nginx:alpine
+    container_name: bot-gateway
+    volumes:
+      - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "8000:80" # Host 8000 -> Nginx 80 -> Backend 8000
+    networks:
+      - internet # Receives traffic
+      - intranet # Forwards to backend
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
 
   # Discord Bot
   bot:
@@ -106,6 +123,7 @@ services:
     environment:
       - NODE_ENV=production
       - NEXT_TELEMETRY_DISABLED=1
+      - INTERNAL_API_URL=http://backend:8000 # For server-side heartbeat
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:3000/api/health" ]
@@ -161,7 +179,7 @@ networks:
     # Public-facing network (frontend publicly accessible)
   intranet:
     driver: bridge
-    internal: true
+    # internal: true # Disabled to allow Backend outbound access (Discord/LLMs) while keeping it off 'internet' network
     # Private communication: frontend ↔ backend, bot ↔ backend
   dbnet:
     driver: bridge

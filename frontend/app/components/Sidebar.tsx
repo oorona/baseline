@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Settings, Shield, Activity, Menu, X, User } from 'lucide-react';
+import { Home, Settings, Shield, Activity, Menu, X, User, Terminal } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { cn } from '../utils';
 import { useAuth } from '@/lib/auth-context';
@@ -10,18 +10,42 @@ import { GuildSwitcher } from './GuildSwitcher';
 
 import { usePlugins } from '../plugins';
 
+// Define Guild interface with permission level
+interface Guild {
+    id: string;
+    name: string;
+    permission_level?: 'owner' | 'admin' | 'user';
+}
+
 const defaultNavigation = [
     { name: 'Home', href: '/', icon: Home },
-    { name: 'Permissions', href: '/dashboard/[guildId]/permissions', icon: Shield },
+    { name: 'Permissions', href: '/dashboard/[guildId]/permissions', icon: Shield, requiredPermission: 'admin' },
+    { name: 'Bot Settings', href: '/dashboard/[guildId]/settings', icon: Settings, requiredPermission: 'admin' },
+    { name: 'Developer Tools', href: '/dashboard/developer/logging', icon: Terminal, adminOnly: true },
     { name: 'Account Settings', href: '/dashboard/account', icon: User },
-    { name: 'Shard Monitor', href: '/dashboard/status', icon: Activity, adminOnly: true },
 ];
 
-export function Sidebar({ guildId, isAdmin }: { guildId?: string; isAdmin?: boolean }) {
+export function Sidebar({ guildId }: { guildId?: string }) {
     const pathname = usePathname();
     const [isOpen, setIsOpen] = useState(false);
     const { user, loading } = useAuth();
     const { navItems: pluginNavItems } = usePlugins();
+
+    // Guild data for permissions
+    const [guilds, setGuilds] = useState<Guild[]>([]);
+    useEffect(() => {
+        const fetchGuilds = async () => {
+            // Avoid importing apiClient if possible to prevent circular deps, but here it's fine
+            const { apiClient } = await import('../api-client');
+            try {
+                const data = await apiClient.getGuilds();
+                setGuilds(data);
+            } catch (e) {
+                console.error("Failed to load guilds for sidebar permissions", e);
+            }
+        };
+        fetchGuilds();
+    }, []);
 
     // Extract guildId from pathname if not provided
     const match = pathname?.match(/\/dashboard\/(\d+)/);
@@ -31,6 +55,8 @@ export function Sidebar({ guildId, isAdmin }: { guildId?: string; isAdmin?: bool
     const [activeGuildId, setActiveGuildId] = useState<string | undefined>(urlGuildId);
 
     const defaultGuildId = user?.preferences?.default_guild_id;
+    // Derive admin status from user object (injected by backend /me)
+    const isPlatformAdmin = user?.is_admin || false;
 
     useEffect(() => {
         if (urlGuildId) {
@@ -55,7 +81,13 @@ export function Sidebar({ guildId, isAdmin }: { guildId?: string; isAdmin?: bool
     }
 
     const navigation = [...defaultNavigation, ...pluginNavItems];
-    const filteredNav = navigation.filter((item) => !item.adminOnly || isAdmin);
+    // Filter out platform-admin-only items
+    const filteredNav = navigation.filter((item: any) => !item.adminOnly || isPlatformAdmin);
+
+    // Find current guild permission
+    const currentGuild = guilds.find(g => g.id === activeGuildId);
+    const guildPermission = currentGuild?.permission_level;
+    const isGuildAdmin = guildPermission === 'owner' || guildPermission === 'admin';
 
     const getHref = (href: string) => {
         if (activeGuildId && href.includes('[guildId]')) {
@@ -90,15 +122,34 @@ export function Sidebar({ guildId, isAdmin }: { guildId?: string; isAdmin?: bool
                     </div>
 
                     <nav className="flex-1 p-4 space-y-2">
-                        {filteredNav.map((item) => {
+                        {filteredNav.map((item: any) => {
                             const href = getHref(item.href);
                             const isActive = pathname === href;
 
                             // Disable links if no guild selected AND link requires guildId
                             // But since we use activeGuildId (persisted), this should rarely happen unless new user
-                            const isDisabled = item.href.includes('[guildId]') && !activeGuildId;
+                            const requiresGuild = item.href.includes('[guildId]');
+                            let isDisabled = requiresGuild && !activeGuildId;
 
-                            if (isDisabled) return null;
+                            // Check guild-level permissions
+                            if (!isDisabled && requiresGuild && item.requiredPermission === 'admin') {
+                                if (!isGuildAdmin) {
+                                    isDisabled = true;
+                                }
+                            }
+
+                            if (isDisabled) {
+                                return (
+                                    <div
+                                        key={item.name}
+                                        className="flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-500 cursor-not-allowed opacity-50"
+                                        title="You do not have permission to access this section"
+                                    >
+                                        {item.icon && <item.icon size={20} />}
+                                        <span>{item.name}</span>
+                                    </div>
+                                );
+                            }
 
                             return (
                                 <Link

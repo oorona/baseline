@@ -610,7 +610,7 @@ async def get_guild_roles(
 
 # --- Generic Guild Endpoints (Must be defined AFTER specific /{guild_id}/*) ---
 
-@router.get("/", response_model=List[GuildSchema])
+@router.get("", response_model=List[GuildSchema])
 async def list_guilds(
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user)
@@ -639,7 +639,7 @@ async def list_guilds(
     all_guilds = {g.id: g for g in owned_guilds + authorized_guilds}
     return list(all_guilds.values())
 
-@router.post("/", response_model=GuildSchema)
+@router.post("", response_model=GuildSchema)
 async def create_or_update_guild(
     guild_in: GuildCreate,
     db: AsyncSession = Depends(get_db)

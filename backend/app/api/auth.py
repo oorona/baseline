@@ -10,7 +10,7 @@ from sqlalchemy.future import select
 from app.core.config import settings
 from app.db.redis import get_redis
 from app.db.session import get_db
-from app.api.deps import get_current_user
+from app.db.session import get_db
 from app.models import User
 
 router = APIRouter()
@@ -236,8 +236,17 @@ async def callback_discord(
     frontend_url = "http://localhost:3000"
     return RedirectResponse(f"{frontend_url}?token={session_id}")
 
+from app.api.deps import get_current_user, check_is_admin
+
 @router.get("/me")
 async def read_users_me(current_user: dict = Depends(get_current_user)):
+    # Check admin status
+    try:
+        is_admin = await check_is_admin(current_user["user_id"])
+        current_user["is_admin"] = is_admin
+    except Exception:
+        current_user["is_admin"] = False
+        
     return current_user
 
 @router.post("/logout")

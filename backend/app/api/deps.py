@@ -125,39 +125,45 @@ async def get_current_user(
 
     return user_data
 
-async def verify_platform_admin(
-    current_user: dict = Depends(get_current_user)
-) -> dict:
-    """Verify that the user has Level 3 (Platform Admin) access."""
+async def check_is_admin(user_id: str) -> bool:
+    """Check if a user has platform admin privileges."""
     from app.core.config import settings
     from app.core.discord import discord_client
     
-    user_id = current_user["user_id"]
     dev_guild_id = settings.DISCORD_GUILD_ID
     dev_role_id = settings.DEVELOPER_ROLE_ID
     
     if not dev_guild_id:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Platform not configured (DISCORD_GUILD_ID missing)"
-        )
+        return False
         
-    has_access = False
-    
     try:
         # Check if user is the Owner of the Developer Guild
         dev_guild = await discord_client.get_guild(str(dev_guild_id))
         if str(user_id) == dev_guild.get("owner_id"):
-            has_access = True
+            return True
         
         # Check user's roles in the Developer Guild
-        if not has_access and dev_role_id:
+        if dev_role_id:
             member_data = await discord_client.get_guild_member(str(dev_guild_id), str(user_id))
             if dev_role_id in member_data.get("roles", []):
-                has_access = True
+                return True
     except Exception as e:
         print(f"Platform admin check failed: {e}")
         pass
+        
+    return False
+
+async def verify_platform_admin(
+    current_user: dict = Depends(get_current_user)
+) -> dict:
+    """Verify that the user has Level 3 (Platform Admin) access."""
+    
+    # If already marked as admin/system from bot token
+    if current_user.get("permission_level") == "admin":
+        return current_user
+
+    user_id = current_user["user_id"]
+    has_access = await check_is_admin(user_id)
         
     if not has_access:
         raise HTTPException(

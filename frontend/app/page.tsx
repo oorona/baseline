@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { apiClient } from '@/app/api-client';
 import { usePlugins } from '@/app/plugins';
-import { LogOut, Bot, Settings, Activity } from 'lucide-react';
+import { LogOut, Bot, Settings, Activity, Terminal } from 'lucide-react';
 
 export default function Home() {
   const { user, loading, logout } = useAuth();
@@ -109,7 +109,7 @@ export default function Home() {
             >
               <Activity className="w-12 h-12 text-white mb-4" />
               <h3 className="text-xl font-semibold text-white mb-2">System Status</h3>
-              <p className="text-white/70">Monitor bot shards (Level 3)</p>
+              <p className="text-white/70">Shards, Database & Frontend</p>
             </div>
 
             <div
@@ -118,11 +118,38 @@ export default function Home() {
             >
               <Settings className="w-12 h-12 text-white mb-4" />
               <h3 className="text-xl font-semibold text-white mb-2">Platform Settings</h3>
-              <p className="text-white/70">Global configuration (Level 3)</p>
+              <p className="text-white/70">Global configuration</p>
             </div>
-
-
           </div>
+
+          {/* Developer Report Card (Admin Only) */}
+          {user.is_admin && (
+            <div
+              onClick={() => router.push('/dashboard/platform/bot-report')}
+              className="bg-white/5 rounded-xl p-6 border border-white/10 hover:bg-white/10 transition-all cursor-pointer"
+            >
+              <div className="p-3 bg-blue-500/20 rounded-full w-fit mb-4">
+                <Bot className="w-8 h-8 text-blue-400" />
+              </div>
+              <h3 className="text-xl font-semibold text-white mb-2">Developer Report</h3>
+              <p className="text-white/70">View bot internals and status</p>
+            </div>
+          )}
+
+          {/* Debug Logging Card (Admin Only) */}
+          {user.is_admin && (
+            <div
+              onClick={() => router.push('/dashboard/developer/logging')}
+              className="bg-white/5 rounded-xl p-6 border border-white/10 hover:bg-white/10 transition-all cursor-pointer"
+            >
+              <div className="p-3 bg-yellow-500/20 rounded-full w-fit mb-4">
+                <Terminal className="w-8 h-8 text-yellow-400" />
+              </div>
+              <h3 className="text-xl font-semibold text-white mb-2">Debug Logging</h3>
+              <p className="text-white/70">Configure per-guild log levels</p>
+            </div>
+          )}
+
         </div>
       </main>
     </div>

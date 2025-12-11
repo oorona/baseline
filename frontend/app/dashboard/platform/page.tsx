@@ -57,7 +57,7 @@ export default function PlatformSettingsPage() {
         <div className="p-8 max-w-2xl mx-auto">
             <div className="mb-8">
                 <h1 className="text-3xl font-bold mb-2">Platform Settings</h1>
-                <p className="text-gray-400">Global configuration for all bots (Level 3).</p>
+                <p className="text-gray-400">Global configuration for all bots.</p>
             </div>
 
             {message && (

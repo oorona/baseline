@@ -15,8 +15,6 @@ export default function GuildSettingsPage() {
     const [settings, setSettings] = useState<any>(null);
     const [permissionLevel, setPermissionLevel] = useState<string | null>(null);
     const [canModifyLevel3, setCanModifyLevel3] = useState(false);
-    const [roles, setRoles] = useState<any[]>([]); // For Admin Role selector
-
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
@@ -25,17 +23,15 @@ export default function GuildSettingsPage() {
         const fetchData = async () => {
             if (!guildId) return;
             try {
-                const [settingsData, guildData, rolesData] = await Promise.all([
+                const [settingsData, guildData] = await Promise.all([
                     apiClient.getGuildSettings(guildId),
-                    apiClient.getGuild(guildId),
-                    apiClient.getGuildRoles(guildId)
+                    apiClient.getGuild(guildId)
                 ]);
 
                 // Initialize settings with defaults if empty
                 setSettings(settingsData.settings || {});
                 setPermissionLevel(guildData.permission_level || null);
                 setCanModifyLevel3(settingsData.can_modify_level_3 || false);
-                setRoles(rolesData);
             } catch (err) {
                 console.error('Failed to load settings:', err);
                 setMessage({ type: 'error', text: 'Failed to load settings' });
@@ -43,14 +39,11 @@ export default function GuildSettingsPage() {
                 setLoading(false);
             }
         };
-
-        if (guildId) {
-            fetchData();
-        }
+        fetchData();
     }, [guildId]);
 
     const handleSettingChange = (key: string, value: any) => {
-        setSettings((prev: Record<string, any>) => ({
+        setSettings((prev: any) => ({
             ...prev,
             [key]: value
         }));
@@ -62,7 +55,9 @@ export default function GuildSettingsPage() {
         setMessage(null);
 
         try {
-            await apiClient.updateGuildSettings(guildId, settings);
+            await apiClient.updateGuildSettings(guildId as string, {
+                settings: settings
+            });
             setMessage({ type: 'success', text: 'Settings saved successfully' });
         } catch (err) {
             console.error('Failed to save settings:', err);
@@ -72,28 +67,21 @@ export default function GuildSettingsPage() {
         }
     };
 
-    const isReadOnly = permissionLevel !== 'owner' && permissionLevel !== 'admin';
-    const isRestrictedReadOnly = isReadOnly || !canModifyLevel3;
-
-    // Helper for core settings to maintain backward compatibility with UI
-    // Helper for core settings to maintain backward compatibility with UI
-    const allowedChannels = settings && Array.isArray(settings.allowed_channels)
-        ? settings.allowed_channels.join(', ')
-        : (settings?.allowed_channels || '');
-
-    const setAllowedChannels = (val: string) => {
-        const channelsList = val.split(',').map(id => id.trim()).filter(id => id);
-        handleSettingChange('allowed_channels', channelsList);
-    };
+    const isRestrictedReadOnly = !canModifyLevel3 && permissionLevel !== 'owner';
+    const isReadOnly = permissionLevel === 'user';
 
     if (loading) {
-        return <div className="p-8 text-gray-400">Loading settings...</div>;
+        return <div className="p-8 text-center text-gray-400">Loading settings...</div>;
+    }
+
+    if (permissionLevel === 'user') {
+        return <div className="p-8 text-center text-red-400">You do not have permission to view these settings.</div>;
     }
 
     return (
         <div className="p-8 max-w-2xl mx-auto">
             <div className="mb-8">
-                <h1 className="text-3xl font-bold mb-2">Server Settings</h1>
+                <h1 className="text-3xl font-bold mb-2">Bot Settings</h1>
                 <p className="text-gray-400">Configure how the bot behaves in your server.</p>
             </div>
 
@@ -111,47 +99,27 @@ export default function GuildSettingsPage() {
             )}
 
             <form onSubmit={handleSave} className="space-y-8">
-                {/* Core/Restricted Settings */}
-                <div className="space-y-6">
-                    <div className="space-y-6 border-b border-gray-700 pb-8">
-                        <h2 className="text-xl font-semibold">General Settings (Level 1)</h2>
-                        <div>
-                            <label className="block text-sm font-medium mb-2">Allowed Channels</label>
-                            <input
-                                type="text"
-                                value={allowedChannels}
-                                onChange={(e) => setAllowedChannels(e.target.value)}
-                                placeholder="e.g. 123456789, 987654321"
-                                className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white"
-                                disabled={isReadOnly}
-                            />
-                            <p className="text-xs text-gray-500 mt-1">Comma-separated list of channel IDs where the bot is active.</p>
-                        </div>
-                    </div>
-
-
+                <div className="bg-gray-800/30 border border-gray-700 rounded-lg p-6 text-center text-gray-400">
+                    <p>No specific settings available for this bot configuration.</p>
                 </div>
-
-                <div className="pt-6">
-                    <button
-                        type="submit"
-                        disabled={saving || isReadOnly}
-                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                    >
-                        {saving ? (
-                            <>
-                                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                Saving...
-                            </>
-                        ) : (
-                            <>
-                                <Save className="w-5 h-5" />
-                                Save Settings
-                            </>
-                        )}
-                    </button>
-                </div>
+                <button
+                    type="submit"
+                    disabled={saving || isReadOnly}
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                    {saving ? (
+                        <>
+                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            Saving...
+                        </>
+                    ) : (
+                        <>
+                            <Save className="w-5 h-5" />
+                            Save Settings
+                        </>
+                    )}
+                </button>
             </form>
-        </div>
+        </div >
     );
 }
