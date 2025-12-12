@@ -19,19 +19,23 @@ export default function GuildSettingsPage() {
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
+    const [channels, setChannels] = useState<any[]>([]);
+
     useEffect(() => {
         const fetchData = async () => {
             if (!guildId) return;
             try {
-                const [settingsData, guildData] = await Promise.all([
+                const [settingsData, guildData, channelsData] = await Promise.all([
                     apiClient.getGuildSettings(guildId),
-                    apiClient.getGuild(guildId)
+                    apiClient.getGuild(guildId),
+                    apiClient.getGuildChannels(guildId)
                 ]);
 
                 // Initialize settings with defaults if empty
                 setSettings(settingsData.settings || {});
                 setPermissionLevel(guildData.permission_level || null);
                 setCanModifyLevel3(settingsData.can_modify_level_3 || false);
+                setChannels(channelsData.filter((c: any) => c.type === 0)); // Filter for text channels
             } catch (err) {
                 console.error('Failed to load settings:', err);
                 setMessage({ type: 'error', text: 'Failed to load settings' });
@@ -99,8 +103,77 @@ export default function GuildSettingsPage() {
             )}
 
             <form onSubmit={handleSave} className="space-y-8">
-                <div className="bg-gray-800/30 border border-gray-700 rounded-lg p-6 text-center text-gray-400">
-                    <p>No specific settings available for this bot configuration.</p>
+                {/* Logging Settings */}
+                <div className="space-y-6 border-b border-gray-700 pb-8">
+                    <h2 className="text-xl font-semibold">Logging Configuration</h2>
+
+                    <div className="flex items-center space-x-3">
+                        <input
+                            type="checkbox"
+                            id="loggingEnabled"
+                            checked={settings?.logging_enabled || false}
+                            onChange={(e) => handleSettingChange('logging_enabled', e.target.checked)}
+                            disabled={isRestrictedReadOnly}
+                            className="w-5 h-5 rounded border-gray-700 bg-gray-800 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <label htmlFor="loggingEnabled" className="text-sm font-medium">Enable Logging</label>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium mb-2">Log Channel</label>
+                        <select
+                            value={settings?.logging_channel_id || ''}
+                            onChange={(e) => handleSettingChange('logging_channel_id', e.target.value)}
+                            className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white"
+                            disabled={isRestrictedReadOnly || !settings?.logging_enabled}
+                        >
+                            <option value="">Select a channel...</option>
+                            {channels.map((channel) => (
+                                <option key={channel.id} value={channel.id}>
+                                    #{channel.name}
+                                </option>
+                            ))}
+                        </select>
+                        <p className="text-xs text-gray-500 mt-1">Channel where logs will be posted.</p>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium mb-2">Logged Events</label>
+                        <div className="space-y-2">
+                            {[
+                                { key: 'on_message_delete', label: 'Message Deletions' },
+                                { key: 'on_message_edit', label: 'Message Edits' },
+                                { key: 'on_member_join', label: 'Member Joins' },
+                                { key: 'on_member_remove', label: 'Member Leaves' }
+                            ].map((event) => {
+                                const isIgnored = (settings?.logging_ignored_events || []).includes(event.key);
+                                return (
+                                    <div key={event.key} className="flex items-center space-x-3">
+                                        <input
+                                            type="checkbox"
+                                            id={`event_${event.key}`}
+                                            checked={!isIgnored}
+                                            onChange={(e) => {
+                                                const currentIgnored = settings?.logging_ignored_events || [];
+                                                let newIgnored;
+                                                if (e.target.checked) {
+                                                    // Remove from ignored
+                                                    newIgnored = currentIgnored.filter((ev: string) => ev !== event.key);
+                                                } else {
+                                                    // Add to ignored
+                                                    newIgnored = [...currentIgnored, event.key];
+                                                }
+                                                handleSettingChange('logging_ignored_events', newIgnored);
+                                            }}
+                                            disabled={isRestrictedReadOnly || !settings?.logging_enabled}
+                                            className="w-4 h-4 rounded border-gray-700 bg-gray-800 text-indigo-600 focus:ring-indigo-500"
+                                        />
+                                        <label htmlFor={`event_${event.key}`} className="text-sm text-gray-300">{event.label}</label>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
                 </div>
                 <button
                     type="submit"
