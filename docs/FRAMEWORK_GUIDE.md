@@ -18,6 +18,9 @@ Bots are composed of **Cogs** (Discord.py extensions). The framework handles loa
 
 Create a new file in `bot/cogs/`, e.g., `bot/cogs/moderation.py`.
 
+> [!IMPORTANT]
+> **Architecture Rule**: Before coding, read [PLUGIN_ARCHITECTURE.md](PLUGIN_ARCHITECTURE.md) to understand where your files should go and how to use the existing framework components.
+
 ```python
 import discord
 from discord.ext import commands
