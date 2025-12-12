@@ -85,15 +85,12 @@ export default function Home() {
                 const targetGuildId = defaultGuildId || (guilds.length > 0 ? guilds[0].id : null);
 
                 if (targetGuildId) {
-                  // Find the "Bot Settings" plugin route
-                  const botSettingsItem = navItems.find(item => item.name === 'Bot Settings');
-                  let targetRoute = `/dashboard/${targetGuildId}/permissions`; // Fallback
+                  const targetGuild = guilds.find(g => g.id === targetGuildId);
+                  const isGuildAdmin = targetGuild?.permission_level === 'owner' || targetGuild?.permission_level === 'admin';
 
-                  if (botSettingsItem) {
-                    targetRoute = botSettingsItem.href.replace('[guildId]', targetGuildId);
-                  }
-
-                  router.push(targetRoute);
+                  // Admin goes to permissions, else settings
+                  const route = isGuildAdmin ? 'permissions' : 'settings';
+                  router.push(`/dashboard/${targetGuildId}/${route}`);
                 }
               }}
               className="bg-white/5 rounded-xl p-6 border border-white/10 hover:bg-white/10 transition-all cursor-pointer"
@@ -112,14 +109,16 @@ export default function Home() {
               <p className="text-white/70">Shards, Database & Frontend</p>
             </div>
 
-            <div
-              onClick={() => router.push('/dashboard/platform')}
-              className="bg-white/5 rounded-xl p-6 border border-white/10 hover:bg-white/10 transition-all cursor-pointer"
-            >
-              <Settings className="w-12 h-12 text-white mb-4" />
-              <h3 className="text-xl font-semibold text-white mb-2">Platform Settings</h3>
-              <p className="text-white/70">Global configuration</p>
-            </div>
+            {user.is_admin && (
+              <div
+                onClick={() => router.push('/dashboard/platform')}
+                className="bg-white/5 rounded-xl p-6 border border-white/10 hover:bg-white/10 transition-all cursor-pointer"
+              >
+                <Settings className="w-12 h-12 text-white mb-4" />
+                <h3 className="text-xl font-semibold text-white mb-2">Platform Settings</h3>
+                <p className="text-white/70">Global configuration</p>
+              </div>
+            )}
           </div>
 
           {/* Developer Report Card (Admin Only) */}

@@ -72,7 +72,8 @@ export default function GuildSettingsPage() {
     };
 
     const isRestrictedReadOnly = !canModifyLevel3 && permissionLevel !== 'owner';
-    const isReadOnly = permissionLevel === 'user';
+    // const isReadOnly = permissionLevel === 'user'; // Removed to allow Authorized Users (Level 1) to edit
+    const isReadOnly = false;
 
     if (loading) {
         return <div className="p-8 text-center text-gray-400">Loading settings...</div>;

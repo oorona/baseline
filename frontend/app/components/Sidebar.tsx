@@ -20,7 +20,7 @@ interface Guild {
 const defaultNavigation = [
     { name: 'Home', href: '/', icon: Home },
     { name: 'Permissions', href: '/dashboard/[guildId]/permissions', icon: Shield, requiredPermission: 'admin' },
-    { name: 'Bot Settings', href: '/dashboard/[guildId]/settings', icon: Settings, requiredPermission: 'admin' },
+    { name: 'Bot Settings', href: '/dashboard/[guildId]/settings', icon: Settings },
     { name: 'Developer Tools', href: '/dashboard/developer/logging', icon: Terminal, adminOnly: true },
     { name: 'Account Settings', href: '/dashboard/account', icon: User },
 ];
