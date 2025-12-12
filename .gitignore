@@ -115,3 +115,15 @@ htmlcov/
 # ============================================
 !.env.example
 !secrets/.gitkeep
+
+# ============================================
+# SAMPLE BOT / PLUGINS (Local Only)
+# ============================================
+frontend/app/dashboard/developer/logging/
+bot/cogs/logging.py
+
+# ============================================
+# SAMPLE BOT / PLUGINS (DO NOT COMMIT)
+# ============================================
+frontend/app/dashboard/developer/logging/
+bot/cogs/logging.py
