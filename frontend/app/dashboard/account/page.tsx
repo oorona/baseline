@@ -25,7 +25,7 @@ export default function AccountPage() {
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
     useEffect(() => {
-        const loadJava = async () => {
+        const loadData = async () => {
             try {
                 const [userData, guildsData] = await Promise.all([
                     apiClient.getUserSettings(),
@@ -46,8 +46,8 @@ export default function AccountPage() {
                 setLoading(false);
             }
         };
-        loadJava();
-    }, [setTheme]);
+        loadData();
+    }, []);
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -141,50 +141,28 @@ export default function AccountPage() {
                     <div className="space-y-4">
                         <label className="block text-sm font-medium text-foreground mb-2">Theme</label>
                         <div className="grid grid-cols-3 gap-4">
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setSettings({ ...settings, theme: 'light' });
-                                    setTheme('light');
-                                }}
-                                className={`flex flex-col items-center justify-center p-4 rounded-lg border-2 transition-all text-foreground ${settings.theme === 'light'
-                                    ? 'border-primary bg-primary/10'
-                                    : 'border-border hover:border-primary/50 bg-secondary'
-                                    }`}
-                            >
-                                <Sun className="w-6 h-6 mb-2" />
-                                <span>Light</span>
-                            </button>
-
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setSettings({ ...settings, theme: 'dark' });
-                                    setTheme('dark');
-                                }}
-                                className={`flex flex-col items-center justify-center p-4 rounded-lg border-2 transition-all text-foreground ${settings.theme === 'dark'
-                                    ? 'border-primary bg-primary/10'
-                                    : 'border-border hover:border-primary/50 bg-secondary'
-                                    }`}
-                            >
-                                <Moon className="w-6 h-6 mb-2" />
-                                <span>Dark</span>
-                            </button>
-
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setSettings({ ...settings, theme: 'system' });
-                                    setTheme('system');
-                                }}
-                                className={`flex flex-col items-center justify-center p-4 rounded-lg border-2 transition-all text-foreground ${settings.theme === 'system'
-                                    ? 'border-primary bg-primary/10'
-                                    : 'border-border hover:border-primary/50 bg-secondary'
-                                    }`}
-                            >
-                                <Monitor className="w-6 h-6 mb-2" />
-                                <span>System</span>
-                            </button>
+                            {['light', 'dark', 'system'].map((t) => {
+                                const isActive = settings.theme === t;
+                                return (
+                                    <button
+                                        key={t}
+                                        type="button"
+                                        onClick={() => {
+                                            setSettings(prev => ({ ...prev, theme: t as 'light' | 'dark' | 'system' }));
+                                            setTheme(t);
+                                        }}
+                                        className={`flex flex-col items-center justify-center p-4 rounded-lg border-2 transition-all text-foreground ${isActive
+                                            ? 'border-primary bg-primary/10'
+                                            : 'border-border hover:border-primary/50 bg-secondary'
+                                            }`}
+                                    >
+                                        {t === 'light' && <Sun className="w-6 h-6 mb-2" />}
+                                        {t === 'dark' && <Moon className="w-6 h-6 mb-2" />}
+                                        {t === 'system' && <Monitor className="w-6 h-6 mb-2" />}
+                                        <span className="capitalize">{t}</span>
+                                    </button>
+                                );
+                            })}
                         </div>
                     </div>
                 </div>

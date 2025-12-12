@@ -2,9 +2,11 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Sidebar } from "./components/Sidebar";
 
+import { siteConfig } from "./config";
+
 export const metadata: Metadata = {
-  title: "Baseline Bot Platform",
-  description: "Multi-purpose Discord bot administration dashboard",
+  title: siteConfig.name,
+  description: siteConfig.description,
 };
 
 import { AuthProvider } from "@/lib/auth-context";

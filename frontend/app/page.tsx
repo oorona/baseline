@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/auth-context';
 import { apiClient } from '@/app/api-client';
 import { usePlugins } from '@/app/plugins';
 import { LogOut, Bot, Settings, Activity, Terminal } from 'lucide-react';
+import { siteConfig } from './config';
 
 export default function Home() {
   const { user, loading, logout } = useAuth();
@@ -31,14 +32,22 @@ export default function Home() {
     }
 
     if (user) {
-      apiClient.getGuilds().then(setGuilds).catch(console.error);
+      apiClient.getGuilds().then(data => {
+        setGuilds(data);
+        // If user has no guilds (owned or authorized), redirect to welcome page
+        if (data.length === 0) {
+          router.push('/welcome');
+        }
+      }).catch(console.error);
     }
   }, [user, loading, router]);
 
+  // Check for welcome redirect logic is already here
+
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500">
-        <div className="text-white text-xl">Loading...</div>
+      <div className="flex items-center justify-center h-full">
+        <div className="animate-pulse text-muted-foreground">Loading dashboard...</div>
       </div>
     );
   }
@@ -48,109 +57,89 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500">
-      <nav className="bg-white/10 backdrop-blur-lg border-b border-white/20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16 items-center">
-            <div className="flex items-center gap-3">
-              <Bot className="w-8 h-8 text-white" />
-              <h1 className="text-xl font-bold text-white">Baseline Bot Platform</h1>
+    <div className="space-y-8">
+      <div className="bg-card border border-border rounded-xl p-8 shadow-sm">
+        <h2 className="text-3xl font-bold mb-4 bg-gradient-to-r from-indigo-500 to-purple-500 bg-clip-text text-transparent">
+          Welcome back, {user.username}!
+        </h2>
+        <p className="text-muted-foreground text-lg mb-8 max-w-2xl">
+          Your bot platform is ready. Select a server from the sidebar or use the quick actions below to manage your bots.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div
+            onClick={() => {
+              const defaultGuildId = user?.preferences?.default_guild_id;
+              const targetGuildId = defaultGuildId || (guilds.length > 0 ? guilds[0].id : null);
+
+              if (targetGuildId) {
+                const targetGuild = guilds.find(g => g.id === targetGuildId);
+                const isGuildAdmin = targetGuild?.permission_level === 'owner' || targetGuild?.permission_level === 'admin';
+                const route = isGuildAdmin ? 'permissions' : 'settings';
+                router.push(`/dashboard/${targetGuildId}/${route}`);
+              }
+            }}
+            className="group relative bg-muted/30 hover:bg-muted/50 border border-border rounded-xl p-6 cursor-pointer transition-all hover:shadow-md hover:-translate-y-1"
+          >
+            <div className="absolute top-6 right-6 p-2 bg-primary/10 rounded-full text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+              <Bot className="w-6 h-6" />
             </div>
-            <div className="flex items-center gap-4">
-              <span className="text-white/80">{user.username}</span>
-              <button
-                onClick={logout}
-                className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors"
-              >
-                <LogOut className="w-4 h-4" />
-                Logout
-              </button>
-            </div>
+            <h3 className="text-xl font-semibold mb-2 pr-12">Manage Servers</h3>
+            <p className="text-muted-foreground text-sm">Configure settings and permissions for your connected guilds.</p>
           </div>
-        </div>
-      </nav>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 shadow-2xl border border-white/20">
-          <h2 className="text-3xl font-bold text-white mb-4">Welcome back!</h2>
-          <p className="text-white/80 mb-8">
-            Your bot platform is ready. Configure your bots and manage your Discord servers.
-          </p>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div
-              onClick={() => {
-                const defaultGuildId = user?.preferences?.default_guild_id;
-                // Prefer default guild, fallback to first available guild
-                const targetGuildId = defaultGuildId || (guilds.length > 0 ? guilds[0].id : null);
-
-                if (targetGuildId) {
-                  const targetGuild = guilds.find(g => g.id === targetGuildId);
-                  const isGuildAdmin = targetGuild?.permission_level === 'owner' || targetGuild?.permission_level === 'admin';
-
-                  // Admin goes to permissions, else settings
-                  const route = isGuildAdmin ? 'permissions' : 'settings';
-                  router.push(`/dashboard/${targetGuildId}/${route}`);
-                }
-              }}
-              className="bg-white/5 rounded-xl p-6 border border-white/10 hover:bg-white/10 transition-all cursor-pointer"
-            >
-              <Bot className="w-12 h-12 text-white mb-4" />
-              <h3 className="text-xl font-semibold text-white mb-2">Manage Servers</h3>
-              <p className="text-white/70">Select a server from the sidebar to configure settings</p>
+          <div
+            onClick={() => router.push('/dashboard/status')}
+            className="group relative bg-muted/30 hover:bg-muted/50 border border-border rounded-xl p-6 cursor-pointer transition-all hover:shadow-md hover:-translate-y-1"
+          >
+            <div className="absolute top-6 right-6 p-2 bg-green-500/10 rounded-full text-green-500 group-hover:bg-green-500 group-hover:text-white transition-colors">
+              <Activity className="w-6 h-6" />
             </div>
+            <h3 className="text-xl font-semibold mb-2 pr-12">System Status</h3>
+            <p className="text-muted-foreground text-sm">Monitor shards, database health, and API latency.</p>
+          </div>
 
+          {user.is_admin && (
             <div
-              onClick={() => router.push('/dashboard/status')}
-              className="bg-white/5 rounded-xl p-6 border border-white/10 hover:bg-white/10 transition-all cursor-pointer"
+              onClick={() => router.push('/dashboard/platform')}
+              className="group relative bg-muted/30 hover:bg-muted/50 border border-border rounded-xl p-6 cursor-pointer transition-all hover:shadow-md hover:-translate-y-1"
             >
-              <Activity className="w-12 h-12 text-white mb-4" />
-              <h3 className="text-xl font-semibold text-white mb-2">System Status</h3>
-              <p className="text-white/70">Shards, Database & Frontend</p>
+              <div className="absolute top-6 right-6 p-2 bg-purple-500/10 rounded-full text-purple-500 group-hover:bg-purple-500 group-hover:text-white transition-colors">
+                <Settings className="w-6 h-6" />
+              </div>
+              <h3 className="text-xl font-semibold mb-2 pr-12">Platform Settings</h3>
+              <p className="text-muted-foreground text-sm">Global configuration and platform-wide controls.</p>
             </div>
+          )}
 
-            {user.is_admin && (
+          {/* Developer Tools Row */}
+          {user.is_admin && (
+            <>
               <div
-                onClick={() => router.push('/dashboard/platform')}
-                className="bg-white/5 rounded-xl p-6 border border-white/10 hover:bg-white/10 transition-all cursor-pointer"
+                onClick={() => router.push('/dashboard/platform/bot-report')}
+                className="group relative bg-muted/30 hover:bg-muted/50 border border-border rounded-xl p-6 cursor-pointer transition-all hover:shadow-md hover:-translate-y-1"
               >
-                <Settings className="w-12 h-12 text-white mb-4" />
-                <h3 className="text-xl font-semibold text-white mb-2">Platform Settings</h3>
-                <p className="text-white/70">Global configuration</p>
+                <div className="absolute top-6 right-6 p-2 bg-blue-500/10 rounded-full text-blue-500 group-hover:bg-blue-500 group-hover:text-white transition-colors">
+                  <Bot className="w-6 h-6" />
+                </div>
+                <h3 className="text-xl font-semibold mb-2 pr-12">Developer Report</h3>
+                <p className="text-muted-foreground text-sm">Inspect active commands, listeners, and bot internals.</p>
               </div>
-            )}
-          </div>
 
-          {/* Developer Report Card (Admin Only) */}
-          {user.is_admin && (
-            <div
-              onClick={() => router.push('/dashboard/platform/bot-report')}
-              className="bg-white/5 rounded-xl p-6 border border-white/10 hover:bg-white/10 transition-all cursor-pointer"
-            >
-              <div className="p-3 bg-blue-500/20 rounded-full w-fit mb-4">
-                <Bot className="w-8 h-8 text-blue-400" />
+              <div
+                onClick={() => router.push('/dashboard/developer/logging')}
+                className="group relative bg-muted/30 hover:bg-muted/50 border border-border rounded-xl p-6 cursor-pointer transition-all hover:shadow-md hover:-translate-y-1"
+              >
+                <div className="absolute top-6 right-6 p-2 bg-yellow-500/10 rounded-full text-yellow-500 group-hover:bg-yellow-500 group-hover:text-white transition-colors">
+                  <Terminal className="w-6 h-6" />
+                </div>
+                <h3 className="text-xl font-semibold mb-2 pr-12">Debug Logging</h3>
+                <p className="text-muted-foreground text-sm">Configure real-time log levels per guild.</p>
               </div>
-              <h3 className="text-xl font-semibold text-white mb-2">Developer Report</h3>
-              <p className="text-white/70">View bot internals and status</p>
-            </div>
+            </>
           )}
-
-          {/* Debug Logging Card (Admin Only) */}
-          {user.is_admin && (
-            <div
-              onClick={() => router.push('/dashboard/developer/logging')}
-              className="bg-white/5 rounded-xl p-6 border border-white/10 hover:bg-white/10 transition-all cursor-pointer"
-            >
-              <div className="p-3 bg-yellow-500/20 rounded-full w-fit mb-4">
-                <Terminal className="w-8 h-8 text-yellow-400" />
-              </div>
-              <h3 className="text-xl font-semibold text-white mb-2">Debug Logging</h3>
-              <p className="text-white/70">Configure per-guild log levels</p>
-            </div>
-          )}
-
         </div>
-      </main>
+      </div>
     </div>
   );
 }

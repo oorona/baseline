@@ -56,43 +56,43 @@ export default function PlatformSettingsPage() {
     return (
         <div className="p-8 max-w-2xl mx-auto">
             <div className="mb-8">
-                <h1 className="text-3xl font-bold mb-2">Platform Settings</h1>
-                <p className="text-gray-400">Global configuration for all bots.</p>
+                <h1 className="text-3xl font-bold mb-2 text-foreground">Platform Settings</h1>
+                <p className="text-muted-foreground">Global configuration for all bots.</p>
             </div>
 
             {message && (
-                <div className={`p-4 rounded-lg mb-6 ${message.type === 'success' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
+                <div className={`p-4 rounded-lg mb-6 ${message.type === 'success' ? 'bg-green-500/10 text-green-500' : 'bg-destructive/10 text-destructive'
                     }`}>
                     {message.text}
                 </div>
             )}
 
             <form onSubmit={handleSave} className="space-y-8">
-                <div className="space-y-6 border-b border-gray-700 pb-8">
+                <div className="space-y-6 border-b border-border pb-8">
                     <div className="flex items-center gap-2 mb-4">
                         <Shield className="text-yellow-500" size={20} />
                         <h2 className="text-xl font-semibold text-yellow-500">Global Configuration</h2>
                     </div>
-                    <p className="text-sm text-gray-400 mb-4">
+                    <p className="text-sm text-muted-foreground mb-4">
                         These settings are applied globally and managed by the Platform Owner.
                     </p>
 
                     <div>
-                        <label className="block text-sm font-medium mb-2">System Prompt</label>
+                        <label className="block text-sm font-medium mb-2 text-foreground">System Prompt</label>
                         <textarea
                             value={settings?.system_prompt || ''}
                             onChange={(e) => handleSettingChange('system_prompt', e.target.value)}
-                            className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:ring-2 focus:ring-indigo-500 h-32 text-white"
+                            className="w-full px-4 py-2 bg-background border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent h-32 text-foreground"
                             placeholder="You are a helpful assistant..."
                         />
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium mb-2">LLM Model</label>
+                        <label className="block text-sm font-medium mb-2 text-foreground">LLM Model</label>
                         <select
                             value={settings?.model || 'openai'}
                             onChange={(e) => handleSettingChange('model', e.target.value)}
-                            className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:ring-2 focus:ring-indigo-500 text-white"
+                            className="w-full px-4 py-2 bg-background border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-foreground"
                         >
                             <option value="openai">OpenAI (GPT-4)</option>
                             <option value="anthropic">Anthropic (Claude 3)</option>
@@ -106,7 +106,7 @@ export default function PlatformSettingsPage() {
                     <button
                         type="submit"
                         disabled={saving}
-                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-medium py-3 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                         {saving ? (
                             <>
@@ -116,7 +116,7 @@ export default function PlatformSettingsPage() {
                         ) : (
                             <>
                                 <Save className="w-5 h-5" />
-                                <span className="text-white">Save Settings</span>
+                                <span className="text-primary-foreground">Save Settings</span>
                             </>
                         )}
                     </button>

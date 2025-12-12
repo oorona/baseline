@@ -194,6 +194,11 @@ class APIClient {
         return response.data;
     }
 
+    async getDiscordConfig(): Promise<{ client_id: string; redirect_uri: string }> {
+        const response = await this.client.get('/auth/discord-config');
+        return response.data;
+    }
+
     async getAuditLogs(guildId: string) {
         const response = await this.client.get(`/guilds/${guildId}/audit-logs`);
         return response.data;

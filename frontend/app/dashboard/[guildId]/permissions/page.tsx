@@ -94,8 +94,8 @@ export default function PermissionsPage() {
             )}
 
             {/* Add user form */}
-            <div className="bg-gray-800 rounded-lg p-6 mb-6">
-                <h2 className="text-xl font-semibold mb-4">Add Authorized User</h2>
+            <div className="bg-card border border-border rounded-xl p-6 mb-6 shadow-sm">
+                <h2 className="text-xl font-semibold mb-4 text-foreground">Add Authorized User</h2>
                 <div className="flex gap-2">
                     <div className="flex-1">
                         <UserSearch
@@ -116,7 +116,7 @@ export default function PermissionsPage() {
                     <button
                         onClick={handleAddUser}
                         disabled={!newUserId || adding}
-                        className="flex items-center space-x-2 px-6 py-2 bg-blue-600 rounded-lg hover:bg-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="flex items-center space-x-2 px-6 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         <UserPlus size={16} />
                         <span>{adding ? 'Adding...' : 'Add User'}</span>
@@ -125,36 +125,36 @@ export default function PermissionsPage() {
             </div>
 
             {/* Users list */}
-            <div className="bg-gray-800 rounded-lg overflow-hidden">
-                <div className="p-6 border-b border-gray-700">
-                    <h2 className="text-xl font-semibold">Authorized Users</h2>
+            <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
+                <div className="p-6 border-b border-border">
+                    <h2 className="text-xl font-semibold text-foreground">Authorized Users</h2>
                 </div>
-                <div className="divide-y divide-gray-700">
+                <div className="divide-y divide-border">
                     {users.length === 0 ? (
-                        <div className="p-6 text-center text-gray-400">
+                        <div className="p-6 text-center text-muted-foreground">
                             No authorized users found
                         </div>
                     ) : (
                         users.map((user) => (
-                            <div key={user.user_id} className="flex items-center justify-between p-6 hover:bg-gray-700/50">
+                            <div key={user.user_id} className="flex items-center justify-between p-6 hover:bg-muted/50 transition-colors">
                                 <div className="flex items-center">
                                     {user.avatar_url ? (
                                         <img src={user.avatar_url} alt={user.username} className="w-10 h-10 rounded-full mr-4" />
                                     ) : (
-                                        <div className="w-10 h-10 bg-gray-700 rounded-full flex items-center justify-center mr-4">
-                                            <span className="text-gray-400 text-sm">?</span>
+                                        <div className="w-10 h-10 bg-muted rounded-full flex items-center justify-center mr-4">
+                                            <span className="text-muted-foreground text-sm">?</span>
                                         </div>
                                     )}
                                     <div>
-                                        <div className="font-medium">{user.username || `User ID: ${user.user_id}`}</div>
-                                        <div className="text-sm text-gray-400">
+                                        <div className="font-medium text-foreground">{user.username || `User ID: ${user.user_id}`}</div>
+                                        <div className="text-sm text-muted-foreground">
                                             {user.permission_level} • Added {new Date(user.created_at).toLocaleDateString()}
                                         </div>
                                     </div>
                                 </div>
                                 <button
                                     onClick={() => handleRemoveUser(user.user_id)}
-                                    className="flex items-center space-x-2 px-4 py-2 bg-red-600/20 text-red-500 rounded-lg hover:bg-red-600/30 transition-colors"
+                                    className="flex items-center space-x-2 px-4 py-2 bg-destructive/10 text-destructive rounded-lg hover:bg-destructive/20 transition-colors"
                                 >
                                     <Trash2 size={16} />
                                     <span>Remove</span>

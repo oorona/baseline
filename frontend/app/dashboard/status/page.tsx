@@ -44,8 +44,8 @@ export default function SystemStatusPage() {
     return (
         <div className="max-w-4xl mx-auto p-4">
             <div className="mb-8">
-                <h1 className="text-3xl font-bold mb-2">System Status</h1>
-                <p className="text-gray-400">{isAdmin ? "Detailed system performance metrics" : "Current service availability"}</p>
+                <h1 className="text-3xl font-bold mb-2 text-foreground">System Status</h1>
+                <p className="text-muted-foreground">{isAdmin ? "Detailed system performance metrics" : "Current service availability"}</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -71,13 +71,13 @@ export default function SystemStatusPage() {
             </div>
 
             {isAdmin && (
-                <div className="mt-12 p-6 bg-gray-800 rounded-lg border border-gray-700">
-                    <h2 className="text-xl font-semibold mb-4 text-blue-400 flex items-center gap-2">
+                <div className="mt-12 p-6 bg-card rounded-lg border border-border shadow-sm">
+                    <h2 className="text-xl font-semibold mb-4 text-blue-500 flex items-center gap-2">
                         <TerminalIcon /> Admin Diagnostics
                     </h2>
-                    <p className="text-gray-400 mb-4">Detailed shards and latency data would go here (or link to dedicated dashboard).</p>
+                    <p className="text-muted-foreground mb-4">Detailed shards and latency data would go here (or link to dedicated dashboard).</p>
                     {/* Placeholder for complex admin stats */}
-                    <div className="h-32 bg-gray-900 rounded flex items-center justify-center text-gray-600">
+                    <div className="h-32 bg-muted/30 rounded flex items-center justify-center text-muted-foreground border border-dashed border-border">
                         Admin-only detailed graphs/logs
                     </div>
                 </div>
@@ -89,13 +89,13 @@ export default function SystemStatusPage() {
 function StatusCard({ title, status, icon: Icon, description }: any) {
     const isHealthy = status === 'healthy';
     return (
-        <div className={`p-6 rounded-xl border ${isHealthy ? 'bg-green-500/10 border-green-500/30' : 'bg-red-500/10 border-red-500/30'} flex flex-col items-center text-center`}>
-            <div className={`p-3 rounded-full mb-4 ${isHealthy ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+        <div className={`p-6 rounded-xl border ${isHealthy ? 'bg-green-500/10 border-green-500/30' : 'bg-destructive/10 border-destructive/30'} flex flex-col items-center text-center`}>
+            <div className={`p-3 rounded-full mb-4 ${isHealthy ? 'bg-green-500/20 text-green-500' : 'bg-destructive/20 text-destructive'}`}>
                 <Icon size={32} />
             </div>
-            <h3 className="text-lg font-bold mb-1">{title}</h3>
-            <p className="text-sm text-gray-400 mb-4">{description}</p>
-            <div className={`flex items-center gap-2 font-medium ${isHealthy ? 'text-green-400' : 'text-red-400'}`}>
+            <h3 className="text-lg font-bold mb-1 text-foreground">{title}</h3>
+            <p className="text-sm text-muted-foreground mb-4">{description}</p>
+            <div className={`flex items-center gap-2 font-medium ${isHealthy ? 'text-green-500' : 'text-destructive'}`}>
                 {isHealthy ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
                 {isHealthy ? 'Operational' : 'Issues Detected'}
             </div>

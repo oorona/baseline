@@ -403,7 +403,15 @@ Common utility classes:
 4. **Use Client Components**: Add `'use client'` for interactive features
 5. **Optimize Images**: Use Next.js `Image` component
 6. **Keep Components Small**: Break down into reusable pieces
-7. **Use Consistent Styling**: Follow the existing design patterns
+7. **Use Semantic Styling**: DO NOT use hardcoded colors (e.g., `bg-gray-800`, `text-white`). Use the design system's semantic tokens to ensure theme compatibility and consistency.
+    - **Backgrounds**: `bg-background`, `bg-card`, `bg-muted`
+    - **Text**: `text-foreground`, `text-muted-foreground`
+    - **Borders**: `border-border`
+    - **Primary**: `bg-primary`, `text-primary-foreground`
+    - **Destructive**: `text-destructive`, `bg-destructive/10`
+    
+    > [!TIP]
+    > For detailed styling rules and examples, refer to [PLUGIN_STYLE_GUIDE.md](../PLUGIN_STYLE_GUIDE.md).
 
 ## Next Steps
 

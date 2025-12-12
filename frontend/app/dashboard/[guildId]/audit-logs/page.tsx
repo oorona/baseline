@@ -58,49 +58,49 @@ export default function AuditLogsPage() {
     return (
         <div className="p-8 max-w-6xl mx-auto">
             <div className="mb-8">
-                <h1 className="text-3xl font-bold mb-2">Audit Logs</h1>
-                <p className="text-gray-400">Track changes and actions within this server.</p>
+                <h1 className="text-3xl font-bold mb-2 text-foreground">Audit Logs</h1>
+                <p className="text-muted-foreground">Track changes and actions within this server.</p>
             </div>
 
-            <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+            <div className="bg-card rounded-xl border border-border overflow-hidden shadow-sm">
                 <div className="overflow-x-auto">
                     <table className="w-full text-left">
                         <thead>
-                            <tr className="bg-gray-900/50 border-b border-gray-700">
-                                <th className="p-4 font-medium text-gray-400">Action</th>
-                                <th className="p-4 font-medium text-gray-400">User ID</th>
-                                <th className="p-4 font-medium text-gray-400">Details</th>
-                                <th className="p-4 font-medium text-gray-400">Time</th>
+                            <tr className="bg-muted/50 border-b border-border">
+                                <th className="p-4 font-medium text-muted-foreground">Action</th>
+                                <th className="p-4 font-medium text-muted-foreground">User ID</th>
+                                <th className="p-4 font-medium text-muted-foreground">Details</th>
+                                <th className="p-4 font-medium text-muted-foreground">Time</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-700">
+                        <tbody className="divide-y divide-border">
                             {logs.length === 0 ? (
                                 <tr>
-                                    <td colSpan={4} className="p-8 text-center text-gray-500">
+                                    <td colSpan={4} className="p-8 text-center text-muted-foreground">
                                         No audit logs found.
                                     </td>
                                 </tr>
                             ) : (
                                 logs.map((log) => (
-                                    <tr key={log.id} className="hover:bg-gray-700/50 transition-colors">
+                                    <tr key={log.id} className="hover:bg-muted/30 transition-colors">
                                         <td className="p-4">
                                             <div className="flex items-center gap-2">
-                                                <Activity className="w-4 h-4 text-indigo-400" />
-                                                <span className="font-medium text-white">{log.action}</span>
+                                                <Activity className="w-4 h-4 text-primary" />
+                                                <span className="font-medium text-foreground">{log.action}</span>
                                             </div>
                                         </td>
                                         <td className="p-4">
-                                            <div className="flex items-center gap-2 text-gray-300">
+                                            <div className="flex items-center gap-2 text-muted-foreground">
                                                 <User className="w-4 h-4" />
                                                 <span className="font-mono text-sm">{log.user_id}</span>
                                             </div>
                                         </td>
                                         <td className="p-4">
-                                            <pre className="text-xs text-gray-400 font-mono bg-gray-900/50 p-2 rounded max-w-md overflow-x-auto">
+                                            <pre className="text-xs text-muted-foreground font-mono bg-muted/50 p-2 rounded max-w-md overflow-x-auto scrollbar-thin">
                                                 {formatDetails(log.details)}
                                             </pre>
                                         </td>
-                                        <td className="p-4 text-gray-400 text-sm whitespace-nowrap">
+                                        <td className="p-4 text-muted-foreground text-sm whitespace-nowrap">
                                             <div className="flex items-center gap-2">
                                                 <Clock className="w-4 h-4" />
                                                 {formatDate(log.created_at)}

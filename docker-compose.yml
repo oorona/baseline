@@ -109,6 +109,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_APP_NAME=${NEXT_PUBLIC_APP_NAME}
     container_name: bot-frontend
     env_file:
       - .env # Frontend config (non-sensitive)

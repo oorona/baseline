@@ -4,7 +4,7 @@ from pydantic import Field
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    PROJECT_NAME: str = "Baseline Bot Platform API"
+    PROJECT_NAME: str = os.getenv("APP_NAME", "Baseline Bot Platform API")
     API_V1_STR: str = "/api/v1"
     
     BACKEND_CORS_ORIGINS: list[str] = []

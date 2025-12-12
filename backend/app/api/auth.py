@@ -248,15 +248,15 @@ async def read_users_me(current_user: dict = Depends(get_current_user)):
         current_user["is_admin"] = False
         
     return current_user
-
 @router.post("/logout")
-async def logout(
-    response: Response,
-    session_id: str = Cookie(None),
-    redis: Redis = Depends(get_redis)
-):
-    if session_id:
-        await redis.delete(f"session:{session_id}")
-    
+async def logout(response: Response):
     response.delete_cookie("session_id")
     return {"message": "Logged out"}
+
+@router.get("/discord-config")
+async def get_discord_config():
+    """Return public Discord configuration."""
+    return {
+        "client_id": settings.DISCORD_CLIENT_ID,
+        "redirect_uri": settings.DISCORD_REDIRECT_URI
+    }

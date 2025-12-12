@@ -62,12 +62,12 @@ export default function BotReportPage() {
 
     return (
         <div className="p-8 max-w-7xl mx-auto space-y-8">
-            <div className="flex items-center justify-between border-b border-gray-800 pb-6">
+            <div className="flex items-center justify-between border-b border-border pb-6">
                 <div>
-                    <h1 className="text-3xl font-bold text-white mb-2">Developer Report</h1>
-                    <p className="text-gray-400">Bot internal introspection data</p>
+                    <h1 className="text-3xl font-bold text-foreground mb-2">Developer Report</h1>
+                    <p className="text-muted-foreground">Bot internal introspection data</p>
                 </div>
-                <div className="flex items-center space-x-2 text-sm text-gray-400">
+                <div className="flex items-center space-x-2 text-sm text-muted-foreground">
                     <Clock size={16} />
                     <span>Last Updated: {new Date(report.timestamp * 1000).toLocaleString()}</span>
                 </div>
@@ -75,52 +75,52 @@ export default function BotReportPage() {
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Commands Column */}
-                <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                <div className="bg-card rounded-lg p-6 border border-border shadow-sm">
 
                     <div className="flex items-center space-x-2 mb-4">
-                        <Terminal className="text-blue-400" size={24} />
-                        <h2 className="text-xl font-semibold text-white">Slash Commands</h2>
+                        <Terminal className="text-blue-500" size={24} />
+                        <h2 className="text-xl font-semibold text-foreground">Slash Commands</h2>
                     </div>
                     <div className="space-y-4 max-h-[600px] overflow-y-auto custom-scrollbar">
                         {report.commands.map((cmd) => (
-                            <div key={cmd.name} className="p-3 bg-gray-900 rounded-md border border-gray-800">
-                                <div className="font-mono text-blue-400 font-bold">/{cmd.name}</div>
-                                <div className="text-sm text-gray-400 mt-1">{cmd.description || 'No description'}</div>
+                            <div key={cmd.name} className="p-3 bg-secondary/50 rounded-md border border-border">
+                                <div className="font-mono text-blue-500 font-bold">/{cmd.name}</div>
+                                <div className="text-sm text-muted-foreground mt-1">{cmd.description || 'No description'}</div>
                             </div>
                         ))}
                     </div>
                 </div>
 
                 {/* Events Column */}
-                <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                <div className="bg-card rounded-lg p-6 border border-border shadow-sm">
                     <div className="flex items-center space-x-2 mb-4">
-                        <Radio className="text-green-400" size={24} />
-                        <h2 className="text-xl font-semibold text-white">Event Listeners</h2>
+                        <Radio className="text-green-500" size={24} />
+                        <h2 className="text-xl font-semibold text-foreground">Event Listeners</h2>
                     </div>
                     <div className="space-y-4 max-h-[600px] overflow-y-auto custom-scrollbar">
                         {report.listeners.map((listener, idx) => (
-                            <div key={idx} className="p-3 bg-gray-900 rounded-md border border-gray-800 flex justify-between items-center">
-                                <div className="font-mono text-green-400">{listener.event}</div>
-                                <div className="text-xs px-2 py-1 bg-gray-800 rounded text-gray-500">{listener.cog}</div>
+                            <div key={idx} className="p-3 bg-secondary/50 rounded-md border border-border flex justify-between items-center">
+                                <div className="font-mono text-green-500">{listener.event}</div>
+                                <div className="text-xs px-2 py-1 bg-background rounded text-muted-foreground border border-border">{listener.cog}</div>
                             </div>
                         ))}
                     </div>
                 </div>
 
                 {/* Permissions Column */}
-                <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                <div className="bg-card rounded-lg p-6 border border-border shadow-sm">
                     <div className="flex items-center space-x-2 mb-4">
-                        <Shield className="text-purple-400" size={24} />
-                        <h2 className="text-xl font-semibold text-white">Permissions</h2>
+                        <Shield className="text-purple-500" size={24} />
+                        <h2 className="text-xl font-semibold text-foreground">Permissions</h2>
                     </div>
 
                     <div className="space-y-6 max-h-[600px] overflow-y-auto custom-scrollbar">
                         <div>
-                            <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Intents</h3>
+                            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">Intents</h3>
                             <div className="grid grid-cols-1 gap-2">
                                 {Object.entries(report.permissions.intents || {}).map(([intent, enabled]) => (
-                                    <div key={intent} className="flex justify-between items-center px-3 py-2 bg-gray-900 rounded border border-gray-800">
-                                        <span className="font-mono text-sm text-gray-300">{intent}</span>
+                                    <div key={intent} className="flex justify-between items-center px-3 py-2 bg-secondary/50 rounded border border-border">
+                                        <span className="font-mono text-sm text-foreground">{intent}</span>
                                         <span className={`w-2 h-2 rounded-full ${enabled ? 'bg-green-500' : 'bg-red-500'}`} />
                                     </div>
                                 ))}
@@ -128,11 +128,11 @@ export default function BotReportPage() {
                         </div>
 
                         <div>
-                            <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">Bot Permissions (Example)</h3>
+                            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">Bot Permissions (Example)</h3>
                             <div className="grid grid-cols-1 gap-2">
                                 {Object.entries(report.permissions.guild_permissions_example || {}).map(([perm, enabled]) => (
-                                    <div key={perm} className="flex justify-between items-center px-3 py-2 bg-gray-900 rounded border border-gray-800">
-                                        <span className="font-mono text-sm text-gray-300">{perm}</span>
+                                    <div key={perm} className="flex justify-between items-center px-3 py-2 bg-secondary/50 rounded border border-border">
+                                        <span className="font-mono text-sm text-foreground">{perm}</span>
                                         <span className={`w-2 h-2 rounded-full ${enabled ? 'bg-green-500' : 'bg-red-500'}`} />
                                     </div>
                                 ))}
