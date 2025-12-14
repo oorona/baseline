@@ -11,6 +11,14 @@ A comprehensive Discord bot platform with authentication, settings management, a
 - **Granular Permissions**: Owner, Admin, and User roles with specific access levels
 - **Shard Monitoring**: Real-time monitoring of bot shards and health status
 
+## Using as a Template
+
+To use this framework as a starting point for a **new project**, please follow the **[New Project Bootstrap Guide](docs/BOOTSTRAP_GUIDE.md)**.
+This guide covers:
+1.  Forking and detaching from the baseline history.
+2.  Renaming the project (Database, Containers, etc.).
+3.  Setting up the isolated environment.
+
 ## Architecture
 
 - **Backend**: FastAPI with PostgreSQL and Redis
@@ -23,6 +31,7 @@ A comprehensive Discord bot platform with authentication, settings management, a
 
 - Docker and Docker Compose
 - Discord application (for bot token and OAuth credentials)
+  - *Need to create one? Follow the [Discord App Setup Guide](DISCORD_APP_SETUP.md).*
 
 ### Setup
 
