@@ -107,6 +107,9 @@ app.include_router(shards_router, prefix=f"{settings.API_V1_STR}")
 from app.api.bot_info import router as bot_info_router
 app.include_router(bot_info_router, prefix=f"{settings.API_V1_STR}/bot", tags=["bot"])
 
+from app.api.llm import router as llm_router
+app.include_router(llm_router, prefix=f"{settings.API_V1_STR}/llm", tags=["llm"])
+
 
 @app.get(f"{settings.API_V1_STR}/health")
 async def health_check():

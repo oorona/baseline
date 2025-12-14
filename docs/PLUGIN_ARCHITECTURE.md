@@ -37,10 +37,18 @@ If the user asks to "Add a Moderation Bot" or "Add Music Feature":
     *   Use the [Plugin Style Guide](PLUGIN_STYLE_GUIDE.md) for UI consistency.
     *   **Rule**: Do NOT modify `frontend/app/layout.tsx`; the Sidebar automatically picks up new routes if they are registered via the plugin registry (or if manual addition is requested, add only to the navigation configuration).
 
-3.  **Database / Settings**:
-    *   Use the existing `GuildSettings` (JSONB) in Postgres.
-    *   Do NOT create new tables unless absolutely necessary (keeps migrations clean).
     *   Store plugin-specific config keys (e.g., `moderation_enabled`, `filtered_words`) inside the JSON blob.
+
+4.  **Custom Pages (Beyond Settings)**:
+    *   You can create arbitrary pages in `frontend/app/dashboard/developer/[feature]/`.
+    *   Example: `frontend/app/dashboard/developer/moderation/analytics/page.tsx`.
+    *   These will represent full Next.js pages.
+    *   Use `apiClient` to fetch data from your custom backend endpoints.
+
+5.  **LLM Integration**:
+    *   See [LLM Usage Guide](../docs/LLM_USAGE_GUIDE.md) for detailed instructions on using the Shared LLM Service.
+    *   Use the `apiClient.llm` namespace for frontend calls.
+    *   Use `bot.llm_service` for bot command calls.
 
 ## Non-Core Files List
 The following paths are considered **User Space**. Code here should be preserved during framework updates:

@@ -31,6 +31,24 @@ export interface AuthorizedUser {
     created_at: string;
 }
 
+export interface LLMRequest {
+    prompt: string;
+    system_prompt?: string;
+    provider?: string;
+    model?: string;
+    guild_id?: number;
+}
+
+export interface ChatRequest {
+    message: string;
+    context_id: string;
+    name?: string;
+    provider?: string;
+    model?: string;
+    guild_id?: number;
+}
+
+
 class APIClient {
     private client: AxiosInstance;
 
@@ -220,6 +238,23 @@ class APIClient {
         const response = await this.client.get('/bot/report');
         return response.data;
     }
+
+    // LLM endpoints
+    async generateText(request: LLMRequest) {
+        const response = await this.client.post('/llm/generate', request);
+        return response.data;
+    }
+
+    async chat(request: ChatRequest) {
+        const response = await this.client.post('/llm/chat', request);
+        return response.data;
+    }
+
+    async getLLMStats() {
+        const response = await this.client.get('/llm/stats');
+        return response.data;
+    }
+
 
     // Health check
     async healthCheck() {

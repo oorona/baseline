@@ -26,6 +26,7 @@ mkdir -p secrets
 echo "Creating secret files..."
 
 # Discord Secrets
+# (See ../docs/DISCORD_APP_SETUP.md if you haven't created a bot yet)
 read -p "Enter Discord Bot Token: " discord_bot_token
 echo "$discord_bot_token" > secrets/discord_bot_token.txt
 

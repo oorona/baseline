@@ -7,6 +7,7 @@ import json
 from app.db.session import get_db
 from app.db.redis import get_redis
 from app.models import User
+from app.services.llm import LLMService
 
 async def get_current_user(
     cookie_session_id: Optional[str] = Cookie(None, alias="session_id"),
@@ -172,3 +173,12 @@ async def verify_platform_admin(
         )
         
     return current_user
+
+_llm_service = None
+
+def get_llm_service() -> LLMService:
+    global _llm_service
+    if not _llm_service:
+        _llm_service = LLMService()
+    return _llm_service
+

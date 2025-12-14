@@ -97,3 +97,22 @@ class DiscordMember(BaseModel):
     
     # Computed/Optional fields
     avatar_url: Optional[str] = None
+
+class LLMRequest(BaseModel):
+    prompt: str
+    system_prompt: Optional[str] = "You are a helpful assistant."
+    provider: Optional[str] = "openai"
+    model: Optional[str] = None
+    guild_id: Optional[int] = None
+
+class ChatRequest(BaseModel):
+    message: str
+    context_id: str
+    name: Optional[str] = None
+    provider: Optional[str] = "openai"
+    model: Optional[str] = None
+    guild_id: Optional[int] = None
+
+class LLMResponseBase(BaseModel):
+    content: str
+

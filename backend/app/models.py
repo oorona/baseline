@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, BigInteger, Boolean, DateTime, ForeignKey, Enum as SQLEnum, Text, JSON
+from sqlalchemy import Column, String, BigInteger, Boolean, DateTime, ForeignKey, Enum as SQLEnum, Text, JSON, Float
 from sqlalchemy.orm import relationship, declarative_base
 from sqlalchemy.sql import func
 import enum
@@ -81,6 +81,35 @@ class AuditLog(Base):
     details = Column(JSON, default={})
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    guild = relationship("Guild")
     user = relationship("User")
+
+class LLMUsage(Base):
+    __tablename__ = "llm_usage"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    guild_id = Column(BigInteger, ForeignKey("guilds.id"), nullable=True) # Nullable for global/system usage
+    user_id = Column(BigInteger, ForeignKey("users.id"), nullable=True)
+    cost = Column(Float, default=0.0)
+    tokens = Column(BigInteger, default=0) # Total tokens
+    prompt_tokens = Column(BigInteger, default=0)
+    completion_tokens = Column(BigInteger, default=0)
+    provider = Column(String, nullable=False)
+    model = Column(String, nullable=False)
+    request_type = Column(String, default="text") # text, chat, image, etc.
+    latency = Column(Float, default=0.0) # Seconds
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    context_id = Column(String, nullable=True) # For grouping chat turn usage
+
+class LLMModelPricing(Base):
+    __tablename__ = "llm_model_pricing"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    provider = Column(String, nullable=False)
+    model = Column(String, nullable=False, unique=True)
+    input_cost_per_1k = Column(Float, default=0.0)
+    output_cost_per_1k = Column(Float, default=0.0)
+    image_cost = Column(Float, default=0.0)
+    is_active = Column(Boolean, default=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
 

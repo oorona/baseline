@@ -142,10 +142,11 @@ These fundamental decisions guide the baseline's design and deployment strategy:
 * **FR-14: Multi-Provider LLM Service**
     The baseline shall provide a unified LLM integration module supporting multiple providers:
     - **Supported Providers**: OpenAI, Google (Gemini), xAI (Grok), Anthropic (Claude)
+    - **Access**: Available to **Bot**, **Backend**, and **Frontend** (via API)
     - **Provider-Specific APIs**: Each provider has provider-specific implementation respecting API differences
-    - **Model Selection**: Cogs can specify which provider and model to use for each request
+    - **Model Selection**: Cogs/Clients can specify which provider and model to use for each request
     - **Configurable Model List**: Support a configurable list of models per provider
-    - **Cost Tracking**: Track all token usage and costs per request and aggregated
+    - **Cost Tracking**: Track all token usage (prompt/completion) and costs (USD) per request and aggregated to proper database tables.
     
     The service is accessible via dependency injection: `services.llm`
 
@@ -286,6 +287,13 @@ The platform implements a four-level hierarchy for configuration and settings ma
     *   **Management**: **Not accessible via Frontend**. Must be set at deployment time.
 
 ***
+
+* **FR-23: AI Analytics Dashboard**
+    The framework shall provide a dedicated dashboard for developers to monitor LLM usage:
+    - **Access Control**: Restricted to Platform Admins (Level 3)
+    - **Visualizations**: Total Tokens, Total Cost, Requests by Provider
+    - **Logs**: Table detailed recent requests, latency, and costs
+    - **Data Source**: Aggregated from `llm_usage` table
 
 ## 4.0 Non-Functional Requirements
 
@@ -455,7 +463,21 @@ Bot-specific implementations may add additional tables as needed, all including 
 
 ***
 
-## 7.0 API Endpoints (Baseline)
+##     - **LLMUsage**:
+        - `id`: PK
+        - `user_id`: FK to User
+        - `guild_id`: FK to Guild (Optional)
+        - `context_id`: String (Optional, for chat grouping)
+        - `tokens`: Total tokens
+        - `cost`: Estimated cost (USD)
+        - `provider`, `model`: Strings
+        - `timestamp`: DateTime
+    - **LLMModelPricing**:
+        - `provider`, `model`: PK/Unique
+        - `input_cost_per_1k`: Float
+        - `output_cost_per_1k`: Float
+
+7.0 API Endpoints (Baseline)
 
 ### 7.1 Authentication
 - `POST /auth/discord/callback` - OAuth callback for Discord authentication
