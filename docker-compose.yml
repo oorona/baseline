@@ -26,6 +26,8 @@ services:
       ANTHROPIC_API_KEY_FILE: /run/secrets/anthropic_api_key
       XAI_API_KEY_FILE: /run/secrets/xai_api_key
       DISCORD_BOT_TOKEN_FILE: /run/secrets/discord_bot_token
+    dns:
+      - 8.8.8.8
     networks:
       # - internet # Removed for security (Ingress via Gateway only)
       - intranet # For frontend and bot communication

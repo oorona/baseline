@@ -4,8 +4,10 @@ import { useEffect, useState, useRef } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { apiClient } from '@/app/api-client';
 import { Activity, Database, Server, CheckCircle, AlertCircle, RefreshCw, Clock } from 'lucide-react';
+import { withPermission } from '@/lib/components/with-permission';
+import { PermissionLevel } from '@/lib/permissions';
 
-export default function SystemStatusPage() {
+function SystemStatusPage() {
     const { user, loading: authLoading } = useAuth();
     const [status, setStatus] = useState<any>({ backend: 'unknown', database: 'unknown', discord: 'unknown' });
     const [adminData, setAdminData] = useState<any>({ shards: [], db: null, frontend: [], backend: [] });
@@ -363,3 +365,5 @@ function NodeItem({ node, type }: any) {
         </div>
     )
 }
+
+export default withPermission(SystemStatusPage, PermissionLevel.USER);

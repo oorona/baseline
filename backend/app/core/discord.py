@@ -84,4 +84,14 @@ class DiscordClient:
             response.raise_for_status()
             return response.json()
 
+    async def get_current_user_guilds(self, access_token: str) -> List[Dict]:
+        """Fetch guilds for the authenticated user using their Bearer token."""
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.base_url}/users/@me/guilds",
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+            response.raise_for_status()
+            return response.json()
+
 discord_client = DiscordClient()

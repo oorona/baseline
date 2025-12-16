@@ -52,11 +52,29 @@ class AuthorizedUser(BaseModel):
 class AddUserRequest(BaseModel):
     user_id: int
 
+class AuthorizedRole(BaseModel):
+    id: int
+    role_id: str
+    guild_id: int
+    permission_level: str
+    created_at: datetime
+    created_by: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+class AddRoleRequest(BaseModel):
+    role_id: str
+
 class GuildSettings(BaseModel):
     allowed_channels: list[str] = []
     system_prompt: Optional[str] = None
     model: Optional[str] = "openai"
     admin_role_id: Optional[str] = None # Level 3 Access Control
+    
+    # Level 2 Access Control
+    level_2_allow_everyone: bool = True
+    level_2_roles: List[str] = []
 
 class SettingsUpdate(BaseModel):
     settings: Dict[str, Any]

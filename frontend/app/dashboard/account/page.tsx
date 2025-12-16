@@ -5,13 +5,15 @@ import { User, Globe, Moon, Sun, Monitor, Save, Server } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { apiClient, UserSettings } from '@/app/api-client';
 import { useAuth } from '@/lib/auth-context';
+import { withPermission } from '@/lib/components/with-permission';
+import { PermissionLevel } from '@/lib/permissions';
 
 interface Guild {
     id: string;
     name: string;
 }
 
-export default function AccountPage() {
+function AccountPage() {
     const { user } = useAuth();
     const { theme, setTheme } = useTheme();
     const [settings, setSettings] = useState<UserSettings>({
@@ -214,3 +216,5 @@ export default function AccountPage() {
         </div>
     );
 }
+
+export default withPermission(AccountPage, PermissionLevel.USER);

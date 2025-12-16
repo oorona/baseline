@@ -11,6 +11,7 @@ export const metadata: Metadata = {
 
 import { AuthProvider } from "@/lib/auth-context";
 import { ThemeProvider } from "./theme-provider";
+import { Providers } from "./providers";
 
 export default function RootLayout({
   children,
@@ -21,19 +22,21 @@ export default function RootLayout({
     <html lang="en">
       <body className="antialiased">
         <AuthProvider>
-          <ThemeProvider
-            attribute="class"
-            defaultTheme="system"
-            enableSystem
-            disableTransitionOnChange
-          >
-            <div className="flex h-screen bg-background">
-              <Sidebar />
-              <main className="flex-1 overflow-y-auto p-8">
-                {children}
-              </main>
-            </div>
-          </ThemeProvider>
+          <Providers>
+            <ThemeProvider
+              attribute="class"
+              defaultTheme="system"
+              enableSystem
+              disableTransitionOnChange
+            >
+              <div className="flex h-screen bg-background">
+                <Sidebar />
+                <main className="flex-1 overflow-y-auto p-8">
+                  {children}
+                </main>
+              </div>
+            </ThemeProvider>
+          </Providers>
         </AuthProvider>
       </body>
     </html>

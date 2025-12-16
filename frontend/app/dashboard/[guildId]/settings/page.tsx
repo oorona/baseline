@@ -5,8 +5,10 @@ import { useParams } from 'next/navigation';
 import { Save, Shield } from 'lucide-react';
 import { apiClient } from '@/app/api-client';
 import { usePlugins } from '@/app/plugins';
+import { withPermission } from '@/lib/components/with-permission';
+import { PermissionLevel } from '@/lib/permissions';
 
-export default function GuildSettingsPage() {
+function GuildSettingsPage() {
     const params = useParams();
     const guildId = params.guildId as string;
     const { plugins } = usePlugins();
@@ -103,8 +105,8 @@ export default function GuildSettingsPage() {
 
             {message && (
                 <div className={`p-4 rounded-lg flex items-center gap-2 text-sm font-medium ${message.type === 'success'
-                        ? 'bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20'
-                        : 'bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20'
+                    ? 'bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20'
+                    : 'bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20'
                     }`}>
                     {message.text}
                 </div>
@@ -211,3 +213,7 @@ export default function GuildSettingsPage() {
         </div>
     );
 }
+
+// Level 3: Authorized
+// Users must be Authorized Users or have Authorized Roles to access this page
+export default withPermission(GuildSettingsPage, PermissionLevel.AUTHORIZED);

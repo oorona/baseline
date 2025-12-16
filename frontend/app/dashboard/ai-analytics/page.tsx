@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { apiClient } from '@/app/api-client';
+import { withPermission } from '@/lib/components/with-permission';
+import { PermissionLevel } from '@/lib/permissions';
 
 interface LLMStats {
     total_cost: number;
@@ -10,7 +12,7 @@ interface LLMStats {
     recent_logs: any[];
 }
 
-export default function AIAnalyticsPage() {
+function AIAnalyticsPage() {
     const [stats, setStats] = useState<LLMStats | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -125,3 +127,5 @@ export default function AIAnalyticsPage() {
         </div>
     );
 }
+
+export default withPermission(AIAnalyticsPage, PermissionLevel.DEVELOPER);

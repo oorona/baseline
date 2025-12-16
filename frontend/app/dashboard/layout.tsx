@@ -16,13 +16,9 @@ export default function DashboardLayout({
     const { user, loading } = useAuth();
     const router = useRouter();
 
-    useEffect(() => {
-        if (!loading && !user) {
-            router.push('/login');
-        }
-    }, [user, loading, router]);
+    // Global auth check removed - relying on per-page 'withPermission' guards.
 
-    if (loading || !user) {
+    if (loading) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">
                 Loading...

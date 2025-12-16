@@ -76,6 +76,16 @@ Baseline is a modular framework for building Discord bots with web dashboards. I
 5. **Bot → Backend**: Fetch guild settings, report shard status
 6. **Bot → Discord**: Commands, events, messages
 
+### Network Topology & Security
+
+To ensure maximum security, the backend API is **completely isolated from the public internet**.
+
+1.  **Hidden Backend**: The `backend` container resides on an internal `intranet` Docker network. It exposes port 8000 only to other containers (Frontend, Bot). It is **NOT** accessible directly from the user's browser.
+2.  **Frontend Proxy**: The `frontend` container (Next.js) acts as a **Secure Proxy**.
+    *   Browser API calls (e.g., `GET /api/v1/someting`) are sent to the Frontend.
+    *   Next.js forwards these requests to `http://backend:8000/api/v1/something` via the internal network.
+3.  **Benefit**: Attackers cannot directly target the API or Database. All traffic must pass through the Frontend application layer.
+
 ## Component Deep Dive
 
 ### Frontend (Next.js 14 + TypeScript)
@@ -332,7 +342,7 @@ Bot receives guild_join event
 ## Performance Considerations
 
 1. **Database Indexes**: Add indexes on frequently queried columns
-2. **Redis Caching**: Cache guild settings to reduce DB load
+2. **Redis Caching**: Cache guild settings and Discord API responses (e.g., user guilds) to prevent rate limits and reduce DB load
 3. **Connection Pooling**: SQLAlchemy connection pool
 4. **Async I/O**: All I/O operations are async
 5. **Pagination**: Implement for large result sets

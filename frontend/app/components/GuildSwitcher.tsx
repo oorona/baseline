@@ -7,6 +7,8 @@ import { apiClient } from '../api-client';
 
 import { usePathname } from 'next/navigation';
 
+import { useAuth } from '@/lib/auth-context';
+
 interface Guild {
     id: string;
     name: string;
@@ -17,8 +19,13 @@ export function GuildSwitcher({ currentGuildId }: { currentGuildId?: string }) {
     const [isOpen, setIsOpen] = useState(false);
     const [guilds, setGuilds] = useState<Guild[]>([]);
     const [loading, setLoading] = useState(true);
+    const { user } = useAuth();
 
     useEffect(() => {
+        if (!user) {
+            setLoading(false);
+            return;
+        }
         const fetchGuilds = async () => {
             try {
                 const data = await apiClient.getGuilds();
@@ -31,7 +38,7 @@ export function GuildSwitcher({ currentGuildId }: { currentGuildId?: string }) {
         };
 
         fetchGuilds();
-    }, []);
+    }, [user]);
 
     const currentGuild = guilds.find((g) => g.id === currentGuildId);
 
@@ -40,7 +47,7 @@ export function GuildSwitcher({ currentGuildId }: { currentGuildId?: string }) {
             return pathname.replace(currentGuildId, targetGuildId);
         }
         // Default to permissions or settings if not currently in a guild context
-        return `/dashboard/${targetGuildId}/permissions`;
+        return `/dashboard/${targetGuildId}/settings`;
     };
 
     return (

@@ -5,6 +5,12 @@
  */
 
 import { Plugin, PluginRoute, NavItem } from './plugins/types';
+// Initialize plugins immediately
+// if (typeof window !== 'undefined' || process.env.NODE_ENV === 'development') {
+//     // Only register once if possible, or simple registry handles duplicates
+//     // registerPlugins();
+// }
+// Validation: Initialization is handled in layout.tsx to avoid circular dependency
 
 // Interfaces moved to ./plugins/types.ts to avoid circular dependencies
 

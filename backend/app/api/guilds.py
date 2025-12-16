@@ -5,15 +5,20 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Dict, Any
 from pydantic import BaseModel
+import json
+from redis.asyncio import Redis
 
 from app.db.session import get_db
-from ..models import Guild, User, AuthorizedUser, PermissionLevel, GuildSettings, AuditLog
+from app.db.redis import get_redis
+from ..models import Guild, User, AuthorizedUser, AuthorizedRole, PermissionLevel, GuildSettings, AuditLog
 from ..schemas import (
     Guild as GuildSchema,
     GuildCreate,
     User as UserSchema,
     AuthorizedUser as AuthorizedUserSchema,
     AddUserRequest,
+    AuthorizedRole as AuthorizedRoleSchema,
+    AddRoleRequest,
     GuildSettings as GuildSettingsSchema,
     SettingsUpdate,
     AuditLog as AuditLogSchema,
@@ -25,7 +30,7 @@ from ..core.config import settings as app_settings
 from app.core.discord import discord_client
 from app.core.config import settings
 from app.core.discord import discord_client
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, check_is_admin
 
 router = APIRouter()
 
@@ -33,6 +38,112 @@ class AddUserRequest(BaseModel):
     user_id: int
 
 # --- Settings Endpoints (Must be defined BEFORE generic /{guild_id}) ---
+@router.get("/{guild_id}/public")
+async def get_guild_public_info(
+    guild_id: int,
+    db: Session = Depends(get_db)
+):
+    """Get public info for a guild (Name, Icon, Member Count). No Auth Required."""
+    guild = await db.get(Guild, guild_id)
+    if not guild:
+        raise HTTPException(status_code=404, detail="Guild not found")
+    
+    return {
+        "id": str(guild.id),
+        "name": guild.name,
+        "icon": guild.icon_url,
+        "features": ["PUBLIC_ACCESS_ENABLED"]
+    }
+@router.get("/{guild_id}")
+async def get_guild(
+    guild_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+    redis: Redis = Depends(get_redis)
+):
+    """Get guild info and calculate user's permission level."""
+    user_id = int(current_user["user_id"])
+    
+    # Check if guild exists in DB
+    guild = await db.get(Guild, guild_id)
+    
+    # Calculate Permission Level
+    permission_level = "PUBLIC"
+    
+    # 1. Platform Admin
+    if current_user.get("system") or await check_is_admin(str(user_id)):
+        permission_level = "ADMIN" # Platform Admin treated as Guild Admin for simplicity, or use specific level
+    
+    # 2. Guild Owner
+    elif guild and guild.owner_id == user_id:
+        permission_level = "owner"
+        
+    else:
+        # 3. Authorized User (DB)
+        auth_check = await db.execute(
+            select(AuthorizedUser).where(
+                AuthorizedUser.guild_id == guild_id,
+                AuthorizedUser.user_id == user_id
+            )
+        )
+        auth_user = auth_check.scalar_one_or_none()
+        
+        if auth_user:
+            permission_level = auth_user.permission_level.value
+        else:
+            # 4. Level 2 Access (Guild Member)
+            # Check settings
+            allow_everyone = True
+            allowed_roles = []
+            
+            if guild:
+                settings_res = await db.execute(
+                    select(GuildSettings).where(GuildSettings.guild_id == guild_id)
+                )
+                settings = settings_res.scalar_one_or_none()
+                if settings and settings.settings_json:
+                     allow_everyone = settings.settings_json.get("level_2_allow_everyone", True)
+                     allowed_roles = settings.settings_json.get("level_2_roles", [])
+            
+            # Check Discord Membership
+            try:
+                member = await discord_client.get_guild_member(str(guild_id), str(user_id))
+                if member:
+                    user_roles = member.get("roles", [])
+                    
+                    if allow_everyone:
+                        permission_level = "LEVEL_2"
+                    elif any(r in allowed_roles for r in user_roles):
+                         permission_level = "LEVEL_2"
+            except Exception as e:
+                # User not in guild or error
+                print(f"DEBUG: get_guild check member failed: {e}")
+                # Fallback: Check cached user guilds (from list_guilds) logic
+                # Only works if allow_everyone is True because list_guilds check doesn't have roles
+                if allow_everyone:
+                    try:
+                        cache_key = f"user_guilds:{user_id}"
+                        cached_guilds = await redis.get(cache_key)
+                        if cached_guilds:
+                            guilds_list = json.loads(cached_guilds)
+                            if any(int(g["id"]) == int(guild_id) for g in guilds_list):
+                                permission_level = "LEVEL_2"
+                    except Exception as redis_error:
+                         print(f"DEBUG: Redis fallback failed: {redis_error}")
+                pass
+
+    if not guild:
+         # If guild not in DB but user is member (e.g. invited but bot not fully set up), 
+         # we might want to return basic info from Discord?
+         # For now, if not in DB, 404 is appropriate as we expect bot to be in guild.
+         raise HTTPException(status_code=404, detail="Guild not found in database")
+         
+    return {
+        "id": str(guild.id),
+        "name": guild.name,
+        "icon": guild.icon_url,
+        "permission_level": permission_level
+    }
 
 @router.get("/{guild_id}/settings")
 async def get_guild_settings(
@@ -211,6 +322,13 @@ async def update_guild_settings(
         # For now, assuming frontend sends full object.
         settings.settings_json = settings_data
         settings.updated_by = user_id
+    
+    # Check for Level 2 Settings "Allow Everyone" toggle
+    # If explicitly set to False, ensure we are not locking ourselves out? 
+    # (Actually, Level 2 is for "Generic Users", so locking is fine if intended, but let's just log it)
+    if "level_2_allow_everyone" in settings_data:
+        # We could validte roles if needed
+        pass
     
     # Log action
     log = AuditLog(
@@ -490,6 +608,173 @@ async def remove_authorized_user(
     
     return {"message": "User removed successfully"}
 
+@router.get("/{guild_id}/authorized-roles")
+async def get_authorized_roles(
+    guild_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """Get list of authorized roles for a guild."""
+    user_id = int(current_user["user_id"])
+    
+    # Check if guild exists
+    guild = await db.get(Guild, guild_id)
+    if not guild:
+        raise HTTPException(status_code=404, detail="Guild not found")
+
+    # Check if user has access (Owner or Authorized)
+    is_owner = guild.owner_id == user_id
+    
+    if not is_owner:
+        auth_check = await db.execute(
+            select(AuthorizedUser).where(
+                AuthorizedUser.guild_id == guild_id,
+                AuthorizedUser.user_id == user_id
+            )
+        )
+        if not auth_check.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have access to this guild"
+            )
+    
+    # Get all authorized roles
+    roles_result = await db.execute(
+        select(AuthorizedRole).where(AuthorizedRole.guild_id == guild_id)
+    )
+    return roles_result.scalars().all()
+
+@router.post("/{guild_id}/authorized-roles")
+async def add_authorized_role(
+    guild_id: int,
+    request: AddRoleRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """Add an authorized role (Level 3) to a guild."""
+    user_id = int(current_user["user_id"])
+    
+    # Check if guild exists
+    guild = await db.get(Guild, guild_id)
+    if not guild:
+        raise HTTPException(status_code=404, detail="Guild not found")
+
+    # Check permission (Owner or Admin)
+    is_owner = guild.owner_id == user_id
+    
+    if not is_owner:
+        auth_check = await db.execute(
+            select(AuthorizedUser).where(
+                AuthorizedUser.guild_id == guild_id,
+                AuthorizedUser.user_id == user_id
+            )
+        )
+        auth_user = auth_check.scalar_one_or_none()
+        if not auth_user or auth_user.permission_level != PermissionLevel.ADMIN:
+             raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only admins can add authorized roles"
+            )
+            
+    # VALIDATION: Prevent adding @everyone role
+    if str(request.role_id) == str(guild_id):
+         raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The @everyone role cannot be used for Level 3 access."
+        )
+
+    # Check if role is already authorized
+    existing_result = await db.execute(
+        select(AuthorizedRole).where(
+            AuthorizedRole.guild_id == guild_id,
+            AuthorizedRole.role_id == request.role_id
+        )
+    )
+    if existing_result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Role is already authorized"
+        )
+    
+    # Add new authorized role
+    new_role_auth = AuthorizedRole(
+        guild_id=guild_id,
+        role_id=request.role_id,
+        created_by=user_id,
+        permission_level=PermissionLevel.USER # Default L3 level
+    )
+    db.add(new_role_auth)
+    
+    # Log action
+    log = AuditLog(
+        guild_id=guild_id,
+        user_id=user_id,
+        action="ADD_AUTHORIZED_ROLE",
+        details={"role_id": request.role_id}
+    )
+    db.add(log)
+    
+    await db.commit()
+    return {"message": "Role authorized successfully"}
+
+@router.delete("/{guild_id}/authorized-roles/{role_id}")
+async def remove_authorized_role(
+    guild_id: int,
+    role_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """Remove an authorized role from a guild."""
+    user_id = int(current_user["user_id"])
+    
+    # Check if guild exists
+    guild = await db.get(Guild, guild_id)
+    if not guild:
+        raise HTTPException(status_code=404, detail="Guild not found")
+
+    # Check permission (Owner or Admin)
+    is_owner = guild.owner_id == user_id
+    
+    if not is_owner:
+        auth_check = await db.execute(
+            select(AuthorizedUser).where(
+                AuthorizedUser.guild_id == guild_id,
+                AuthorizedUser.user_id == user_id
+            )
+        )
+        auth_user = auth_check.scalar_one_or_none()
+        if not auth_user or auth_user.permission_level != PermissionLevel.ADMIN:
+             raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only admins can remove authorized roles"
+            )
+
+    # Find role auth to remove
+    target_result = await db.execute(
+        select(AuthorizedRole).where(
+            AuthorizedRole.guild_id == guild_id,
+            AuthorizedRole.role_id == role_id
+        )
+    )
+    target_auth = target_result.scalar_one_or_none()
+    
+    if not target_auth:
+        raise HTTPException(status_code=404, detail="Role not authorized")
+        
+    await db.delete(target_auth)
+    
+    # Log
+    log = AuditLog(
+        guild_id=guild_id,
+        user_id=user_id,
+        action="REMOVE_AUTHORIZED_ROLE",
+        details={"role_id": role_id}
+    )
+    db.add(log)
+    
+    await db.commit()
+    return {"message": "Role removed successfully"}
+
 @router.get("/{guild_id}/audit-logs", response_model=List[AuditLogSchema])
 async def get_audit_logs(
     guild_id: int,
@@ -613,7 +898,8 @@ async def get_guild_roles(
 @router.get("", response_model=List[GuildSchema])
 async def list_guilds(
     db: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    redis: Redis = Depends(get_redis)
 ):
     """List guilds the user has access to."""
     user_id = int(current_user["user_id"])
@@ -637,6 +923,80 @@ async def list_guilds(
     
     # Combine and deduplicate
     all_guilds = {g.id: g for g in owned_guilds + authorized_guilds}
+    
+    # 3. Implicit Level 2 Access (Guild Members)
+    # 3. Implicit Level 2 Access (Guild Members)
+    # Fetch user's guilds from Discord
+    access_token = current_user.get("access_token")
+    if access_token:
+        try:
+            user_guilds_discord = []
+            
+            # Caching to avoid 429
+            cache_key = f"user_guilds:{user_id}"
+            cached_guilds = await redis.get(cache_key)
+            if cached_guilds:
+                user_guilds_discord = json.loads(cached_guilds)
+            else:
+                user_guilds_discord = await discord_client.get_current_user_guilds(access_token)
+                # Cache for 5 minutes
+                await redis.setex(cache_key, 300, json.dumps(user_guilds_discord))
+            
+            user_guild_ids = [int(g["id"]) for g in user_guilds_discord]
+            
+            # Find which of these are in our DB (Bot Configured)
+            # We query ALL guilds in DB that match these IDs
+            # Note: In SQLite/Postgres this IN clause handles reasonably sized lists.
+            # If user has 1000 guilds, this might be heavy, but usually fine.
+            if user_guild_ids:
+                stmt_l2 = select(Guild).where(Guild.id.in_(user_guild_ids))
+                result_l2 = await db.execute(stmt_l2)
+                l2_candidate_guilds = result_l2.scalars().all()
+                
+                for guild in l2_candidate_guilds:
+                    if guild.id in all_guilds:
+                        continue # Already have higher access
+                        
+                    # Check Level 2 Settings
+                    # TODO: Batch fetch settings for optimization?
+                    settings_res = await db.execute(
+                        select(GuildSettings).where(GuildSettings.guild_id == guild.id)
+                    )
+                    settings = settings_res.scalar_one_or_none()
+                    
+                    allow_everyone = True
+                    allowed_roles = []
+                    if settings and settings.settings_json:
+                        allow_everyone = settings.settings_json.get("level_2_allow_everyone", True)
+                        allowed_roles = settings.settings_json.get("level_2_roles", [])
+                    
+                    has_l2_access = False
+                    if allow_everyone:
+                        has_l2_access = True
+                    else:
+                        # We need to check roles. We have the guild ID.
+                        # We need the user's member object for THIS guild.
+                        # getting /users/@me/guilds does NOT return roles.
+                        # We would need to fetch member for each guild.
+                        # This is N+1 and slow.
+                        # Optimization: Skip role check for simple list provided?
+                        # Or just show them, and let the specific get_guild fail?
+                        # BETTER: If 'allowed_roles' is set, we might assume NO access in list view to be safe/fast,
+                        # UNLESS we want to be accurate.
+                        # Current compromise: default True, if restricted, skip to avoid N+1.
+                        # User can explicitly add themselves if they need to see it, OR we implement bulk check.
+                        # For now: Only allow if 'allow_everyone' is True.
+                        pass
+                        
+                    if has_l2_access:
+                        setattr(guild, "permission_level", "LEVEL_2")
+                        all_guilds[guild.id] = guild
+                        
+        except Exception as e:
+            # If Discord fetch fails (rate limit, invalid token), stick to DB permissions
+            print(f"Failed to fetch user guilds for L2 check: {e}")
+            pass
+
     return list(all_guilds.values())
 
 @router.post("", response_model=GuildSchema)
@@ -696,12 +1056,102 @@ async def read_guild(
         if auth_user:
             setattr(guild, "permission_level", auth_user.permission_level.value)
         else:
-             # Not authorized, but maybe we shouldn't even return the guild?
-             # For now, let's return it but with no permission level (or maybe "none")
-             # Actually, if they are not authorized, they shouldn't see it at all?
-             # But list_guilds only returns what they have access to.
-             # Let's enforce access here too.
-             raise HTTPException(status_code=403, detail="You do not have access to this guild")
+            # Check for Authorized Role
+            # Fetch all generalized authorized roles for this guild
+            roles_result = await db.execute(
+                select(AuthorizedRole).where(AuthorizedRole.guild_id == guild_id)
+            )
+            auth_roles = roles_result.scalars().all()
+            
+            if auth_roles:
+                try:
+                    # Fetch user's roles from Discord
+                    member_data = await discord_client.get_guild_member(str(guild_id), str(user_id))
+                    user_roles = member_data.get("roles", [])
+                    
+                    # Check intersection
+                    matched_role_auth = None
+                    for ar in auth_roles:
+                        if ar.role_id in user_roles:
+                            # Use the highest permission? Or just first match?
+                            # For L3, it's usually just access.
+                            # If we implement levels, take highest.
+                            matched_role_auth = ar
+                            break 
+                    
+                    if matched_role_auth:
+                         setattr(guild, "permission_level", matched_role_auth.permission_level.value)
+                    else:
+                        raise Exception("Check L2")
+                except Exception:
+                    # Fallback to Level 2 Check
+                    settings_result = await db.execute(
+                        select(GuildSettings).where(GuildSettings.guild_id == guild_id)
+                    )
+                    settings = settings_result.scalar_one_or_none()
+                    
+                    has_l2_access = False
+                    # Default to True if no settings (or implied default)
+                    l2_everyone = True
+                    l2_roles = []
+                    
+                    if settings and settings.settings_json:
+                        l2_everyone = settings.settings_json.get("level_2_allow_everyone", True)
+                        l2_roles = settings.settings_json.get("level_2_roles", [])
+                    
+                    if l2_everyone:
+                        has_l2_access = True
+                    else:
+                        # Check roles intersection using fetching member data if not already fetched
+                        try:
+                            # We might have fetched it in the try block above, but scope?
+                            # Re-fetch safely or organize code better.
+                            # Just re-fetch or assume member_data valid?
+                            # Safe to re-fetch if needed, or structured differently.
+                            # Let's just fetch safely.
+                            member_data = await discord_client.get_guild_member(str(guild_id), str(user_id))
+                            user_roles = member_data.get("roles", [])
+                            if any(r in user_roles for r in l2_roles):
+                                has_l2_access = True
+                        except Exception:
+                            has_l2_access = False
+                    
+                    if has_l2_access:
+                         setattr(guild, "permission_level", "LEVEL_2")
+                    else:
+                        raise HTTPException(status_code=403, detail="You do not have access to this guild")
+            else:
+                 # No authorized roles, check L2 immediately
+                 # Copy-paste L2 logic? Or Refactor?
+                 # Refactoring inside replace_file is risky.
+                 # I will inline it for now.
+                 settings_result = await db.execute(
+                        select(GuildSettings).where(GuildSettings.guild_id == guild_id)
+                    )
+                 settings = settings_result.scalar_one_or_none()
+                 
+                 has_l2_access = False
+                 l2_everyone = True
+                 l2_roles = []
+                 if settings and settings.settings_json:
+                    l2_everyone = settings.settings_json.get("level_2_allow_everyone", True)
+                    l2_roles = settings.settings_json.get("level_2_roles", [])
+                 
+                 if l2_everyone:
+                     has_l2_access = True
+                 else:
+                     try:
+                        member_data = await discord_client.get_guild_member(str(guild_id), str(user_id))
+                        user_roles = member_data.get("roles", [])
+                        if any(r in user_roles for r in l2_roles):
+                            has_l2_access = True
+                     except:
+                        pass
+                 
+                 if has_l2_access:
+                     setattr(guild, "permission_level", "LEVEL_2")
+                 else:
+                     raise HTTPException(status_code=403, detail="You do not have access to this guild")
     
     return guild
 

@@ -10,8 +10,11 @@ import { GuildSwitcher } from './GuildSwitcher';
 import { ThemeToggle } from './ThemeToggle';
 import { usePlugins } from '../plugins';
 import { siteConfig } from '../config';
+import { PermissionLevel } from '@/lib/permissions';
+import { usePermissions } from '@/lib/hooks/use-permissions';
 
 // Define Guild interface with permission level
+// Note: We don't fetch full permission level in list_guilds yet, but basic logic is here.
 interface Guild {
     id: string;
     name: string;
@@ -19,33 +22,17 @@ interface Guild {
 }
 
 const defaultNavigation = [
-    { name: 'Home', href: '/', icon: Home },
-    { name: 'Permissions', href: '/dashboard/[guildId]/permissions', icon: Shield, requiredPermission: 'admin' },
-    { name: 'Bot Settings', href: '/dashboard/[guildId]/settings', icon: Settings },
-    { name: 'Developer Tools', href: '/dashboard/developer/logging', icon: Terminal, adminOnly: true },
-    { name: 'Account Settings', href: '/dashboard/account', icon: User },
+    { name: 'Home', href: '/', icon: Home, level: PermissionLevel.USER },
+    { name: 'Permissions', href: '/dashboard/[guildId]/permissions', icon: Shield, level: PermissionLevel.OWNER },
+    { name: 'Bot Settings', href: '/dashboard/[guildId]/settings', icon: Settings, level: PermissionLevel.AUTHORIZED },
+    { name: 'Account Settings', href: '/dashboard/account', icon: User, level: PermissionLevel.PUBLIC },
 ];
 
 export function Sidebar({ guildId }: { guildId?: string }) {
     const pathname = usePathname();
     const [isOpen, setIsOpen] = useState(false);
-    const { user, loading, logout } = useAuth();
+    const { user, logout } = useAuth();
     const { navItems: pluginNavItems } = usePlugins();
-
-    // Guild data for permissions
-    const [guilds, setGuilds] = useState<Guild[]>([]);
-    useEffect(() => {
-        const fetchGuilds = async () => {
-            const { apiClient } = await import('../api-client');
-            try {
-                const data = await apiClient.getGuilds();
-                setGuilds(data);
-            } catch (e) {
-                console.error("Failed to load guilds for sidebar permissions", e);
-            }
-        };
-        fetchGuilds();
-    }, []);
 
     // Extract guildId from pathname if not provided
     const match = pathname?.match(/\/dashboard\/(\d+)/);
@@ -54,8 +41,28 @@ export function Sidebar({ guildId }: { guildId?: string }) {
     // Persistence Logic
     const [activeGuildId, setActiveGuildId] = useState<string | undefined>(urlGuildId);
 
+    // Permission Hook - Use activeGuildId so permissions update with switcher
+    const { hasAccess, permissionLevel, loading: permLoading } = usePermissions(activeGuildId || urlGuildId);
+
     const defaultGuildId = user?.preferences?.default_guild_id;
     const isPlatformAdmin = user?.is_admin || false;
+
+    // Guild data
+    const [guilds, setGuilds] = useState<Guild[]>([]);
+    useEffect(() => {
+        if (!user) return;
+        const fetchGuilds = async () => {
+            const { apiClient } = await import('../api-client');
+            try {
+                const data = await apiClient.getGuilds();
+                setGuilds(data);
+            } catch (e) {
+                console.error("Failed to load guilds", e);
+            }
+        };
+        fetchGuilds();
+    }, [user]);
+
 
     useEffect(() => {
         if (urlGuildId) {
@@ -63,28 +70,36 @@ export function Sidebar({ guildId }: { guildId?: string }) {
             localStorage.setItem('lastGuildId', urlGuildId);
         } else {
             const last = localStorage.getItem('lastGuildId');
-            if (last) {
+            // Ensure ID is numeric (Discord Snowflake)
+            if (last && /^\d+$/.test(last)) {
                 setActiveGuildId(last);
             } else if (defaultGuildId) {
                 setActiveGuildId(defaultGuildId);
+            } else if (guilds.length > 0) {
+                // Fallback: Select first available guild
+                setActiveGuildId(guilds[0].id);
             }
         }
-    }, [urlGuildId, defaultGuildId]);
+    }, [urlGuildId, defaultGuildId, guilds]);
 
     if (pathname === '/login' || pathname === '/access-denied' || pathname === '/welcome') {
         return null;
     }
 
-    if (!user) {
-        return null;
-    }
+    // Guest Mode: If no user, show limited navigation
+    const isGuest = !user;
+
+    // if (!user) {
+    //    return null; 
+    // } 
+    // Replaced with guest handling below
 
     const navigation = [...defaultNavigation, ...pluginNavItems];
     const filteredNav = navigation.filter((item: any) => !item.adminOnly || isPlatformAdmin);
 
+    // Local check for admin status (visual only, real check done by hook)
     const currentGuild = guilds.find(g => g.id === activeGuildId);
-    const guildPermission = currentGuild?.permission_level;
-    const isGuildAdmin = guildPermission === 'owner' || guildPermission === 'admin';
+    // const guildPermission = currentGuild?.permission_level; // Legacy
 
     const getHref = (href: string) => {
         if (activeGuildId && href.includes('[guildId]')) {
@@ -120,30 +135,37 @@ export function Sidebar({ guildId }: { guildId?: string }) {
                 </div>
 
                 <nav className="flex-1 px-4 space-y-1 overflow-y-auto">
-                    {filteredNav.map((item: any) => {
+                    {navigation.map((item: any) => {
                         const href = getHref(item.href);
                         const isActive = pathname === href;
 
                         const requiresGuild = item.href.includes('[guildId]');
-                        let isDisabled = requiresGuild && !activeGuildId;
+                        let isDisabled = false;
 
-                        if (!isDisabled && requiresGuild && item.requiredPermission === 'admin') {
-                            if (!isGuildAdmin) {
-                                isDisabled = true;
+                        // Rule 1: Needs Guild Context
+                        if (requiresGuild && !activeGuildId) isDisabled = true;
+
+                        // Rule 2: Permission Level
+                        if (!isDisabled) {
+                            const reqLevel = item.level ?? (item.adminOnly ? PermissionLevel.DEVELOPER : PermissionLevel.USER);
+
+                            // Guest Check
+                            if (isGuest) {
+                                // Guests only see Public items
+                                if (reqLevel > PermissionLevel.PUBLIC) isDisabled = true;
+                            } else {
+                                if (requiresGuild) {
+                                    // We use the hook's hasAccess which is reactive
+                                    if (!hasAccess(reqLevel)) isDisabled = true;
+                                } else {
+                                    // Global Checks
+                                    if (reqLevel === PermissionLevel.DEVELOPER && !isPlatformAdmin) isDisabled = true;
+                                }
                             }
                         }
 
                         if (isDisabled) {
-                            return (
-                                <div
-                                    key={item.name}
-                                    className="flex items-center space-x-3 px-3 py-2.5 rounded-lg text-muted-foreground opacity-50 cursor-not-allowed text-sm font-medium"
-                                    title="You do not have permission to access this section"
-                                >
-                                    {item.icon && <item.icon size={18} />}
-                                    <span>{item.name}</span>
-                                </div>
-                            );
+                            return null;
                         }
 
                         return (
@@ -166,30 +188,42 @@ export function Sidebar({ guildId }: { guildId?: string }) {
                 </nav>
 
                 <div className="p-4 border-t border-border bg-card/50">
-                    <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center space-x-3">
-                            {user.avatar_url ? (
-                                <img src={user.avatar_url} alt={user.username} className="w-8 h-8 rounded-full" />
-                            ) : (
-                                <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-primary text-xs font-bold">
-                                    {user.username.substring(0, 2).toUpperCase()}
+                    {isGuest ? (
+                        <Link
+                            href="/login"
+                            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                        >
+                            <LogOut size={16} className="rotate-180" />
+                            Login
+                        </Link>
+                    ) : (
+                        <>
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center space-x-3">
+                                    {user.avatar_url ? (
+                                        <img src={user.avatar_url} alt={user.username} className="w-8 h-8 rounded-full" />
+                                    ) : (
+                                        <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-primary text-xs font-bold">
+                                            {user.username.substring(0, 2).toUpperCase()}
+                                        </div>
+                                    )}
+                                    <div className="flex flex-col">
+                                        <span className="text-sm font-medium leading-none">{user.username}</span>
+                                        <span className="text-xs text-muted-foreground">Level: {isPlatformAdmin ? 'Admin' : 'User'}</span>
+                                    </div>
                                 </div>
-                            )}
-                            <div className="flex flex-col">
-                                <span className="text-sm font-medium leading-none">{user.username}</span>
-                                <span className="text-xs text-muted-foreground">Level: {isPlatformAdmin ? 'Admin' : 'User'}</span>
+                                <ThemeToggle />
                             </div>
-                        </div>
-                        <ThemeToggle />
-                    </div>
 
-                    <button
-                        onClick={logout}
-                        className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors"
-                    >
-                        <LogOut size={16} />
-                        Logout
-                    </button>
+                            <button
+                                onClick={logout}
+                                className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors"
+                            >
+                                <LogOut size={16} />
+                                Logout
+                            </button>
+                        </>
+                    )}
 
                     <div className="mt-4 text-center">
                         <p className="text-[10px] text-muted-foreground uppercase tracking-wider">v1.0.0 Alpha</p>

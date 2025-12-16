@@ -1,6 +1,12 @@
 import axios, { AxiosError, AxiosInstance } from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// Network Topology & API Routing:
+// 1. Client-Side (Browser): Uses relative path '' to hit Next.js Frontend Proxy (which routes /api/v1 -> Backend).
+// 2. Server-Side (SSR): Next.js Server (Container) must hit Backend Container directly via Docker Network (http://backend:8000).
+const IS_SERVER = typeof window === 'undefined';
+const API_BASE_URL = IS_SERVER
+    ? (process.env.INTERNAL_API_URL || 'http://backend:8000')
+    : (process.env.NEXT_PUBLIC_API_URL || '');
 
 export interface DiscordUser {
     id: string;
@@ -48,6 +54,15 @@ export interface ChatRequest {
     guild_id?: number;
 }
 
+export interface AuthorizedRole {
+    id: number;
+    guild_id: string;
+    role_id: string;
+    permission_level: string;
+    created_at: string;
+}
+
+
 
 class APIClient {
     private client: AxiosInstance;
@@ -87,6 +102,12 @@ class APIClient {
             },
             async (error: AxiosError) => {
                 if (error.response?.status === 401) {
+                    // Special case: Don't redirect if we are just checking auth status
+                    // This allows public pages to load without forcing login
+                    if (error.config?.url?.includes('/auth/me')) {
+                        return Promise.reject(error);
+                    }
+
                     // Unauthorized - clear token and redirect to login
                     if (typeof window !== 'undefined') {
                         localStorage.removeItem('access_token');
@@ -135,6 +156,11 @@ class APIClient {
     // Guild endpoints
     async getGuilds() {
         const response = await this.client.get('/guilds');
+        return response.data;
+    }
+
+    async getGuildPublicInfo(guildId: string) {
+        const response = await this.client.get(`/guilds/${guildId}/public`);
         return response.data;
     }
 
@@ -196,6 +222,7 @@ class APIClient {
         return response.data;
     }
 
+
     // Permission endpoints
     async getAuthorizedUsers(guildId: string): Promise<AuthorizedUser[]> {
         const response = await this.client.get(`/guilds/${guildId}/authorized-users`);
@@ -209,6 +236,21 @@ class APIClient {
 
     async removeAuthorizedUser(guildId: string, userId: string) {
         const response = await this.client.delete(`/guilds/${guildId}/authorized-users/${userId}`);
+        return response.data;
+    }
+
+    async getAuthorizedRoles(guildId: string): Promise<AuthorizedRole[]> {
+        const response = await this.client.get(`/guilds/${guildId}/authorized-roles`);
+        return response.data;
+    }
+
+    async addAuthorizedRole(guildId: string, roleId: string) {
+        const response = await this.client.post(`/guilds/${guildId}/authorized-roles`, { role_id: roleId });
+        return response.data;
+    }
+
+    async removeAuthorizedRole(guildId: string, roleId: string) {
+        const response = await this.client.delete(`/guilds/${guildId}/authorized-roles/${roleId}`);
         return response.data;
     }
 

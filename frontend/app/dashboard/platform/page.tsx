@@ -3,8 +3,10 @@
 import { useEffect, useState } from 'react';
 import { Save, Shield } from 'lucide-react';
 import { apiClient } from '@/app/api-client';
+import { withPermission } from '@/lib/components/with-permission';
+import { PermissionLevel } from '@/lib/permissions';
 
-export default function PlatformSettingsPage() {
+function PlatformSettingsPage() {
     const [settings, setSettings] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -125,3 +127,5 @@ export default function PlatformSettingsPage() {
         </div>
     );
 }
+
+export default withPermission(PlatformSettingsPage, PermissionLevel.DEVELOPER);

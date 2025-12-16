@@ -31,6 +31,7 @@ class Guild(Base):
     is_active = Column(Boolean, default=True)
 
     authorized_users = relationship("AuthorizedUser", back_populates="guild")
+    authorized_roles = relationship("AuthorizedRole", back_populates="guild")
     settings = relationship("GuildSettings", back_populates="guild", uselist=False)
 
 class PermissionLevel(enum.Enum):
@@ -50,6 +51,18 @@ class AuthorizedUser(Base):
 
     user = relationship("User", back_populates="authorized_guilds")
     guild = relationship("Guild", back_populates="authorized_users")
+
+class AuthorizedRole(Base):
+    __tablename__ = "authorized_roles"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    guild_id = Column(BigInteger, ForeignKey("guilds.id"), nullable=False)
+    role_id = Column(String, nullable=False) # Discord Role ID (String because it can be large and API sends string)
+    permission_level = Column(SQLEnum(PermissionLevel), default=PermissionLevel.USER)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_by = Column(BigInteger, nullable=True) # User ID who granted permission
+
+    guild = relationship("Guild", back_populates="authorized_roles")
 
 class GuildSettings(Base):
     __tablename__ = "guild_settings"

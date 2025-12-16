@@ -1,130 +1,54 @@
-# .gitignore for Discord Bot Platform Baseline
+#.gitignore
+# Dependencies
+node_modules/
+.pnpm-store
+.npm
 
-# ============================================
-# SECRETS AND SENSITIVE DATA
-# ============================================
-secrets/
-*.secret
-*.key
-*.pem
-.env
-.env.local
-.env.*.local
+# Next.js
+.next/
+out/
+build/
+dist/
 
-# ============================================
-# PYTHON
-# ============================================
+# Python / Backend
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-!frontend/lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-*.manifest
-*.spec
-pip-log.txt
-pip-delete-this-directory.txt
-.pytest_cache/
-.coverage
-htmlcov/
-.mypy_cache/
-.dmypy.json
-dmypy.json
+venv/
+.venv/
+.env
+.env*.local
 
-# ============================================
-# NODE / JAVASCRIPT
-# ============================================
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.next/
-out/
-.cache/
-.vercel
-.turbo
-
-# ============================================
-# DOCKER
-# ============================================
-*.log
-docker-compose.override.yml
-
-# ============================================
-# DATABASE
-# ============================================
-*.db
-*.sqlite
-*.sqlite3
-migrations/versions/*.py
-!migrations/versions/__init__.py
-
-# ============================================
-# IDE
-# ============================================
+# IDEs
 .vscode/
 .idea/
 *.swp
 *.swo
-*~
+
+# OS
 .DS_Store
+Thumbs.db
 
-# ============================================
-# TEMPORARY FILES
-# ============================================
-*.tmp
-*.temp
-*.bak
-*.backup
-tmp/
-temp/
-
-# ============================================
-# LOGS
-# ============================================
+# Logs
 logs/
 *.log
-loglevel
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# ============================================
-# TESTING
-# ============================================
-.tox/
-.coverage
-.coverage.*
-htmlcov/
-.pytest_cache/
+# Testing
+coverage/
 
-# ============================================
-# KEEP EXAMPLE FILES
-# ============================================
-!.env.example
+# Misc
+.vercel
+secrets/
 !secrets/.gitkeep
-
-# ============================================
-# SAMPLE BOT / PLUGINS (Local Only)
-# ============================================
-frontend/app/dashboard/developer/logging/
-bot/cogs/logging.py
 
 # ============================================
 # SAMPLE BOT / PLUGINS (DO NOT COMMIT)
 # ============================================
-frontend/app/dashboard/developer/logging/
+# frontend/app/dashboard/developer/logging/
+# frontend/app/dashboard/[guildId]/logging/
 bot/cogs/logging.py
+frontend/app/dashboard/[guildId]/test-l1/
+frontend/app/dashboard/[guildId]/test-l2/

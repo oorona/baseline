@@ -1,4 +1,6 @@
 import { pluginRegistry } from '../plugins';
+import { Terminal } from 'lucide-react';
+import { PermissionLevel } from '@/lib/permissions';
 
 // Import your custom plugins here
 // import { myCustomPlugin } from './my-custom-plugin';
@@ -23,6 +25,9 @@ export function registerPlugins() {
         )
     });
     */
+
+    // Register Logging Plugin (Authorized Access)
+    // Logging Plugin removed as per user request (moved to landing page debug)
 
     console.log('Plugins initialized');
 }

@@ -32,13 +32,18 @@ export default function Home() {
     }
 
     if (user) {
+      // Add loading state for guilds? It's fine for now, main loading handles auth.
       apiClient.getGuilds().then(data => {
         setGuilds(data);
         // If user has no guilds (owned or authorized), redirect to welcome page
         if (data.length === 0) {
           router.push('/welcome');
         }
-      }).catch(console.error);
+      }).catch(err => {
+        console.error("Failed to fetch guilds:", err);
+        // Don't redirect on error, let them see a possibly empty dashboard or error state
+        // instead of looping to welcome.
+      });
     }
   }, [user, loading, router]);
 
@@ -70,13 +75,27 @@ export default function Home() {
           <div
             onClick={() => {
               const defaultGuildId = user?.preferences?.default_guild_id;
-              const targetGuildId = defaultGuildId || (guilds.length > 0 ? guilds[0].id : null);
+              const lastActiveGuildId = localStorage.getItem('lastGuildId');
+              const targetGuildId = lastActiveGuildId || defaultGuildId || (guilds.length > 0 ? guilds[0].id : null);
 
               if (targetGuildId) {
                 const targetGuild = guilds.find(g => g.id === targetGuildId);
-                const isGuildAdmin = targetGuild?.permission_level === 'owner' || targetGuild?.permission_level === 'admin';
-                const route = isGuildAdmin ? 'permissions' : 'settings';
-                router.push(`/dashboard/${targetGuildId}/${route}`);
+                // Check exact permission strings from backend
+                const isOwner = targetGuild?.permission_level === 'owner';
+                const isAuthorized = targetGuild?.permission_level === 'admin' || targetGuild?.permission_level === 'user'; // 'user' in backend = L3 if authorized_users table? No, logic in usePermissions is more complex. Relies on backend response.
+
+                // If isOwner -> Permissions Page (L4)
+                if (isOwner) {
+                  router.push(`/dashboard/${targetGuildId}/permissions`);
+                }
+                // If Authorized (L3) -> Settings Page
+                else if (isAuthorized) {
+                  router.push(`/dashboard/${targetGuildId}/settings`);
+                }
+                // Else -> Status Page (L2)
+                else {
+                  router.push(`/dashboard/status`);
+                }
               }
             }}
             className="group relative bg-muted/30 hover:bg-muted/50 border border-border rounded-xl p-6 cursor-pointer transition-all hover:shadow-md hover:-translate-y-1"
@@ -127,7 +146,16 @@ export default function Home() {
               </div>
 
               <div
-                onClick={() => router.push('/dashboard/developer/logging')}
+                onClick={() => {
+                  const defaultGuildId = user?.preferences?.default_guild_id;
+                  const targetGuildId = defaultGuildId || (guilds.length > 0 ? guilds[0].id : null);
+                  if (targetGuildId) {
+                    router.push(`/dashboard/${targetGuildId}/logging`);
+                  } else {
+                    // No guilds, maybe show alert or just go to status
+                    router.push('/dashboard/status');
+                  }
+                }}
                 className="group relative bg-muted/30 hover:bg-muted/50 border border-border rounded-xl p-6 cursor-pointer transition-all hover:shadow-md hover:-translate-y-1"
               >
                 <div className="absolute top-6 right-6 p-2 bg-yellow-500/10 rounded-full text-yellow-500 group-hover:bg-yellow-500 group-hover:text-white transition-colors">
