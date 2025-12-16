@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { Sidebar } from "./components/Sidebar";
+import { Header } from "./components/Header";
 
 import { siteConfig } from "./config";
 
@@ -29,9 +29,9 @@ export default function RootLayout({
               enableSystem
               disableTransitionOnChange
             >
-              <div className="flex h-screen bg-background">
-                <Sidebar />
-                <main className="flex-1 overflow-y-auto p-8">
+              <div className="flex flex-col min-h-screen bg-background">
+                <Header />
+                <main className="flex-1 overflow-y-auto p-4 md:p-8">
                   {children}
                 </main>
               </div>

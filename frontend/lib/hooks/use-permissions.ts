@@ -32,7 +32,8 @@ export function usePermissions(guildId?: string) {
 
         if (pLevel === 'owner') return PermissionLevel.OWNER;
         if (pLevel === 'admin' || pLevel === 'ADMIN') return PermissionLevel.AUTHORIZED;
-        if (pLevel === 'user' || pLevel === 'USER') return PermissionLevel.AUTHORIZED;
+        // Fix: 'user' should map to USER level (2), not AUTHORIZED (3)
+        if (pLevel === 'user' || pLevel === 'USER') return PermissionLevel.USER;
         if (pLevel === 'level_2' || pLevel === 'LEVEL_2') return PermissionLevel.USER;
 
         return PermissionLevel.USER; // Fallback for guild members

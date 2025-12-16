@@ -1,173 +1,284 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { apiClient } from '@/app/api-client';
 import { usePlugins } from '@/app/plugins';
-import { LogOut, Bot, Settings, Activity, Terminal } from 'lucide-react';
-import { siteConfig } from './config';
+import { Bot, Settings, Activity, Terminal, Shield, Lock, ExternalLink, User, FileText, ScrollText, Database, BarChart2 } from 'lucide-react';
+import { usePermissions } from '@/lib/hooks/use-permissions';
+import { PermissionLevel } from '@/lib/permissions';
 
-export default function Home() {
-  const { user, loading, logout } = useAuth();
+function DashboardContent() {
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
-  const { navItems } = usePlugins();
+  const searchParams = useSearchParams();
+  const { navItems: pluginNavItems } = usePlugins();
+
   const [guilds, setGuilds] = useState<any[]>([]);
+  const [loadingGuilds, setLoadingGuilds] = useState(true);
+
+  // Determine Guild ID
+  // Priority: URL Param > LocalStorage > Default > First in List
+  const paramGuildId = searchParams.get('guild_id');
+  const [activeGuildId, setActiveGuildId] = useState<string | null>(null);
+
+  // Permission Hook
+  const { hasAccess, permissionLevel, loading: permLoading } = usePermissions(activeGuildId || undefined);
 
   useEffect(() => {
-    // Check for token in URL (from OAuth callback)
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get('token');
-    if (token) {
-      localStorage.setItem('access_token', token);
-      // Clean up URL
-      window.history.replaceState({}, '', '/');
-      // Force reload to pick up new token in AuthContext
-      window.location.reload();
+    if (!user) {
+      setLoadingGuilds(false);
       return;
     }
 
-    if (!loading && !user) {
-      router.push('/login');
-    }
+    apiClient.getGuilds().then(data => {
+      setGuilds(data);
+      if (data.length === 0) {
+        router.push('/welcome');
+        return;
+      }
 
-    if (user) {
-      // Add loading state for guilds? It's fine for now, main loading handles auth.
-      apiClient.getGuilds().then(data => {
-        setGuilds(data);
-        // If user has no guilds (owned or authorized), redirect to welcome page
-        if (data.length === 0) {
-          router.push('/welcome');
+      // Resolve Active Guild
+      let resolvedId = null;
+      if (paramGuildId && data.find((g: any) => g.id === paramGuildId)) {
+        resolvedId = paramGuildId;
+      } else {
+        const stored = localStorage.getItem('lastGuildId');
+        if (stored && data.find((g: any) => g.id === stored)) {
+          resolvedId = stored;
+        } else if (user.preferences?.default_guild_id && data.find((g: any) => g.id === user.preferences.default_guild_id)) {
+          resolvedId = user.preferences.default_guild_id;
+        } else {
+          resolvedId = data[0].id;
         }
-      }).catch(err => {
-        console.error("Failed to fetch guilds:", err);
-        // Don't redirect on error, let them see a possibly empty dashboard or error state
-        // instead of looping to welcome.
-      });
-    }
-  }, [user, loading, router]);
+      }
 
-  // Check for welcome redirect logic is already here
+      if (resolvedId) {
+        setActiveGuildId(resolvedId);
+      }
+    }).catch(err => {
+      console.error("Failed to fetch guilds:", err);
+    }).finally(() => {
+      setLoadingGuilds(false);
+    });
+  }, [user, paramGuildId]);
 
-  if (loading) {
+  if (authLoading || loadingGuilds || permLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="animate-pulse text-muted-foreground">Loading dashboard...</div>
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+          <p className="text-muted-foreground animate-pulse">Loading dashboard...</p>
+        </div>
       </div>
     );
   }
 
   if (!user) {
+    router.push('/login');
     return null;
   }
 
+  // Define Cards
+  interface DashboardCard {
+    title: string;
+    description: string;
+    icon: any;
+    href: string;
+    level: PermissionLevel;
+    color: string;
+    bgColor: string;
+    borderColor: string;
+    isAdminOnly?: boolean;
+  }
+
+  const cards: DashboardCard[] = [
+    {
+      title: 'Bot Settings',
+      description: 'Configure general bot behavior, prefix, and language.',
+      icon: Settings,
+      href: `/dashboard/${activeGuildId}/settings`,
+      level: PermissionLevel.AUTHORIZED, // Level 3
+      color: 'text-blue-500',
+      bgColor: 'bg-blue-500/10',
+      borderColor: 'group-hover:border-blue-500/50',
+      isAdminOnly: false
+    },
+    {
+      title: 'Permissions',
+      description: 'Manage access levels, authorized users, and roles.',
+      icon: Shield,
+      href: `/dashboard/${activeGuildId}/permissions`,
+      level: PermissionLevel.OWNER, // Level 4
+      color: 'text-purple-500',
+      bgColor: 'bg-purple-500/10',
+      borderColor: 'group-hover:border-purple-500/50',
+      isAdminOnly: false
+    },
+    {
+      title: 'System Status',
+      description: 'View shard status, uptime, and database metrics.',
+      icon: Activity,
+      href: `/dashboard/status`, // Global page, but potentially context aware later?
+      level: PermissionLevel.USER, // Level 2
+      color: 'text-green-500',
+      bgColor: 'bg-green-500/10',
+      borderColor: 'group-hover:border-green-500/50',
+      isAdminOnly: false
+    },
+    {
+      title: 'Account Settings',
+      description: 'Manage your personal preferences and profile.',
+      icon: User,
+      href: `/dashboard/account`,
+      level: PermissionLevel.USER, // Public in Sidebar, but User level is fine for logged in
+      color: 'text-indigo-500',
+      bgColor: 'bg-indigo-500/10',
+      borderColor: 'group-hover:border-indigo-500/50',
+      isAdminOnly: false
+    },
+    {
+      title: 'Audit Logs',
+      description: 'Track changes and actions within this server.',
+      icon: FileText,
+      href: `/dashboard/${activeGuildId}/audit-logs`,
+      level: PermissionLevel.AUTHORIZED,
+      color: 'text-orange-500',
+      bgColor: 'bg-orange-500/10',
+      borderColor: 'group-hover:border-orange-500/50',
+      isAdminOnly: false
+    },
+    {
+      title: 'Logging Control',
+      description: 'Configure logging levels for this server.',
+      icon: ScrollText,
+      href: `/dashboard/${activeGuildId}/logging`,
+      level: PermissionLevel.AUTHORIZED,
+      color: 'text-pink-500',
+      bgColor: 'bg-pink-500/10',
+      borderColor: 'group-hover:border-pink-500/50',
+      isAdminOnly: false
+    },
+    {
+      title: 'Platform Settings',
+      description: 'Global configuration for all bots.',
+      icon: Database,
+      href: `/dashboard/platform`,
+      level: PermissionLevel.DEVELOPER,
+      color: 'text-red-500',
+      bgColor: 'bg-red-500/10',
+      borderColor: 'group-hover:border-red-500/50',
+      isAdminOnly: true
+    },
+    {
+      title: 'AI Analytics',
+      description: 'View LLM usage stats and costs.',
+      icon: BarChart2,
+      href: `/dashboard/ai-analytics`,
+      level: PermissionLevel.DEVELOPER,
+      color: 'text-cyan-500',
+      bgColor: 'bg-cyan-500/10',
+      borderColor: 'group-hover:border-cyan-500/50',
+      isAdminOnly: true
+    },
+    // Plugins
+    ...pluginNavItems.map((plugin: any) => ({
+      title: plugin.name,
+      description: 'Plugin module',
+      icon: plugin.icon || Terminal,
+      href: plugin.href.replace('[guildId]', activeGuildId || ''),
+      level: plugin.level || PermissionLevel.USER,
+      color: 'text-orange-500',
+      bgColor: 'bg-orange-500/10',
+      borderColor: 'group-hover:border-orange-500/50',
+      isAdminOnly: plugin.adminOnly
+    }))
+  ];
+
+  // Filter Cards
+  const visibleCards = cards.filter(card => {
+    if (card.isAdminOnly && !user.is_admin) return false;
+    return hasAccess(card.level);
+  });
+
+  const activeGuild = guilds.find(g => g.id === activeGuildId);
+
   return (
-    <div className="space-y-8">
-      <div className="bg-card border border-border rounded-xl p-8 shadow-sm">
-        <h2 className="text-3xl font-bold mb-4 bg-gradient-to-r from-indigo-500 to-purple-500 bg-clip-text text-transparent">
-          Welcome back, {user.username}!
-        </h2>
-        <p className="text-muted-foreground text-lg mb-8 max-w-2xl">
-          Your bot platform is ready. Select a server from the sidebar or use the quick actions below to manage your bots.
+    <div className="max-w-7xl mx-auto space-y-12">
+
+      {/* Hero / Welcome Section */}
+      <div className="text-center space-y-4 py-8">
+        <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 bg-clip-text text-transparent">
+          {activeGuild ? `Manage ${activeGuild.name}` : 'Welcome, ' + user.username}
+        </h1>
+        <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+          Select a tool below to manage your server or view platform status.
         </p>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <div
-            onClick={() => {
-              const defaultGuildId = user?.preferences?.default_guild_id;
-              const lastActiveGuildId = localStorage.getItem('lastGuildId');
-              const targetGuildId = lastActiveGuildId || defaultGuildId || (guilds.length > 0 ? guilds[0].id : null);
-
-              if (targetGuildId) {
-                const targetGuild = guilds.find(g => g.id === targetGuildId);
-                // Check exact permission strings from backend
-                const isOwner = targetGuild?.permission_level === 'owner';
-                const isAuthorized = targetGuild?.permission_level === 'admin' || targetGuild?.permission_level === 'user'; // 'user' in backend = L3 if authorized_users table? No, logic in usePermissions is more complex. Relies on backend response.
-
-                // If isOwner -> Permissions Page (L4)
-                if (isOwner) {
-                  router.push(`/dashboard/${targetGuildId}/permissions`);
-                }
-                // If Authorized (L3) -> Settings Page
-                else if (isAuthorized) {
-                  router.push(`/dashboard/${targetGuildId}/settings`);
-                }
-                // Else -> Status Page (L2)
-                else {
-                  router.push(`/dashboard/status`);
-                }
+        {activeGuild && (
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-muted/50 border border-border text-sm text-muted-foreground">
+            <span>Current Permission:</span>
+            <span className="font-semibold text-foreground">
+              {user.is_admin ? 'Developer' :
+                permissionLevel === PermissionLevel.OWNER ? 'Owner' :
+                  permissionLevel === PermissionLevel.AUTHORIZED ? 'Authorized' :
+                    permissionLevel === PermissionLevel.USER ? 'User' : 'Guest'
               }
-            }}
-            className="group relative bg-muted/30 hover:bg-muted/50 border border-border rounded-xl p-6 cursor-pointer transition-all hover:shadow-md hover:-translate-y-1"
-          >
-            <div className="absolute top-6 right-6 p-2 bg-primary/10 rounded-full text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
-              <Bot className="w-6 h-6" />
-            </div>
-            <h3 className="text-xl font-semibold mb-2 pr-12">Manage Servers</h3>
-            <p className="text-muted-foreground text-sm">Configure settings and permissions for your connected guilds.</p>
+            </span>
           </div>
+        )}
+      </div>
 
+      {/* Card Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {visibleCards.map((card, index) => (
           <div
-            onClick={() => router.push('/dashboard/status')}
-            className="group relative bg-muted/30 hover:bg-muted/50 border border-border rounded-xl p-6 cursor-pointer transition-all hover:shadow-md hover:-translate-y-1"
+            key={index}
+            onClick={() => router.push(card.href)}
+            className={`group relative bg-card hover:bg-muted/40 border border-border ${card.borderColor} rounded-xl p-8 cursor-pointer transition-all duration-300 hover:shadow-lg hover:-translate-y-1 flex flex-col h-full`}
           >
-            <div className="absolute top-6 right-6 p-2 bg-green-500/10 rounded-full text-green-500 group-hover:bg-green-500 group-hover:text-white transition-colors">
-              <Activity className="w-6 h-6" />
+            <div className={`absolute top-6 right-6 p-3 rounded-xl ${card.bgColor} ${card.color} transition-colors group-hover:scale-110 duration-300`}>
+              <card.icon size={28} />
             </div>
-            <h3 className="text-xl font-semibold mb-2 pr-12">System Status</h3>
-            <p className="text-muted-foreground text-sm">Monitor shards, database health, and API latency.</p>
+
+            <div className="mt-4 mb-auto">
+              <h3 className="text-2xl font-bold mb-3 group-hover:text-primary transition-colors">{card.title}</h3>
+              <p className="text-muted-foreground leading-relaxed">{card.description}</p>
+            </div>
+
+            <div className="mt-8 pt-6 border-t border-border/50 flex items-center justify-between text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors">
+              <span>Access Level: {card.level}</span>
+              <ExternalLink size={16} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+            </div>
           </div>
+        ))}
+      </div>
 
-          {user.is_admin && (
-            <div
-              onClick={() => router.push('/dashboard/platform')}
-              className="group relative bg-muted/30 hover:bg-muted/50 border border-border rounded-xl p-6 cursor-pointer transition-all hover:shadow-md hover:-translate-y-1"
-            >
-              <div className="absolute top-6 right-6 p-2 bg-purple-500/10 rounded-full text-purple-500 group-hover:bg-purple-500 group-hover:text-white transition-colors">
-                <Settings className="w-6 h-6" />
-              </div>
-              <h3 className="text-xl font-semibold mb-2 pr-12">Platform Settings</h3>
-              <p className="text-muted-foreground text-sm">Global configuration and platform-wide controls.</p>
-            </div>
-          )}
+      {visibleCards.length === 0 && (
+        <div className="text-center py-20 bg-muted/20 rounded-xl border border-dashed border-border">
+          <Lock className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+          <h3 className="text-xl font-medium mb-2">Access Restricted</h3>
+          <p className="text-muted-foreground">
+            You do not have access to any tools for this server.<br />
+            Current Access Level: {permissionLevel}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
 
-          {/* Developer Tools Row */}
-          {user.is_admin && (
-            <>
-              <div
-                onClick={() => router.push('/dashboard/platform/bot-report')}
-                className="group relative bg-muted/30 hover:bg-muted/50 border border-border rounded-xl p-6 cursor-pointer transition-all hover:shadow-md hover:-translate-y-1"
-              >
-                <div className="absolute top-6 right-6 p-2 bg-blue-500/10 rounded-full text-blue-500 group-hover:bg-blue-500 group-hover:text-white transition-colors">
-                  <Bot className="w-6 h-6" />
-                </div>
-                <h3 className="text-xl font-semibold mb-2 pr-12">Developer Report</h3>
-                <p className="text-muted-foreground text-sm">Inspect active commands, listeners, and bot internals.</p>
-              </div>
-
-              <div
-                onClick={() => {
-                  const defaultGuildId = user?.preferences?.default_guild_id;
-                  const targetGuildId = defaultGuildId || (guilds.length > 0 ? guilds[0].id : null);
-                  if (targetGuildId) {
-                    router.push(`/dashboard/${targetGuildId}/logging`);
-                  } else {
-                    // No guilds, maybe show alert or just go to status
-                    router.push('/dashboard/status');
-                  }
-                }}
-                className="group relative bg-muted/30 hover:bg-muted/50 border border-border rounded-xl p-6 cursor-pointer transition-all hover:shadow-md hover:-translate-y-1"
-              >
-                <div className="absolute top-6 right-6 p-2 bg-yellow-500/10 rounded-full text-yellow-500 group-hover:bg-yellow-500 group-hover:text-white transition-colors">
-                  <Terminal className="w-6 h-6" />
-                </div>
-                <h3 className="text-xl font-semibold mb-2 pr-12">Debug Logging</h3>
-                <p className="text-muted-foreground text-sm">Configure real-time log levels per guild.</p>
-              </div>
-            </>
-          )}
+export default function Home() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+          <p className="text-muted-foreground animate-pulse">Loading...</p>
         </div>
       </div>
-    </div>
+    }>
+      <DashboardContent />
+    </Suspense>
   );
 }

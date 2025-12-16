@@ -54,11 +54,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const checkAuth = async () => {
         // Check for token in URL (from OAuth callback)
-        const params = new URLSearchParams(window.location.search);
-        const token = params.get('token');
-        if (token) {
-            // We are processing a standard callback, let the page component handle it or handle it here?
-            // The page component (Home) handles it. We just proceed to check current user.
+        if (typeof window !== 'undefined') {
+            const params = new URLSearchParams(window.location.search);
+            const token = params.get('token');
+            if (token) {
+                // Save token to localStorage
+                localStorage.setItem('access_token', token);
+
+                // Remove token from URL for cleaner history
+                const newUrl = window.location.pathname + window.location.hash;
+                window.history.replaceState({}, '', newUrl);
+            }
         }
 
         // If we are on the login page, skip auth check to avoid infinite loop

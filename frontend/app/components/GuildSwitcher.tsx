@@ -5,7 +5,9 @@ import { Check, ChevronsUpDown } from 'lucide-react';
 import { cn } from '../utils';
 import { apiClient } from '../api-client';
 
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
+
 
 import { useAuth } from '@/lib/auth-context';
 
@@ -16,6 +18,7 @@ interface Guild {
 
 export function GuildSwitcher({ currentGuildId }: { currentGuildId?: string }) {
     const pathname = usePathname();
+    const searchParams = useSearchParams();
     const [isOpen, setIsOpen] = useState(false);
     const [guilds, setGuilds] = useState<Guild[]>([]);
     const [loading, setLoading] = useState(true);
@@ -40,13 +43,21 @@ export function GuildSwitcher({ currentGuildId }: { currentGuildId?: string }) {
         fetchGuilds();
     }, [user]);
 
-    const currentGuild = guilds.find((g) => g.id === currentGuildId);
+    // Determine effective guild ID from Prop > URL Param > Path Regex
+    const paramGuildId = searchParams.get('guild_id');
+    const pathGuildId = pathname?.match(/\/dashboard\/(\d+)/)?.[1];
+    const effectiveGuildId = currentGuildId || paramGuildId || pathGuildId;
+
+    const currentGuild = guilds.find((g) => g.id === effectiveGuildId);
 
     const getTargetHref = (targetGuildId: string) => {
-        if (currentGuildId && pathname?.includes(currentGuildId)) {
-            return pathname.replace(currentGuildId, targetGuildId);
+        if (pathname === '/') {
+            return `/?guild_id=${targetGuildId}`;
         }
-        // Default to permissions or settings if not currently in a guild context
+        if (effectiveGuildId && pathname?.includes(effectiveGuildId)) {
+            return pathname.replace(effectiveGuildId, targetGuildId);
+        }
+        // Default to settings if we are in a non-guild context (like /dashboard/status)
         return `/dashboard/${targetGuildId}/settings`;
     };
 
@@ -74,7 +85,7 @@ export function GuildSwitcher({ currentGuildId }: { currentGuildId?: string }) {
                             <p className="p-4 text-sm text-gray-400">No servers found</p>
                         )}
                         {guilds.map((guild) => (
-                            <a
+                            <Link
                                 key={guild.id}
                                 href={getTargetHref(guild.id)}
                                 className={cn(
@@ -83,10 +94,10 @@ export function GuildSwitcher({ currentGuildId }: { currentGuildId?: string }) {
                                 )}
                                 onClick={() => setIsOpen(false)}
                             ><span className="text-sm truncate">{guild.name}</span>
-                                {guild.id === currentGuildId && (
+                                {guild.id === effectiveGuildId && (
                                     <Check size={16} className="text-green-500" />
                                 )}
-                            </a>
+                            </Link>
                         ))}
                     </div >
                 </>
