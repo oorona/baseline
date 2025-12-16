@@ -34,21 +34,49 @@ The framework enforces a strict 6-tier security model. **All new pages and API e
 
 | Level | Name | Description | Example Usage |
 | :--- | :--- | :--- | :--- |
-| **0** | **PUBLIC** | Anonymous access. | Landing Page, Login, Docs. |
-| **1** | **PUBLIC_DATA** | Read-only public API data. No login required. | Leaderboards, Server Stats. |
-| **2** | **USER** | Logged-in user who is a **Member** of the guild. | Profile, Chat, Games. |
-| **3** | **AUTHORIZED** | Logged-in user with **Admin/Mod** role in the guild. | Bot Settings, Moderation. |
-| **4** | **OWNER** | The **Owner** of the Discord Guild. | Permission Management, Sensitive Config. |
-| **5** | **DEVELOPER** | Platform Administrator (You). | Platform Debug, AI Analytics. |
+| **0** | **Public** | Accessible by anyone, no login required. | Landing Page, Login, Docs. |
+| **1** | **Public Data** | Read-only public API data. No login required. | Leaderboards, Server Stats. |
+| **2** | **User (Login Required)** | Requires login. Access determined by Guild Settings (Default: Everyone allowed). | Basic Dashboard, Leaderboards. |
+| **3** | **Authorized** | **Strictly Controlled**. Requires specific Authorization (Role or User). | Bot Settings, Moderation Tools. |
+| **4** | **Owner** | Guild Owner only. | Permission Management, Sensitive Config. |
+| **5** | **Developer** | Platform Administrators. Full access to everything. | Platform Debug, AI Analytics. |
+
+### Security Best Practices
+- **Default to Strict**: If unsure, use **Level 3 (Authorized)**.
+- **Level 2 (User)**: Ideal for **Read-Only** dashboards (stats, logs).
+- **Level 3 (Authorized)**: Required for **Write** actions (settings, moderation).
 
 ### Implementing Security
 *   **Frontend**: Wrap pages with `withPermission(Component, PermissionLevel.LEVEL)`.
-*   **Backend**: Use dependencies `Depends(get_current_user)` and check privileges manually or via helper decorators (to be implemented).
-*   **Cards**: Set the `level` property in `frontend/app/page.tsx` card definitions.
+*   **Backend**: Use dependencies `Depends(get_current_user)` and check privileges.
+*   **Navigation**: Set the `level` property in `frontend/app/page.tsx` card definitions to auto-hide them.
 
 ---
 
-## 4. Plugin Workflow (How to Add Features)
+## 4. Frontend Style Guide (Design System)
+
+To ensure a cohesive look, all plugins **MUST** use the following semantic tokens. **NEVER** use hardcoded colors (e.g., `bg-white`).
+
+| Element | Use This Token (Tailwind) | Do NOT Use |
+| :--- | :--- | :--- |
+| **Page Background** | `bg-background` | `bg-white`, `bg-gray-900` |
+| **Card/Panel** | `bg-card` | `bg-white`, `bg-zinc-800` |
+| **Main Text** | `text-foreground` | `text-black`, `text-white` |
+| **Secondary Text** | `text-muted-foreground` | `text-gray-500` |
+| **Borders** | `border-border` | `border-gray-200` |
+| **Primary Action** | `bg-primary`, `text-primary-foreground` | `bg-blue-600` |
+| **Destructive** | `bg-destructive`, `text-destructive-foreground` | `bg-red-600` |
+| **Input Fields** | `bg-background`, `border-input`, `ring-ring` | `bg-gray-50` |
+
+### Standard Components
+- **Page Container**: `p-8 max-w-7xl mx-auto`
+- **Section Headers**: `text-2xl font-bold mb-4`
+- **Cards**: `bg-card rounded-xl border border-border p-6`
+- **Icons**: Use `lucide-react`. Size `w-5 h-5` (20px).
+
+---
+
+## 5. Plugin Workflow (How to Add Features)
 
 To add a new feature (e.g., "Music Bot"), follow this strict workflow:
 

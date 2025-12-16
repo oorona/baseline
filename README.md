@@ -2,14 +2,11 @@
 
 A comprehensive Discord bot platform with authentication, settings management, audit logging, and granular permissions.
 
-## Features
+## Documentation
 
-- **Discord OAuth2**: Secure user authentication via Discord
-- **Multi-Server Management**: Manage multiple Discord servers from one dashboard
-- **Settings Management**: Configure LLM model, system prompt, and allowed channels per server
-- **Audit Logs**: Track all changes to settings and user permissions
-- **Granular Permissions**: Owner, Admin, and User roles with specific access levels
-- **Shard Monitoring**: Real-time monitoring of bot shards and health status
+- **[Developer Manual](docs/DEVELOPER_MANUAL.md)**: The authoritative guide for AI Agents and Developers.
+- **[Architecture](docs/ARCHITECTURE.md)**: High-level system design.
+- **[LLM Guide](docs/LLM_USAGE_GUIDE.md)**: How to use the shared LLM service.
 
 ## Using as a Template
 
