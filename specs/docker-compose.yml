@@ -94,13 +94,11 @@ services:
 
 networks:
   internet:
-    driver: bridge
-    # Public-facing network (frontend publicly accessible)
+    external: true
+    name: internet
   intranet:
-    driver: bridge
-    internal: false
-    # Private communication: frontend ↔ backend, bot ↔ backend
-    # Backend and bot connect to external DB/Redis via connection strings
+    external: true
+    name: intranet
 
 secrets:
   # Discord secrets

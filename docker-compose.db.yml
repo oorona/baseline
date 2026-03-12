@@ -3,20 +3,30 @@
 #   docker compose -f docker-compose.db.yml up -d
 #
 # The application stack (docker-compose.yml) connects to these services
-# via the external 'baseline_dbnet' network.
+# via the external 'dbnet' network.
+#
+# Prerequisites:
+#   echo "your-superuser-password" > secrets/postgres_password.txt
+#   chmod 600 secrets/postgres_password.txt
+
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password.txt
 
 services:
   # PostgreSQL
-  # Starts with trust authentication on the internal dbnet network.
-  # No application users or databases are pre-created — the Setup Wizard
-  # handles all database configuration once credentials are provided.
+  # Password authentication (scram-sha-256) is enforced for all connections.
+  # The superuser password is read from secrets/postgres_password.txt via
+  # POSTGRES_PASSWORD_FILE — the same file setup_database.sh reads at runtime.
   postgres:
-    image: postgres:15-alpine
-    container_name: bot-postgres
+    image: postgres:18-alpine
+    container_name: postgres
+    secrets:
+      - postgres_password
     environment:
-      POSTGRES_HOST_AUTH_METHOD: trust
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
     expose:
       - "5432"
     networks:
@@ -31,7 +41,7 @@ services:
   # Redis
   redis:
     image: redis:7-alpine
-    container_name: bot-redis
+    container_name: redis
     networks:
       - dbnet
     healthcheck:
@@ -43,11 +53,8 @@ services:
 
 networks:
   dbnet:
-    driver: bridge
-    name: baseline_dbnet
-    internal: true
-    # Database access only — no external routing.
-    # Named explicitly so the app stack can reference it as an external network.
+    external: true
+    name: dbnet
 
 volumes:
   postgres_data:

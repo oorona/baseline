@@ -24,6 +24,7 @@ Wizard flow
 """
 
 import asyncio
+import json as _json
 import os
 import signal
 import subprocess
@@ -33,12 +34,14 @@ import asyncpg
 import redis.asyncio as aioredis
 import structlog
 from fastapi import APIRouter, Header, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.core.encrypted_settings import (
     SETTINGS_FILE_PATH,
     _get_encryption_key,
     is_setup_complete,
+    load_encrypted_settings,
     save_encrypted_settings,
     verify_key,
 )
@@ -275,21 +278,25 @@ async def check_migrations(
             database=body.db, password=body.password, timeout=10,
             server_settings={"search_path": schema},
         )
+        query_error = None
+        current = None
         try:
-            # alembic_version lives inside the app schema
-            row     = await conn.fetchrow(
+            row = await conn.fetchrow(
                 f'SELECT version_num FROM "{schema}".alembic_version LIMIT 1'
             )
             current = row["version_num"] if row else None
-        except Exception:
-            current = None      # table doesn't exist yet (fresh DB)
+        except Exception as qe:
+            query_error = str(qe)
         await conn.close()
-        return {
+        result = {
             "current_revision":  current,
             "required_revision": REQUIRED_DB_REVISION,
             "up_to_date":        current == REQUIRED_DB_REVISION,
             "is_fresh_database": current is None,
         }
+        if query_error:
+            result["query_error"] = query_error
+        return result
     except Exception as exc:
         return {"error": str(exc), "current_revision": None, "up_to_date": False}
 
@@ -299,14 +306,11 @@ async def apply_migrations(
     body: PostgresRequest,
     x_setup_key: Optional[str] = Header(None),
 ):
-    """Step 3b — run `alembic upgrade head` with the provided credentials."""
+    """Step 3b — run `alembic upgrade head`, streaming each step via SSE."""
     _require_key(x_setup_key)
 
-    env = os.environ.copy()
-    # alembic/env.py reads DB_* and POSTGRES_* vars.
-    # DB_SCHEMA / POSTGRES_SCHEMA tells alembic which schema to target —
-    # all tables and alembic_version will be created there, never in public.
     schema = body.user  # schema name always equals the username
+    env = os.environ.copy()
     env.update({
         "POSTGRES_HOST":     body.host,         "POSTGRES_PORT":   str(body.port),
         "POSTGRES_USER":     body.user,         "POSTGRES_DB":     body.db,
@@ -314,23 +318,30 @@ async def apply_migrations(
         "DB_HOST":           body.host,         "DB_PORT":         str(body.port),
         "DB_USER":           body.user,         "DB_NAME":         body.db,
         "DB_PASSWORD":       body.password,     "DB_SCHEMA":       schema,
+        "PYTHONUNBUFFERED":  "1",
     })
 
-    proc = await asyncio.get_event_loop().run_in_executor(
-        None,
-        lambda: subprocess.run(
-            ["alembic", "upgrade", "head"],
-            capture_output=True, text=True, cwd="/app", env=env,
-        ),
+    async def generate():
+        proc = await asyncio.create_subprocess_exec(
+            "alembic", "upgrade", "head",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,   # merge stderr → stdout
+            cwd="/app",
+            env=env,
+        )
+        async for raw in proc.stdout:
+            line = raw.decode("utf-8", errors="replace").rstrip()
+            yield f"data: {_json.dumps({'line': line})}\n\n"
+        await proc.wait()
+        success = proc.returncode == 0
+        logger.info("wizard_migrations", success=success)
+        yield f"data: {_json.dumps({'done': True, 'success': success, 'returncode': proc.returncode})}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
-    success = proc.returncode == 0
-    logger.info("wizard_migrations", success=success)
-    return {
-        "success":     success,
-        "stdout":      proc.stdout,
-        "stderr":      proc.stderr,
-        "return_code": proc.returncode,
-    }
 
 
 @router.post("/test-redis")
@@ -358,17 +369,30 @@ async def test_redis(
         return {"ok": False, "error": str(exc)}
 
 
+@router.get("/current-settings")
+async def get_current_settings(x_setup_key: Optional[str] = Header(None)):
+    """
+    Return the existing encrypted settings as plaintext so the wizard can
+    pre-populate its form fields.  Requires a valid X-Setup-Key (the encryption
+    key itself), proving the caller has infrastructure-level access.
+    Returns an empty dict when no settings file exists yet.
+    """
+    _require_key(x_setup_key)
+    data = load_encrypted_settings()
+    return {"settings": data or {}}
+
+
 @router.post("/save")
 async def save_settings(
     body: SaveRequest,
     x_setup_key: Optional[str] = Header(None),
 ):
     """
-    Step 6 — encrypt and persist all settings to the settings file.
-    This is the final action of the wizard before restart.
-    Only callable when setup has not yet been completed.
+    Encrypt and persist all settings to the settings file.
+    Callable at any time (first-time setup or subsequent updates) as long as
+    the caller can provide the valid X-Setup-Key.
     """
-    _require_setup_mode(x_setup_key)
+    _require_key(x_setup_key)
 
     clean = {
         k: str(v)

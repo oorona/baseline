@@ -3,7 +3,7 @@ from logging.config import fileConfig
 import os
 import sys
 
-from sqlalchemy import pool, text
+from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
@@ -72,16 +72,12 @@ config.set_main_option("sqlalchemy.url", db_url)
 # ── Migration helpers ─────────────────────────────────────────────────────────
 
 def do_run_migrations(connection: Connection) -> None:
-    # Set search_path for this session so every DDL statement targets
-    # the app schema and never touches public.
-    connection.execute(text(f'SET search_path TO "{db_schema}"'))
-
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
-        # Store alembic_version inside the app schema too, not public.
+        # Store alembic_version inside the app schema, never public.
         version_table_schema=db_schema,
-        include_schemas=True,
+        include_schemas=False,
     )
 
     with context.begin_transaction():
@@ -107,6 +103,9 @@ async def run_async_migrations() -> None:
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        # Set search_path at the connection level so every query alembic
+        # makes — including _ensure_version_table — targets the app schema.
+        connect_args={"server_settings": {"search_path": db_schema}},
     )
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)

@@ -22,7 +22,6 @@ structlog.configure(
     processors=[
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_log_level,
-        structlog.stdlib.add_logger_name,
         structlog.processors.TimeStamper(fmt="iso"),
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
@@ -89,6 +88,8 @@ INSTANCE_ID = str(uuid.uuid4())[:8]
 START_TIME = time.time()
 
 async def send_heartbeats():
+    if redis_pool is None:
+        return
     client = redis.Redis(connection_pool=redis_pool)
     try:
         while True:
@@ -102,7 +103,7 @@ async def send_heartbeats():
                 await client.setex(f"backend:heartbeat:{INSTANCE_ID}", 30, json.dumps(data))
             except Exception as e:
                 print(f"Failed to send heartbeat: {e}")
-            
+
             await asyncio.sleep(10)
     finally:
         await client.close()

@@ -17,11 +17,9 @@ services:
     environment:
       ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
       SETTINGS_FILE_PATH: /data/settings.enc
-    dns:
-      - 8.8.8.8
     networks:
-      - intranet
-      - dbnet
+      - intranet  # First → gets the default route → outbound internet works (Discord OAuth etc.)
+      - dbnet     # Database access (postgres, redis)
     expose:
       - "8000"
     volumes:
@@ -45,8 +43,8 @@ services:
     ports:
       - "8000:80" # Host 8000 -> Nginx 80 -> Backend 8000
     networks:
-      - internet # Receives traffic
-      - intranet # Forwards to backend
+      - internet  # Receives public traffic
+      - intranet  # Forwards to backend
     depends_on:
       backend:
         condition: service_healthy
@@ -66,9 +64,9 @@ services:
     volumes:
       - platform_data:/data   # Same encrypted settings as backend
     networks:
-      - internet # For Discord API access
-      - intranet # For backend API communication
-      - dbnet    # For direct database access (postgres/redis on external dbnet)
+      - bot       # First → gets the default route → outbound internet for Discord API
+      - intranet  # Backend API communication
+      - dbnet     # Database access (postgres, redis)
     ports:
       - "8080:8080" # Health check endpoint
     depends_on:
@@ -91,8 +89,8 @@ services:
         - NEXT_PUBLIC_APP_NAME=${NEXT_PUBLIC_APP_NAME:-Baseline Bot}
     container_name: bot-frontend
     networks:
-      - internet # Public facing
-      - intranet # For server-side backend API calls
+      - internet  # Public facing
+      - intranet  # Server-side backend API calls
     ports:
       - "3000:3000"
     depends_on:
@@ -112,16 +110,17 @@ services:
 
 networks:
   internet:
-    driver: bridge
-    # Public-facing network (frontend, gateway)
+    external: true
+    name: internet
   intranet:
-    driver: bridge
-    # Private communication: frontend ↔ backend, bot ↔ backend
+    external: true
+    name: intranet
   dbnet:
     external: true
-    name: baseline_dbnet
-    # Postgres and Redis run in the separate database stack (docker-compose.db.yml).
-    # Start that stack first: docker compose -f docker-compose.db.yml up -d
+    name: dbnet
+  bot:
+    external: true
+    name: bot
 
 volumes:
   platform_data:

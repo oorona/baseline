@@ -62,7 +62,7 @@ services:
 networks:
   internet:
     external: true
-    name: ${COMPOSE_PROJECT_NAME:-baseline}_internet
+    name: internet
   intranet:
     external: true
-    name: ${COMPOSE_PROJECT_NAME:-baseline}_intranet
+    name: intranet

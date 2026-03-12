@@ -1374,12 +1374,12 @@ async def function_calling(
                 if turn.role == "user":
                     contents.append(types.Content(
                         role="user",
-                        parts=[types.Part.from_text(turn.content or "")]
+                        parts=[types.Part.from_text(text=turn.content or "")]
                     ))
                 elif turn.role == "model":
                     parts = []
                     if turn.content:
-                        parts.append(types.Part.from_text(turn.content))
+                        parts.append(types.Part.from_text(text=turn.content))
                     if turn.function_call:
                         parts.append(types.Part.from_function_call(
                             name=turn.function_call.get("name"),
@@ -1398,7 +1398,7 @@ async def function_calling(
         # Add current prompt
         contents.append(types.Content(
             role="user",
-            parts=[types.Part.from_text(body.prompt)]
+            parts=[types.Part.from_text(text=body.prompt)]
         ))
         
         # Add function results from previous turn if provided

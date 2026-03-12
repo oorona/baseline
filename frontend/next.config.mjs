@@ -1,15 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-    experimental: {
-        instrumentationHook: true,
-    },
-    // Increase API route body size limits
-    api: {
-        bodyParser: {
-            sizeLimit: '10mb',
-        },
-        responseLimit: '10mb',
-    },
+    // instrumentationHook is enabled by default in Next.js 16 — no config needed
     async rewrites() {
         return [
             {

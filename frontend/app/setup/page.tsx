@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   Lock, Database, Server, MessageCircle, Settings2, CheckCircle2,
   XCircle, AlertTriangle, ChevronRight, ChevronLeft, Eye, EyeOff,
-  RefreshCw, ArrowUpCircle, Shuffle, Layers, Bot
+  RefreshCw, ArrowUpCircle, Shuffle, Layers, Bot, ShieldOff
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -143,21 +143,58 @@ function StepIndicator({ current }: { current: number }) {
 // Main wizard
 // ---------------------------------------------------------------------------
 export default function SetupWizardPage() {
+  // ── Access gate ───────────────────────────────────────────────────────────
+  const [pageReady, setPageReady] = useState(false);
+  const [accessDenied, setAccessDenied] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const stateRes = await fetch('/api/v1/setup/state');
+        const state = await stateRes.json();
+
+        if (!state.setup_complete) {
+          // First-time setup — allow anyone (no auth configured yet)
+          setPageReady(true);
+          return;
+        }
+
+        // Setup is complete — require platform admin authentication
+        const meRes = await fetch('/api/v1/auth/me', { credentials: 'include' });
+        if (!meRes.ok) {
+          setAccessDenied('sign-in');
+          return;
+        }
+        const me = await meRes.json();
+        if (me.permission_level !== 'admin') {
+          setAccessDenied('forbidden');
+          return;
+        }
+
+        setPageReady(true);
+      } catch {
+        setAccessDenied('error');
+      }
+    })();
+  }, []);
+
   const [step, setStep] = useState(0);
   const [setupKey, setSetupKey] = useState('');
   const [keyVerified, setKeyVerified] = useState(false);
   const [verifyError, setVerifyError] = useState('');
   const [verifying, setVerifying] = useState(false);
+  const [existingLoaded, setExistingLoaded] = useState(false);
 
   // Per-step state
   const [pg, setPg] = useState<PostgresConfig>({ host: 'postgres', port: '5432', user: 'baseline', db: 'baseline', password: '' });
   const [pgStatus, setPgStatus] = useState<{ ok: boolean | null; message: string }>({ ok: null, message: '' });
   const [pgTesting, setPgTesting] = useState(false);
 
-  const [migrations, setMigrations] = useState<{ current: string | null; required: string; upToDate: boolean; fresh: boolean } | null>(null);
+  const [migrations, setMigrations] = useState<{ current: string | null; required: string; upToDate: boolean; fresh: boolean; queryError?: string } | null>(null);
   const [migrLoading, setMigrLoading] = useState(false);
   const [migrApplying, setMigrApplying] = useState(false);
   const [migrStatus, setMigrStatus] = useState<{ ok: boolean | null; message: string }>({ ok: null, message: '' });
+  const [migrLog, setMigrLog] = useState<string[]>([]);
 
   const [rd, setRd] = useState<RedisConfig>({ host: 'redis', port: '6379', db: '0', password: '' });
   const [rdStatus, setRdStatus] = useState<{ ok: boolean | null; message: string }>({ ok: null, message: '' });
@@ -181,6 +218,55 @@ export default function SetupWizardPage() {
     try {
       await setupFetch('/verify-key', 'POST', { key: setupKey });
       setKeyVerified(true);
+
+      // Load existing settings and pre-populate form fields
+      try {
+        const { settings: s } = await setupFetch('/current-settings', 'GET', undefined, setupKey);
+        if (s && Object.keys(s).length > 0) {
+          if (s.POSTGRES_HOST)     setPg(p => ({ ...p, host:     s.POSTGRES_HOST }));
+          if (s.POSTGRES_PORT)     setPg(p => ({ ...p, port:     s.POSTGRES_PORT }));
+          if (s.POSTGRES_USER)     setPg(p => ({ ...p, user:     s.POSTGRES_USER }));
+          if (s.POSTGRES_DB)       setPg(p => ({ ...p, db:       s.POSTGRES_DB }));
+          if (s.POSTGRES_PASSWORD) setPg(p => ({ ...p, password: s.POSTGRES_PASSWORD }));
+
+          if (s.REDIS_HOST)     setRd(r => ({ ...r, host:     s.REDIS_HOST }));
+          if (s.REDIS_PORT)     setRd(r => ({ ...r, port:     s.REDIS_PORT }));
+          if (s.REDIS_DB)       setRd(r => ({ ...r, db:       s.REDIS_DB }));
+          if (s.REDIS_PASSWORD) setRd(r => ({ ...r, password: s.REDIS_PASSWORD }));
+
+          setDiscord(d => ({
+            ...d,
+            ...(s.DISCORD_CLIENT_ID     ? { client_id:        s.DISCORD_CLIENT_ID }     : {}),
+            ...(s.DISCORD_CLIENT_SECRET ? { client_secret:    s.DISCORD_CLIENT_SECRET } : {}),
+            ...(s.DISCORD_BOT_TOKEN     ? { bot_token:        s.DISCORD_BOT_TOKEN }     : {}),
+            ...(s.DISCORD_REDIRECT_URI  ? { redirect_uri:     s.DISCORD_REDIRECT_URI }  : {}),
+            ...(s.DISCORD_GUILD_ID      ? { guild_id:         s.DISCORD_GUILD_ID }      : {}),
+            ...(s.DEVELOPER_ROLE_ID     ? { developer_role_id: s.DEVELOPER_ROLE_ID }    : {}),
+          }));
+
+          setBotId(b => ({
+            ...b,
+            ...(s.BOT_NAME        ? { name:        s.BOT_NAME }        : {}),
+            ...(s.BOT_TAGLINE     ? { tagline:     s.BOT_TAGLINE }     : {}),
+            ...(s.BOT_DESCRIPTION ? { description: s.BOT_DESCRIPTION } : {}),
+            ...(s.BOT_LOGO_URL    ? { logo_url:    s.BOT_LOGO_URL }    : {}),
+            ...(s.BOT_INVITE_URL  ? { invite_url:  s.BOT_INVITE_URL }  : {}),
+          }));
+
+          setAppCfg(a => ({
+            ...a,
+            ...(s.API_SECRET_KEY    ? { api_secret_key:    s.API_SECRET_KEY }    : {}),
+            ...(s.APP_NAME          ? { app_name:          s.APP_NAME }          : {}),
+            ...(s.OPENAI_API_KEY    ? { openai_api_key:    s.OPENAI_API_KEY }    : {}),
+            ...(s.GOOGLE_API_KEY    ? { google_api_key:    s.GOOGLE_API_KEY }    : {}),
+            ...(s.ANTHROPIC_API_KEY ? { anthropic_api_key: s.ANTHROPIC_API_KEY } : {}),
+            ...(s.XAI_API_KEY       ? { xai_api_key:       s.XAI_API_KEY }       : {}),
+          }));
+
+          setExistingLoaded(true);
+        }
+      } catch { /* no existing settings — fresh setup, continue normally */ }
+
       setStep(1);
     } catch (e: any) {
       setVerifyError(e.message || 'Key verification failed');
@@ -216,7 +302,7 @@ export default function SetupWizardPage() {
       if (res.error) {
         setMigrStatus({ ok: false, message: res.error });
       } else {
-        setMigrations({ current: res.current_revision, required: res.required_revision, upToDate: res.up_to_date, fresh: res.is_fresh_database });
+        setMigrations({ current: res.current_revision, required: res.required_revision, upToDate: res.up_to_date, fresh: res.is_fresh_database, queryError: res.query_error });
       }
     } catch (e: any) {
       setMigrStatus({ ok: false, message: e.message });
@@ -228,13 +314,41 @@ export default function SetupWizardPage() {
   const handleApplyMigrations = async () => {
     setMigrApplying(true);
     setMigrStatus({ ok: null, message: '' });
+    setMigrLog([]);
     try {
-      const res = await setupFetch('/apply-migrations', 'POST', { host: pg.host, port: parseInt(pg.port), user: pg.user, db: pg.db, password: pg.password }, setupKey);
-      if (res.success) {
-        setMigrStatus({ ok: true, message: 'Migrations applied successfully.' });
-        await handleCheckMigrations();
-      } else {
-        setMigrStatus({ ok: false, message: `Migration failed:\n${res.stderr || res.stdout}` });
+      const res = await fetch(`${BASE}/apply-migrations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Setup-Key': setupKey },
+        body: JSON.stringify({ host: pg.host, port: parseInt(pg.port), user: pg.user, db: pg.db, password: pg.password }),
+      });
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() ?? '';
+        for (const part of parts) {
+          const dataLine = part.split('\n').find(l => l.startsWith('data: '));
+          if (!dataLine) continue;
+          try {
+            const event = JSON.parse(dataLine.slice(6));
+            if (event.line !== undefined) {
+              setMigrLog(prev => [...prev, event.line]);
+            }
+            if (event.done) {
+              if (event.success) {
+                setMigrStatus({ ok: true, message: 'Migrations applied successfully.' });
+                await handleCheckMigrations();
+              } else {
+                setMigrStatus({ ok: false, message: `Migration failed (exit code ${event.returncode})` });
+              }
+            }
+          } catch { /* ignore malformed SSE frames */ }
+        }
       }
     } catch (e: any) {
       setMigrStatus({ ok: false, message: e.message });
@@ -350,8 +464,7 @@ export default function SetupWizardPage() {
           </div>
           <h2 className="text-2xl font-bold text-foreground mb-2">Platform Setup Wizard</h2>
           <p className="text-muted-foreground text-sm max-w-md mx-auto">
-            Welcome! This wizard will guide you through configuring the platform for the first time.
-            All settings will be encrypted and stored securely on disk.
+            First-time setup or updating an existing configuration — all settings are encrypted and stored securely on disk.
           </p>
         </div>
 
@@ -378,6 +491,12 @@ export default function SetupWizardPage() {
 
       // ── Step 1: PostgreSQL ───────────────────────────────────────────────
       case 1: return card(<>
+        {existingLoaded && (
+          <div className="flex items-start gap-2 p-3 mb-5 rounded-lg bg-blue-500/10 border border-blue-500/30 text-blue-400 text-sm">
+            <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+            <span>Existing configuration loaded — fields are pre-filled. Change only what you need, then proceed to Save.</span>
+          </div>
+        )}
         <div className="flex items-center gap-3 mb-6">
           <div className="p-2.5 rounded-xl bg-blue-500/10"><Database className="text-blue-500" size={22} /></div>
           <div>
@@ -404,7 +523,7 @@ export default function SetupWizardPage() {
           </button>
         </div>
         <StatusBox ok={pgStatus.ok} message={pgStatus.message} />
-        {navButtons(() => setStep(2), 'Next — Schema', pgStatus.ok !== true, () => setStep(0))}
+        {navButtons(() => setStep(2), 'Next — Schema', pgStatus.ok !== true && !existingLoaded, () => setStep(0))}
       </>);
 
       // ── Step 2: Schema / migrations ──────────────────────────────────────
@@ -428,9 +547,13 @@ export default function SetupWizardPage() {
         {migrations && (
           <div className="space-y-3 mb-4">
             <div className="bg-muted/30 rounded-lg p-4 text-sm space-y-1.5">
-              <div className="flex justify-between"><span className="text-muted-foreground">Current revision</span><code className="font-mono text-foreground">{migrations.current ?? '(none — fresh database)'}</code></div>
+              <div className="flex justify-between gap-4"><span className="text-muted-foreground shrink-0">Current revision</span>
+                {migrations.queryError
+                  ? <span className="text-red-400 text-xs text-right">{migrations.queryError}</span>
+                  : <code className="font-mono text-foreground">{migrations.current ?? '(none — fresh database)'}</code>}
+              </div>
               <div className="flex justify-between"><span className="text-muted-foreground">Required revision</span><code className="font-mono text-foreground">{migrations.required}</code></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Status</span><span className={migrations.upToDate ? 'text-green-400 font-medium' : 'text-amber-400 font-medium'}>{migrations.upToDate ? '✓ Up to date' : 'Upgrade required'}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Status</span><span className={migrations.upToDate ? 'text-green-400 font-medium' : 'text-amber-400 font-medium'}>{migrations.upToDate ? '✓ Up to date' : migrations.queryError ? 'Cannot read DB' : 'Upgrade required'}</span></div>
             </div>
 
             {!migrations.upToDate && (
@@ -440,6 +563,15 @@ export default function SetupWizardPage() {
                 {migrApplying ? 'Applying…' : `Apply Migrations (upgrade to ${migrations.required.slice(0, 8)}…)`}
               </button>
             )}
+          </div>
+        )}
+
+        {migrLog.length > 0 && (
+          <div className="bg-black/50 rounded-lg border border-border p-3 font-mono text-xs text-green-400 max-h-52 overflow-y-auto space-y-0.5 mb-4">
+            {migrLog.map((line, i) => (
+              <div key={i} className="leading-relaxed whitespace-pre-wrap">{line || '\u00a0'}</div>
+            ))}
+            {migrApplying && <div className="text-muted-foreground animate-pulse">▌</div>}
           </div>
         )}
 
@@ -479,7 +611,7 @@ export default function SetupWizardPage() {
           </button>
         </div>
         <StatusBox ok={rdStatus.ok} message={rdStatus.message} />
-        {navButtons(() => setStep(4), 'Next — Discord', rdStatus.ok !== true, () => setStep(2))}
+        {navButtons(() => setStep(4), 'Next — Discord', rdStatus.ok !== true && !existingLoaded, () => setStep(2))}
       </>);
 
       // ── Step 4: Discord ──────────────────────────────────────────────────
@@ -520,7 +652,7 @@ export default function SetupWizardPage() {
         {navButtons(
           () => setStep(5),
           'Next — Bot Identity',
-          !discord.client_id || !discord.client_secret || !discord.bot_token || !discord.redirect_uri,
+          !existingLoaded && (!discord.client_id || !discord.client_secret || !discord.bot_token || !discord.redirect_uri),
           () => setStep(3)
         )}
       </>);
@@ -598,7 +730,7 @@ export default function SetupWizardPage() {
         {navButtons(
           () => setStep(6),
           'Next — Security & Optional Features',
-          !botId.name,
+          !existingLoaded && !botId.name,
           () => setStep(4)
         )}
       </>);
@@ -686,7 +818,7 @@ export default function SetupWizardPage() {
             </div>
           </div>
         </div>
-        {navButtons(() => setStep(7), 'Review & Save', !appCfg.api_secret_key, () => setStep(5))}
+        {navButtons(() => setStep(7), 'Review & Save', !existingLoaded && !appCfg.api_secret_key, () => setStep(5))}
       </>);
 
       // ── Step 7: Review & save ────────────────────────────────────────────
@@ -766,6 +898,56 @@ export default function SetupWizardPage() {
       default: return null;
     }
   };
+
+  if (!pageReady) {
+    if (accessDenied === 'sign-in') return (
+      <div className="flex-1 flex flex-col items-center justify-center p-6">
+        <div className="w-full max-w-sm text-center space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-amber-500/10 flex items-center justify-center mx-auto">
+            <ShieldOff className="text-amber-500" size={28} />
+          </div>
+          <h2 className="text-xl font-bold text-foreground">Platform Configuration</h2>
+          <p className="text-sm text-muted-foreground">
+            Setup is complete. This area is restricted to platform administrators.
+            Sign in to continue.
+          </p>
+          <a href="/" className="inline-flex items-center gap-2 px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors">
+            Sign in
+          </a>
+        </div>
+      </div>
+    );
+
+    if (accessDenied === 'forbidden') return (
+      <div className="flex-1 flex flex-col items-center justify-center p-6">
+        <div className="w-full max-w-sm text-center space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-red-500/10 flex items-center justify-center mx-auto">
+            <ShieldOff className="text-red-500" size={28} />
+          </div>
+          <h2 className="text-xl font-bold text-foreground">Access Denied</h2>
+          <p className="text-sm text-muted-foreground">
+            Platform administrator access (Level 5) is required to access this page.
+          </p>
+          <a href="/" className="inline-flex items-center gap-2 px-5 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:text-foreground transition-colors">
+            Back to dashboard
+          </a>
+        </div>
+      </div>
+    );
+
+    if (accessDenied === 'error') return (
+      <div className="flex-1 flex flex-col items-center justify-center p-6">
+        <p className="text-sm text-muted-foreground">Unable to verify access. Check that the backend is running.</p>
+      </div>
+    );
+
+    // Still loading
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <RefreshCw className="animate-spin text-muted-foreground" size={20} />
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center p-6 py-12">

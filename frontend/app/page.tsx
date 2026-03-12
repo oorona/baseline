@@ -302,14 +302,24 @@ function DashboardContent() {
 
       {/* Card Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {visibleCards.map((card, index) => (
+        {visibleCards.map((card, index) => {
+          const levelBg: Record<number, string> = {
+            0: 'bg-card',
+            1: 'bg-sky-950/40',
+            2: 'bg-emerald-950/40',
+            3: 'bg-blue-950/50',
+            4: 'bg-amber-950/40',
+            5: 'bg-red-950/50',
+          };
+          const cardBg = levelBg[card.level] ?? 'bg-card';
+          return (
           <div
             key={index}
             onClick={() => {
               apiClient.trackCardClick(card.id, activeGuildId);
               router.push(card.href);
             }}
-            className={`group relative bg-card hover:bg-muted/40 border border-border ${card.borderColor} rounded-xl p-8 cursor-pointer transition-all duration-300 hover:shadow-lg hover:-translate-y-1 flex flex-col h-full`}
+            className={`group relative ${cardBg} border border-border ${card.borderColor} rounded-xl p-8 cursor-pointer transition-all duration-300 hover:shadow-lg hover:-translate-y-1 flex flex-col h-full`}
           >
             <div className={`absolute top-6 right-6 p-3 rounded-xl ${card.bgColor} ${card.color} transition-colors group-hover:scale-110 duration-300`}>
               <card.icon size={28} />
@@ -325,7 +335,8 @@ function DashboardContent() {
               <ExternalLink size={16} className="opacity-0 group-hover:opacity-100 transition-opacity" />
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {visibleCards.length === 0 && (

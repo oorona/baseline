@@ -79,10 +79,7 @@ async def get_guild_db(
             # an explicit WHERE clause.
             return (await db.execute(select(Ticket))).scalars().all()
     """
-    await db.execute(
-        text("SET LOCAL app.current_guild_id = :gid"),
-        {"gid": str(guild_id)},
-    )
+    await db.execute(text(f"SET LOCAL app.current_guild_id = '{int(guild_id)}'"))
     yield db
 
 

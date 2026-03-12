@@ -1,6 +1,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 from sqlalchemy.future import select
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Dict, Any
@@ -1037,6 +1038,8 @@ async def create_or_update_guild(
         guild.is_active = True
     
     await db.commit()
+    # SET LOCAL is cleared on commit; re-apply bypass before refresh.
+    await db.execute(text("SET LOCAL app.bypass_guild_rls = 'true'"))
     await db.refresh(guild)
     return guild
 

@@ -68,7 +68,7 @@ async def record_card_click(
     permission_level = current_user.get("permission_level", "USER")
     db.add(CardUsage(
         card_id=body.card_id,
-        user_id=current_user.get("user_id"),
+        user_id=int(current_user.get("user_id") or 0),
         permission_level=permission_level,
         guild_id=body.guild_id,
     ))
