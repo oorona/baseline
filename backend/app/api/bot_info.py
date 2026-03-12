@@ -5,11 +5,28 @@ import structlog
 from typing import Dict, Any, List
 from pydantic import BaseModel
 
+from app.core.config import settings
 from app.db.redis import get_redis
 from app.api.deps import verify_platform_admin
 
 router = APIRouter()
 logger = structlog.get_logger()
+
+@router.get("/public")
+async def get_public_bot_info():
+    """
+    Public endpoint — no authentication required.
+    Returns bot identity information for the public landing page.
+    """
+    return {
+        "name":        settings.BOT_NAME,
+        "tagline":     settings.BOT_TAGLINE,
+        "description": settings.BOT_DESCRIPTION,
+        "logo_url":    settings.BOT_LOGO_URL,
+        "invite_url":  settings.BOT_INVITE_URL,
+        "configured":  bool(settings.BOT_INVITE_URL),
+    }
+
 
 class BotReport(BaseModel):
     commands: List[Dict[str, Any]]

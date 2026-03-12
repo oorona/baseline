@@ -1,7 +1,14 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
     experimental: {
-        instrumentationHook: true
+        instrumentationHook: true,
+    },
+    // Increase API route body size limits
+    api: {
+        bodyParser: {
+            sizeLimit: '10mb',
+        },
+        responseLimit: '10mb',
     },
     async rewrites() {
         return [

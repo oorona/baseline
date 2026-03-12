@@ -1,36 +1,146 @@
 import structlog
 import json
 import asyncio
+import time
+import aiohttp
 from abc import ABC, abstractmethod
-from typing import List, Dict, Optional, Any
-from dataclasses import dataclass, asdict
+from typing import List, Dict, Optional, Any, Union, Callable
+from dataclasses import dataclass, asdict, field
+from datetime import datetime
 
-from openai import AsyncOpenAI
-import anthropic
-import google.generativeai as genai
+# Optional imports - may not be installed
+try:
+    from openai import AsyncOpenAI
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+    AsyncOpenAI = None
+
+try:
+    import anthropic
+    ANTHROPIC_AVAILABLE = True
+except ImportError:
+    ANTHROPIC_AVAILABLE = False
+    anthropic = None
+
+# Try new google-genai SDK first, fall back to legacy
+try:
+    from google import genai
+    from google.genai import types
+    NEW_GENAI = True
+    GENAI_AVAILABLE = True
+except ImportError:
+    try:
+        import google.generativeai as genai
+        from google.generativeai.types import HarmCategory, HarmBlockThreshold
+        from google.api_core import retry
+        NEW_GENAI = False
+        GENAI_AVAILABLE = True
+        types = None
+    except ImportError:
+        NEW_GENAI = False
+        GENAI_AVAILABLE = False
+        genai = None
+        types = None
+
+# Import the new enhanced Gemini service
+from .gemini import (
+    GeminiService, GeminiModel, ThinkingLevel, CapabilityType,
+    UsageMetadata, GenerationResult, create_gemini_service,
+    GENAI_AVAILABLE as ENHANCED_GENAI
+)
+
+from sqlalchemy import Column, String, BigInteger, Float, DateTime, select
+from sqlalchemy.orm import declarative_base
+
+# Define Base for database models if not imported
+Base = declarative_base()
+
+class LLMUsage(Base):
+    __tablename__ = "llm_usage"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    guild_id = Column(BigInteger, nullable=True) 
+    user_id = Column(BigInteger, nullable=True)
+    cost = Column(Float, default=0.0)
+    tokens = Column(BigInteger, default=0) 
+    prompt_tokens = Column(BigInteger, default=0)
+    completion_tokens = Column(BigInteger, default=0)
+    thoughts_tokens = Column(BigInteger, default=0)
+    cached_tokens = Column(BigInteger, default=0)
+    provider = Column(String, nullable=False)
+    model = Column(String, nullable=False)
+    request_type = Column(String, default="text") 
+    capability_type = Column(String, nullable=True)
+    latency = Column(Float, default=0.0)
+    timestamp = Column(DateTime(timezone=True))
+    context_id = Column(String, nullable=True)
+    thinking_level = Column(String, nullable=True)
+    image_count = Column(BigInteger, default=0)
+    audio_duration_seconds = Column(Float, default=0.0)
+
+class LLMModelPricing(Base):
+    __tablename__ = "llm_model_pricing"
+    id = Column(BigInteger, primary_key=True)
+    provider = Column(String)
+    model = Column(String)
+    input_cost_per_1k = Column(Float)
+    output_cost_per_1k = Column(Float)
+    cached_cost_per_1k = Column(Float)
+    image_cost = Column(Float)
+    audio_cost_per_minute = Column(Float)
 
 logger = structlog.get_logger()
 
 @dataclass
+class LLMContent:
+    type: str # text, image_url, audio_url, file_uri, blob
+    data: Any # str, or bytes if needed, but usually url or uri
+    mime_type: Optional[str] = None
+    blob: Optional[bytes] = None
+
+@dataclass
 class LLMMessage:
     role: str
-    content: str
+    parts: List[LLMContent] = field(default_factory=list)
+    
+    def __init__(self, role: str, content: Union[str, List[LLMContent]] = None, parts: List[LLMContent] = None):
+        self.role = role
+        if parts:
+            self.parts = parts
+        elif isinstance(content, str):
+            self.parts = [LLMContent(type="text", data=content)]
+        elif isinstance(content, list):
+            self.parts = content
+        else:
+            self.parts = []
+            
+    @property
+    def content(self) -> str:
+        """Returns text content only, for backward compatibility."""
+        return " ".join([str(p.data) for p in self.parts if p.type == "text"])
 
 class LLMProvider(ABC):
-    """Abstract base class for LLM providers."""
-    
     @abstractmethod
-    async def generate_response(self, messages: List[LLMMessage], system_prompt: str = "You are a helpful assistant.", model: Optional[str] = None) -> str:
+    async def generate_response(self, messages: List[LLMMessage], system_prompt: str = "You are a helpful assistant.", model: Optional[str] = None, tools: Optional[List[Dict]] = None, config: Optional[Dict] = None) -> Union[str, Dict]:
         pass
 
     @abstractmethod
     async def generate_structured_response(self, messages: List[LLMMessage], schema: Dict[str, Any], system_prompt: str = "You are a helpful assistant.", model: Optional[str] = None) -> Dict[str, Any]:
-        """Generate a structured JSON response matching the given schema."""
         pass
 
     @abstractmethod
     async def get_available_models(self) -> List[str]:
-        """Return a list of models supported by this provider."""
+        return []
+
+    async def count_tokens(self, messages: List[LLMMessage], model: Optional[str] = None) -> int:
+        return 0
+        
+    async def embed_content(self, content: Union[str, List[str]], model: Optional[str] = None) -> List[float]:
+        return []
+
+    async def generate_image(self, prompt: str, model: Optional[str] = None, number: int = 1) -> List[str]:
+        """Returns list of image URLs or base64 strings."""
         return []
 
 class OpenAIProvider(LLMProvider):
@@ -39,17 +149,12 @@ class OpenAIProvider(LLMProvider):
         self.model = model
 
     async def get_available_models(self) -> List[str]:
-        try:
-            models_page = await self.client.models.list()
-            # Filter for chat models (gpt-*) to keep list relevant
-            return [m.id for m in models_page.data if m.id.startswith("gpt")]
-        except Exception as e:
-            logger.error("openai_list_models_failed", error=str(e))
-            return ["gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo-0125"]
+        return ["gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo-0125"]
 
-    async def generate_response(self, messages: List[LLMMessage], system_prompt: str = "You are a helpful assistant.", model: Optional[str] = None) -> str:
+    async def generate_response(self, messages: List[LLMMessage], system_prompt: str = "You are a helpful assistant.", model: Optional[str] = None, tools: Optional[List[Dict]] = None, config: Optional[Dict] = None) -> str:
         formatted_messages = [{"role": "system", "content": system_prompt}]
-        formatted_messages.extend([asdict(msg) for msg in messages])
+        for msg in messages:
+            formatted_messages.append({"role": msg.role, "content": msg.content})
         
         try:
             response = await self.client.chat.completions.create(
@@ -63,7 +168,8 @@ class OpenAIProvider(LLMProvider):
 
     async def generate_structured_response(self, messages: List[LLMMessage], schema: Dict[str, Any], system_prompt: str = "You are a helpful assistant.", model: Optional[str] = None) -> Dict[str, Any]:
         formatted_messages = [{"role": "system", "content": system_prompt + "\nOutput strictly in JSON."}]
-        formatted_messages.extend([asdict(msg) for msg in messages])
+        for msg in messages:
+            formatted_messages.append({"role": msg.role, "content": msg.content})
         
         try:
             response = await self.client.chat.completions.create(
@@ -71,314 +177,853 @@ class OpenAIProvider(LLMProvider):
                 messages=formatted_messages,
                 response_format={"type": "json_object"}
             )
-            content = response.choices[0].message.content
-            return json.loads(content)
+            return json.loads(response.choices[0].message.content)
         except Exception as e:
             logger.error("openai_structured_generation_failed", error=str(e), model=self.model)
             raise e
 
-class XAIProvider(LLMProvider):
-    """xAI (Grok) provider using OpenAI client compatibility."""
-    def __init__(self, api_key: str, model: str = "grok-2-1212"):
-        self.client = AsyncOpenAI(
-            api_key=api_key,
-            base_url="https://api.x.ai/v1"
-        )
-        self.model = model
-
-    async def get_available_models(self) -> List[str]:
+    async def generate_image(self, prompt: str, model: Optional[str] = "dall-e-3", number: int = 1) -> List[str]:
         try:
-            models_page = await self.client.models.list()
-            return [m.id for m in models_page.data]
-        except Exception as e:
-            logger.error("xai_list_models_failed", error=str(e))
-            return ["grok-2-1212", "grok-2-vision-1212", "grok-beta"]
-
-    async def generate_response(self, messages: List[LLMMessage], system_prompt: str = "You are a helpful assistant.", model: Optional[str] = None) -> str:
-        formatted_messages = [{"role": "system", "content": system_prompt}]
-        formatted_messages.extend([asdict(msg) for msg in messages])
-        
-        try:
-            response = await self.client.chat.completions.create(
-                model=model or self.model,
-                messages=formatted_messages
+            response = await self.client.images.generate(
+                model=model,
+                prompt=prompt,
+                n=number,
+                size="1024x1024"
             )
-            return response.choices[0].message.content
+            return [img.url for img in response.data]
         except Exception as e:
-            logger.error("xai_generation_failed", error=str(e), model=self.model)
-            raise e
-
-    async def generate_structured_response(self, messages: List[LLMMessage], schema: Dict[str, Any], system_prompt: str = "You are a helpful assistant.", model: Optional[str] = None) -> Dict[str, Any]:
-        # xAI might not support json_object mode yet, so we prompt engineer it
-        formatted_messages = [{"role": "system", "content": system_prompt + "\nOutput strictly in JSON."}]
-        formatted_messages.extend([asdict(msg) for msg in messages])
-        
-        try:
-            response = await self.client.chat.completions.create(
-                model=model or self.model,
-                messages=formatted_messages
-            )
-            content = response.choices[0].message.content
-            # Attempt to parse JSON from content (might need cleanup if markdown blocks are used)
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0].strip()
-            elif "```" in content:
-                content = content.split("```")[1].split("```")[0].strip()
-            return json.loads(content)
-        except Exception as e:
-            logger.error("xai_structured_generation_failed", error=str(e), model=self.model)
-            raise e
-
-class AnthropicProvider(LLMProvider):
-    def __init__(self, api_key: str, model: str = "claude-3-opus-20240229"):
-        self.client = anthropic.AsyncAnthropic(api_key=api_key)
-        self.model = model
-
-    async def get_available_models(self) -> List[str]:
-        # Anthropic API does not currently support listing models programmatically
-        # We must maintain a curated list of active models
-        return [
-            "claude-3-5-sonnet-20240620",
-            "claude-3-opus-20240229",
-            "claude-3-sonnet-20240229",
-            "claude-3-haiku-20240307"
-        ]
-
-    async def generate_response(self, messages: List[LLMMessage], system_prompt: str = "You are a helpful assistant.", model: Optional[str] = None) -> str:
-        formatted_messages = []
-        for msg in messages:
-            role = msg.role
-            if role == "system": continue
-            formatted_messages.append({"role": role, "content": msg.content})
-            
-        try:
-            response = await self.client.messages.create(
-                model=model or self.model,
-                max_tokens=1024,
-                system=system_prompt,
-                messages=formatted_messages
-            )
-            return response.content[0].text
-        except Exception as e:
-            logger.error("anthropic_generation_failed", error=str(e), model=self.model)
-            raise e
-
-    async def generate_structured_response(self, messages: List[LLMMessage], schema: Dict[str, Any], system_prompt: str = "You are a helpful assistant.", model: Optional[str] = None) -> Dict[str, Any]:
-        formatted_messages = []
-        for msg in messages:
-            role = msg.role
-            if role == "system": continue
-            formatted_messages.append({"role": role, "content": msg.content})
-            
-        system_prompt += "\nOutput strictly in JSON."
-        
-        try:
-            response = await self.client.messages.create(
-                model=model or self.model,
-                max_tokens=1024,
-                system=system_prompt,
-                messages=formatted_messages
-            )
-            content = response.content[0].text
-            # Cleanup potential markdown
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0].strip()
-            elif "```" in content:
-                content = content.split("```")[1].split("```")[0].strip()
-            return json.loads(content)
-        except Exception as e:
-            logger.error("anthropic_structured_generation_failed", error=str(e), model=self.model)
+            logger.error("openai_image_generation_failed", error=str(e))
             raise e
 
 class GoogleProvider(LLMProvider):
-    def __init__(self, api_key: str, model: str = "gemini-1.5-flash"):
-        genai.configure(api_key=api_key)
+    """
+    Google/Gemini LLM Provider.
+    
+    Supports both legacy google-generativeai and new google-genai SDKs.
+    When google-genai is available, uses the enhanced GeminiService for
+    full Gemini 3 capabilities including:
+    - Image generation (Nano Banana)
+    - Thinking levels & budgets
+    - Speech generation (TTS)
+    - Audio understanding
+    - File search (RAG)
+    - URL context
+    - Content caching
+    
+    See: docs/GEMINI_CAPABILITIES.md for full documentation.
+    """
+    
+    def __init__(self, api_key: str, model: str = "gemini-2.5-flash"):
+        self.api_key = api_key
         self.model_name = model
-        self.model = genai.GenerativeModel(model)
+        self._usage_callback: Optional[Callable[[UsageMetadata], None]] = None
+        
+        # Initialize enhanced service if available
+        if ENHANCED_GENAI:
+            self.gemini_service = create_gemini_service(
+                api_key=api_key,
+                default_model=model
+            )
+            self.gemini_service.set_usage_callback(self._handle_usage)
+            self.model = None
+        else:
+            self.gemini_service = None
+            genai.configure(api_key=api_key)
+            self.model = genai.GenerativeModel(model)
+    
+    def _handle_usage(self, usage: UsageMetadata):
+        """Handle usage reports from GeminiService."""
+        if self._usage_callback:
+            self._usage_callback(usage)
+    
+    def set_usage_callback(self, callback: Callable[[UsageMetadata], None]):
+        """Set callback for usage tracking."""
+        self._usage_callback = callback
+        if self.gemini_service:
+            self.gemini_service.set_usage_callback(callback)
 
     async def get_available_models(self) -> List[str]:
+        """List available Gemini models."""
+        if self.gemini_service:
+            # Return known Gemini 3 models
+            return [
+                GeminiModel.GEMINI_3_FLASH.value,
+                GeminiModel.GEMINI_3_PRO.value,
+                GeminiModel.GEMINI_3_PRO_IMAGE.value,
+                GeminiModel.GEMINI_25_FLASH.value,
+                GeminiModel.GEMINI_25_PRO.value,
+            ]
         try:
             loop = asyncio.get_running_loop()
             def _list():
-                models = []
-                for m in genai.list_models():
-                    if 'generateContent' in m.supported_generation_methods:
-                        models.append(m.name.replace("models/", ""))
-                return models
+                return [m.name.replace("models/", "") for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
             return await loop.run_in_executor(None, _list)
         except Exception as e:
             logger.error("google_list_models_failed", error=str(e))
-            return ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro"]
+            return ["gemini-2.5-flash", "gemini-2.5-pro"]
 
-    async def generate_response(self, messages: List[LLMMessage], system_prompt: str = "You are a helpful assistant.", model: Optional[str] = None) -> str:
+    def _convert_messages(self, messages: List[LLMMessage]):
+        """Convert LLMMessage format to Gemini format."""
         history = []
-        for msg in messages[:-1]:
+        for msg in messages:
             role = "user" if msg.role == "user" else "model"
-            history.append({"role": role, "parts": [msg.content]})
+            parts = []
+            for part in msg.parts:
+                if part.type == "text":
+                    parts.append(part.data)
+                elif part.type == "image_url":
+                    if part.blob:
+                        parts.append({
+                            "mime_type": part.mime_type or "image/jpeg",
+                            "data": part.blob
+                        })
+                    else:
+                        parts.append(f"[Image URL: {part.data}]") 
+                elif part.type == "blob":
+                     parts.append({
+                        "mime_type": part.mime_type or "application/octet-stream",
+                        "data": part.data
+                     })
+                elif part.type == "file_uri":
+                     parts.append(part.data)
+            history.append({"role": role, "parts": parts})
+        return history
+
+    async def generate_response(
+        self, 
+        messages: List[LLMMessage], 
+        system_prompt: str = "You are a helpful assistant.", 
+        model: Optional[str] = None, 
+        tools: Optional[List[Dict]] = None, 
+        config: Optional[Dict] = None
+    ) -> str:
+        """Generate a text response."""
+        target_model = model or self.model_name
+        
+        # Use enhanced service if available
+        if self.gemini_service:
+            # Extract text content from messages
+            prompt_parts = []
+            for msg in messages:
+                for part in msg.parts:
+                    if part.type == "text":
+                        prompt_parts.append(part.data)
+                    elif part.type == "blob" and part.blob:
+                        from .gemini import GeminiContent
+                        prompt_parts.append(GeminiContent(
+                            type="image",
+                            data=part.blob,
+                            mime_type=part.mime_type
+                        ))
             
-        last_message = messages[-1].content
+            # Determine thinking level from config
+            thinking_level = None
+            if config and "thinking_level" in config:
+                thinking_level = ThinkingLevel(config["thinking_level"])
+            
+            result = await self.gemini_service.generate_text(
+                prompt=prompt_parts if len(prompt_parts) > 1 else prompt_parts[0] if prompt_parts else "",
+                model=target_model,
+                system_instruction=system_prompt,
+                thinking_level=thinking_level,
+                tools=tools
+            )
+            return result.text or ""
+        
+        # Legacy SDK path
+        gen_model = genai.GenerativeModel(target_model, system_instruction=system_prompt, tools=tools)
+        history = self._convert_messages(messages[:-1])
+        last_message_parts = self._convert_messages([messages[-1]])[0]["parts"]
         
         try:
             loop = asyncio.get_running_loop()
             def _generate():
-                # Create new model instance if model override is provided
-                target_model = self.model
-                if model and model != self.model_name:
-                    target_model = genai.GenerativeModel(model)
-                
-                chat = target_model.start_chat(history=history)
-                prompt = f"System Instruction: {system_prompt}\n\nUser: {last_message}"
-                response = chat.send_message(prompt)
-                return response.text
-
-            return await loop.run_in_executor(None, _generate)
+                chat = gen_model.start_chat(history=history)
+                return chat.send_message(last_message_parts, generation_config=config or {})
+            
+            response = await loop.run_in_executor(None, _generate)
+            return response.text
         except Exception as e:
-            logger.error("google_generation_failed", error=str(e), model=self.model_name)
+            logger.error("google_generation_failed", error=str(e), model=target_model)
             raise e
 
-    async def generate_structured_response(self, messages: List[LLMMessage], schema: Dict[str, Any], system_prompt: str = "You are a helpful assistant.", model: Optional[str] = None) -> Dict[str, Any]:
-        # Gemini supports JSON mode in newer models, but for safety we prompt engineer
-        history = []
-        for msg in messages[:-1]:
-            role = "user" if msg.role == "user" else "model"
-            history.append({"role": role, "parts": [msg.content]})
-            
-        last_message = messages[-1].content
+    async def generate_structured_response(
+        self, 
+        messages: List[LLMMessage], 
+        schema: Dict[str, Any], 
+        system_prompt: str = "You are a helpful assistant.", 
+        model: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Generate structured JSON output."""
+        target_model = model or self.model_name
         
+        # Use enhanced service if available
+        if self.gemini_service:
+            prompt = " ".join(msg.content for msg in messages)
+            return await self.gemini_service.generate_structured(
+                prompt=prompt,
+                schema=schema,
+                model=target_model,
+                system_instruction=system_prompt
+            )
+        
+        # Legacy SDK path
+        gen_model = genai.GenerativeModel(
+            target_model,
+            system_instruction=system_prompt,
+            generation_config={"response_mime_type": "application/json", "response_schema": schema}
+        )
+        content_parts = self._convert_messages(messages)
+        history = content_parts[:-1]
+        last_msg = content_parts[-1]["parts"]
+
         try:
             loop = asyncio.get_running_loop()
             def _generate():
-                # Create new model instance if model override is provided
-                target_model = self.model
-                if model and model != self.model_name:
-                    target_model = genai.GenerativeModel(model)
-
-                chat = target_model.start_chat(history=history)
-                prompt = f"System Instruction: {system_prompt}\nOutput strictly in JSON.\n\nUser: {last_message}"
-                response = chat.send_message(prompt)
-                return response.text
-
-            content = await loop.run_in_executor(None, _generate)
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0].strip()
-            elif "```" in content:
-                content = content.split("```")[1].split("```")[0].strip()
-            return json.loads(content)
+                chat = gen_model.start_chat(history=history)
+                return chat.send_message(last_msg).text
+            return json.loads(await loop.run_in_executor(None, _generate))
         except Exception as e:
-            logger.error("google_structured_generation_failed", error=str(e), model=self.model_name)
+            logger.error("google_structured_generation_failed", error=str(e), model=target_model)
             raise e
+
+    async def count_tokens(self, messages: List[LLMMessage], model: Optional[str] = None) -> int:
+        """Count tokens in messages."""
+        target_model = model or self.model_name
+        
+        if self.gemini_service:
+            text = " ".join(msg.content for msg in messages)
+            return await self.gemini_service.count_tokens(text, model=target_model)
+        
+        gen_model = genai.GenerativeModel(target_model)
+        contents = self._convert_messages(messages)
+        try:
+            loop = asyncio.get_running_loop()
+            res = await loop.run_in_executor(None, lambda: gen_model.count_tokens(contents))
+            return res.total_tokens
+        except Exception:
+            return 0
+
+    async def embed_content(
+        self, 
+        content: Union[str, List[str]], 
+        model: Optional[str] = None
+    ) -> Union[List[float], List[List[float]]]:
+        """Generate embeddings."""
+        if self.gemini_service:
+            return await self.gemini_service.generate_embeddings(content)
+        
+        model = model or "models/text-embedding-004"
+        try:
+            loop = asyncio.get_running_loop()
+            res = await loop.run_in_executor(None, lambda: genai.embed_content(model=model, content=content))
+            return res['embedding']
+        except Exception:
+            return []
+            
+    async def generate_image(
+        self, 
+        prompt: str, 
+        model: Optional[str] = None, 
+        number: int = 1
+    ) -> List[str]:
+        """Generate images using Gemini image models (Nano Banana)."""
+        if self.gemini_service:
+            from .gemini import ImageAspectRatio
+            result = await self.gemini_service.generate_image(
+                prompt=prompt,
+                model=model or GeminiModel.GEMINI_25_FLASH_IMAGE.value
+            )
+            # Convert bytes to base64 for compatibility
+            import base64
+            return [base64.b64encode(img).decode() for img in result.images]
+        
+        return ["Image generation requires google-genai SDK. Install with: pip install google-genai"]
+    
+    # =========================================================================
+    # GEMINI 3 ENHANCED CAPABILITIES
+    # These methods are only available with the google-genai SDK
+    # =========================================================================
+    
+    async def generate_with_thinking(
+        self,
+        prompt: str,
+        thinking_level: ThinkingLevel = ThinkingLevel.HIGH,
+        include_thoughts: bool = False,
+        model: Optional[str] = None
+    ) -> GenerationResult:
+        """
+        Generate text with Gemini 3 thinking/reasoning.
+        
+        Args:
+            prompt: The prompt text
+            thinking_level: Depth of reasoning (MINIMAL, LOW, MEDIUM, HIGH)
+            include_thoughts: Include thought summaries in response
+            model: Model to use
+            
+        Returns:
+            GenerationResult with text and optional thoughts
+        """
+        if not self.gemini_service:
+            raise NotImplementedError("Thinking requires google-genai SDK")
+        
+        return await self.gemini_service.generate_text(
+            prompt=prompt,
+            model=model or GeminiModel.GEMINI_3_FLASH.value,
+            thinking_level=thinking_level,
+            include_thoughts=include_thoughts
+        )
+    
+    async def understand_image(
+        self,
+        image: Union[bytes, str],
+        prompt: str = "Describe this image in detail.",
+        detect_objects: bool = False,
+        model: Optional[str] = None
+    ) -> GenerationResult:
+        """
+        Analyze and understand images.
+        
+        Args:
+            image: Image bytes or URL
+            prompt: Question about the image
+            detect_objects: Return bounding boxes
+            model: Model to use
+        """
+        if not self.gemini_service:
+            raise NotImplementedError("Image understanding requires google-genai SDK")
+        
+        return await self.gemini_service.understand_image(
+            image=image,
+            prompt=prompt,
+            model=model,
+            detect_objects=detect_objects
+        )
+    
+    async def generate_speech(
+        self,
+        text: str,
+        voice: str = "Kore",
+        model: Optional[str] = None
+    ) -> bytes:
+        """
+        Generate speech audio from text.
+        
+        Args:
+            text: Text to speak
+            voice: Voice name (Kore, Puck, Zephyr, etc.)
+            model: TTS model
+            
+        Returns:
+            WAV audio bytes
+        """
+        if not self.gemini_service:
+            raise NotImplementedError("TTS requires google-genai SDK")
+        
+        return await self.gemini_service.generate_speech(
+            text=text,
+            voice=voice,
+            model=model or GeminiModel.GEMINI_TTS_FLASH.value
+        )
+    
+    async def understand_audio(
+        self,
+        audio: Union[bytes, str],
+        prompt: str = "Transcribe this audio.",
+        model: Optional[str] = None
+    ) -> GenerationResult:
+        """
+        Analyze and transcribe audio.
+        
+        Args:
+            audio: Audio bytes or file path
+            prompt: Instructions for analysis
+            model: Model to use
+        """
+        if not self.gemini_service:
+            raise NotImplementedError("Audio understanding requires google-genai SDK")
+        
+        return await self.gemini_service.understand_audio(
+            audio=audio,
+            prompt=prompt,
+            model=model
+        )
+    
+    async def generate_with_urls(
+        self,
+        prompt: str,
+        urls: Optional[List[str]] = None,
+        model: Optional[str] = None
+    ) -> GenerationResult:
+        """
+        Generate with URL context grounding.
+        
+        Args:
+            prompt: Prompt that may reference URLs
+            urls: URLs to analyze
+            model: Model to use
+        """
+        if not self.gemini_service:
+            raise NotImplementedError("URL context requires google-genai SDK")
+        
+        return await self.gemini_service.generate_with_urls(
+            prompt=prompt,
+            urls=urls,
+            model=model
+        )
 
 class LLMService:
     def __init__(self, config):
         self.config = config
         self.providers: Dict[str, LLMProvider] = {}
         self.redis = None 
+        self.db_session_factory = None
+        self.http_session = None
         self._initialize_providers()
 
     def set_redis(self, redis_client):
-        """Set Redis client after initialization."""
         self.redis = redis_client
+        
+    def set_db_session_factory(self, session_factory):
+        self.db_session_factory = session_factory
+
+    def set_http_session(self, session):
+        self.http_session = session
 
     def _initialize_providers(self):
-        if self.config.OPENAI_API_KEY:
+        # Only initialize providers that are both configured AND installed
+        if self.config.OPENAI_API_KEY and OPENAI_AVAILABLE:
             self.providers["openai"] = OpenAIProvider(self.config.OPENAI_API_KEY)
-            
-        if self.config.ANTHROPIC_API_KEY:
-            self.providers["anthropic"] = AnthropicProvider(self.config.ANTHROPIC_API_KEY)
-            
-        if self.config.GOOGLE_API_KEY:
+        if self.config.GOOGLE_API_KEY and GENAI_AVAILABLE:
             self.providers["google"] = GoogleProvider(self.config.GOOGLE_API_KEY)
-            
-        if self.config.XAI_API_KEY:
-            self.providers["xai"] = XAIProvider(self.config.XAI_API_KEY)
-            
         logger.info("llm_providers_initialized", providers=list(self.providers.keys()))
 
+    async def _record_usage(self, provider: str, model: str, prompt_tokens: int, completion_tokens: int, guild_id: int = None, user_id: int = None, request_type: str = "text", duration: float = 0.0):
+        if not self.db_session_factory: return
+        try:
+            async with self.db_session_factory() as session:
+                usage = LLMUsage(
+                    guild_id=guild_id, user_id=user_id, provider=provider, model=model,
+                    prompt_tokens=prompt_tokens, completion_tokens=completion_tokens,
+                    tokens=prompt_tokens + completion_tokens, cost=0.0,
+                    request_type=request_type, latency=duration, timestamp=datetime.now()
+                )
+                session.add(usage)
+                await session.commit()
+        except Exception as e:
+            logger.error("failed_to_record_llm_usage", error=str(e))
+
     async def get_history(self, user_id: int) -> List[LLMMessage]:
-        if not self.redis:
-            return []
-        
+        if not self.redis: return []
         key = f"chat:history:{user_id}"
         try:
             data = await self.redis.lrange(key, 0, -1)
             messages = []
             for item in data:
                 msg_dict = json.loads(item)
-                messages.append(LLMMessage(**msg_dict))
+                # Handle conversion from old history if needed
+                if "parts" not in msg_dict:
+                     msg_dict["parts"] = [LLMContent(type="text", data=msg_dict.get("content", ""))]
+                else:
+                     # Reconstruct LLMContent objects
+                     msg_dict["parts"] = [LLMContent(**p) for p in msg_dict["parts"]]
+                messages.append(LLMMessage(role=msg_dict["role"], parts=msg_dict["parts"]))
             return messages
-        except Exception as e:
-            logger.error("failed_to_get_history", error=str(e))
+        except Exception:
             return []
 
     async def add_to_history(self, user_id: int, message: LLMMessage):
-        if not self.redis:
-            return
-            
+        if not self.redis: return
         key = f"chat:history:{user_id}"
+        safe_parts = []
+        for p in message.parts:
+            if p.type == "blob":
+                safe_parts.append(LLMContent(type="text", data="[Image Blob]"))
+            else:
+                safe_parts.append(p)
+        
+        safe_msg = LLMMessage(role=message.role, parts=safe_parts)
+        
         try:
-            await self.redis.rpush(key, json.dumps(asdict(message)))
-            # Trim history to last 20 messages
+            msg_dict = asdict(safe_msg)
+            await self.redis.rpush(key, json.dumps(msg_dict))
             await self.redis.ltrim(key, -20, -1)
-            # Set TTL
-            await self.redis.expire(key, 86400) # 24 hours
+            await self.redis.expire(key, 86400)
         except Exception as e:
             logger.error("failed_to_add_history", error=str(e))
 
-    async def inject_context(self, user_id: int, context_message: str):
-        """Inject a system or context message into the history without triggering a response."""
-        msg = LLMMessage(role="system", content=f"Context Injection: {context_message}")
-        await self.add_to_history(user_id, msg)
-        logger.info("context_injected", user_id=user_id)
+    async def _resolve_content(self, message: Union[str, List[LLMContent]]) -> List[LLMContent]:
+        if isinstance(message, str):
+            return [LLMContent(type="text", data=message)]
+            
+        resolved_parts = []
+        for part in message:
+            if part.type == "image_url" and isinstance(part.data, str) and part.data.startswith("http") and not part.blob and self.http_session:
+                try:
+                    async with self.http_session.get(part.data) as resp:
+                        if resp.status == 200:
+                            data = await resp.read()
+                            part.blob = data
+                            part.mime_type = resp.headers.get("Content-Type", "image/jpeg")
+                except Exception as e:
+                    logger.error("failed_to_download_image", url=part.data, error=str(e))
+            resolved_parts.append(part)
+        return resolved_parts
 
-    async def chat(self, user_id: int, message: str, provider_name: str = "openai", model: Optional[str] = None) -> str:
+    async def chat(self, user_id: int, message: Union[str, List[LLMContent]], provider_name: str = "google", model: Optional[str] = None, guild_id: int = None) -> str:
         if provider_name not in self.providers:
-            if "openai" in self.providers:
-                provider_name = "openai"
-            elif self.providers:
-                provider_name = list(self.providers.keys())[0]
-            else:
-                return "No LLM providers configured."
+            if "google" in self.providers: provider_name = "google"
+            elif self.providers: provider_name = list(self.providers.keys())[0]
+            else: return "No LLM providers configured."
 
         provider = self.providers[provider_name]
+        resolved_parts = await self._resolve_content(message)
         
-        # Get history
         history = await self.get_history(user_id)
         
-        # Add user message
-        user_msg = LLMMessage(role="user", content=message)
+        user_msg = LLMMessage(role="user", parts=resolved_parts)
         history.append(user_msg)
         await self.add_to_history(user_id, user_msg)
         
-        # Generate response
+        start_time = time.time()
         try:
             response_text = await provider.generate_response(history, model=model)
+            duration = time.time() - start_time
             
-            # Add assistant message
+            await self._record_usage(provider_name, model or "default", 0, 0, guild_id, user_id, "chat", duration)
+            
             assistant_msg = LLMMessage(role="assistant", content=response_text)
             await self.add_to_history(user_id, assistant_msg)
-            
             return response_text
         except Exception as e:
             return f"Error from {provider_name}: {str(e)}"
 
-    async def generate_structured(self, prompt: str, schema: Dict[str, Any], provider_name: str = "openai", system_prompt: str = "You are a helpful assistant.") -> Dict[str, Any]:
-        """Generate a structured response for internal analysis tools."""
+    async def generate_structured(self, prompt: str, schema: Dict[str, Any], provider_name: str = "google", system_prompt: str = "You are a helpful assistant.") -> Dict[str, Any]:
         if provider_name not in self.providers:
-             if "openai" in self.providers:
-                provider_name = "openai"
-             elif self.providers:
-                provider_name = list(self.providers.keys())[0]
-             else:
-                raise Exception("No LLM providers configured")
+             if "google" in self.providers: provider_name = "google"
+             else: raise Exception("No LLM providers configured")
         
         provider = self.providers[provider_name]
         messages = [LLMMessage(role="user", content=prompt)]
         
-        return await provider.generate_structured_response(messages, schema, system_prompt)
+        return await provider.generate_structured_response(messages, schema, system_prompt=system_prompt)
+
+    async def count_tokens(self, message: Union[str, List[LLMContent]], provider_name: str = "google", model: Optional[str] = None) -> int:
+        if provider_name not in self.providers:
+             if "google" in self.providers: provider_name = "google"
+             else: return 0
+        
+        provider = self.providers[provider_name]
+        resolved_parts = await self._resolve_content(message)
+        msg = LLMMessage(role="user", parts=resolved_parts)
+        return await provider.count_tokens([msg], model=model)
 
     async def get_available_models(self) -> Dict[str, List[str]]:
-        """Get available models grouped by provider."""
         models = {}
         for name, provider in self.providers.items():
             models[name] = await provider.get_available_models()
         return models
+
+    async def generate_image(self, prompt: str, provider_name: str = "google", model: Optional[str] = None) -> List[str]:
+         """Generate images. Prefers Google/Gemini for native image generation."""
+         if provider_name not in self.providers:
+             if "google" in self.providers: provider_name = "google"
+             elif "openai" in self.providers: provider_name = "openai"
+             else: return []
+         return await self.providers[provider_name].generate_image(prompt, model)
+
+    # =========================================================================
+    # GEMINI 3 ENHANCED CAPABILITIES
+    # These convenience methods expose Gemini-specific features directly
+    # =========================================================================
+    
+    def _get_google_provider(self) -> GoogleProvider:
+        """Get the Google provider, raising if not available."""
+        if "google" not in self.providers:
+            raise RuntimeError("Google provider not configured. Set GOOGLE_API_KEY.")
+        return self.providers["google"]
+    
+    async def gemini_generate_with_thinking(
+        self,
+        prompt: str,
+        thinking_level: ThinkingLevel = ThinkingLevel.HIGH,
+        include_thoughts: bool = False,
+        model: Optional[str] = None,
+        guild_id: Optional[int] = None,
+        user_id: Optional[int] = None
+    ) -> GenerationResult:
+        """
+        Generate text with Gemini 3 thinking/reasoning.
+        
+        Args:
+            prompt: The prompt text
+            thinking_level: Depth of reasoning (MINIMAL, LOW, MEDIUM, HIGH)
+            include_thoughts: Include thought summaries in response
+            model: Model to use (defaults to gemini-3-flash-preview)
+            guild_id: For usage tracking
+            user_id: For usage tracking
+            
+        Returns:
+            GenerationResult with text, thoughts, and usage metadata
+            
+        Example:
+            ```python
+            result = await llm_service.gemini_generate_with_thinking(
+                "Solve this complex logic puzzle...",
+                thinking_level=ThinkingLevel.HIGH,
+                include_thoughts=True
+            )
+            print(result.text)
+            print(f"Thinking: {result.thoughts_summary}")
+            ```
+        """
+        provider = self._get_google_provider()
+        result = await provider.generate_with_thinking(
+            prompt=prompt,
+            thinking_level=thinking_level,
+            include_thoughts=include_thoughts,
+            model=model
+        )
+        
+        # Record enhanced usage
+        if result.usage and self.db_session_factory:
+            await self._record_enhanced_usage(
+                result.usage, guild_id, user_id, thinking_level.value
+            )
+        
+        return result
+    
+    async def gemini_generate_image(
+        self,
+        prompt: str,
+        aspect_ratio: str = "1:1",
+        model: Optional[str] = None,
+        guild_id: Optional[int] = None,
+        user_id: Optional[int] = None
+    ) -> GenerationResult:
+        """
+        Generate images using Gemini (Nano Banana).
+        
+        Args:
+            prompt: Description of the image
+            aspect_ratio: Image aspect ratio (e.g., "16:9", "1:1")
+            model: Image model to use
+            
+        Returns:
+            GenerationResult with images as bytes
+        """
+        provider = self._get_google_provider()
+        if not provider.gemini_service:
+            raise NotImplementedError("Image generation requires google-genai SDK")
+        
+        from .gemini import ImageAspectRatio
+        ar = ImageAspectRatio(aspect_ratio) if aspect_ratio else ImageAspectRatio.SQUARE
+        
+        result = await provider.gemini_service.generate_image(
+            prompt=prompt,
+            aspect_ratio=ar,
+            model=model or GeminiModel.GEMINI_25_FLASH_IMAGE.value
+        )
+        
+        if result.usage and self.db_session_factory:
+            await self._record_enhanced_usage(result.usage, guild_id, user_id)
+        
+        return result
+    
+    async def gemini_understand_image(
+        self,
+        image: Union[bytes, str],
+        prompt: str = "Describe this image in detail.",
+        detect_objects: bool = False,
+        model: Optional[str] = None,
+        guild_id: Optional[int] = None,
+        user_id: Optional[int] = None
+    ) -> GenerationResult:
+        """
+        Analyze images with Gemini vision capabilities.
+        
+        Args:
+            image: Image bytes or URL
+            prompt: Question or instruction about the image
+            detect_objects: Return bounding boxes for detected objects
+            
+        Returns:
+            GenerationResult with analysis
+        """
+        provider = self._get_google_provider()
+        result = await provider.understand_image(
+            image=image,
+            prompt=prompt,
+            detect_objects=detect_objects,
+            model=model
+        )
+        
+        if result.usage and self.db_session_factory:
+            await self._record_enhanced_usage(result.usage, guild_id, user_id)
+        
+        return result
+    
+    async def gemini_generate_speech(
+        self,
+        text: str,
+        voice: str = "Kore",
+        model: Optional[str] = None,
+        guild_id: Optional[int] = None,
+        user_id: Optional[int] = None
+    ) -> bytes:
+        """
+        Generate speech audio from text.
+        
+        Args:
+            text: Text to speak (can include style directions)
+            voice: Voice name (Kore, Puck, Zephyr, etc.)
+            
+        Returns:
+            WAV audio bytes
+        """
+        provider = self._get_google_provider()
+        audio = await provider.generate_speech(text=text, voice=voice, model=model)
+        
+        # Record usage estimate
+        if self.db_session_factory:
+            usage = UsageMetadata(
+                capability_type=CapabilityType.SPEECH_GENERATION,
+                model=model or GeminiModel.GEMINI_TTS_FLASH.value,
+                prompt_tokens=len(text.split()) * 2
+            )
+            await self._record_enhanced_usage(usage, guild_id, user_id)
+        
+        return audio
+    
+    async def gemini_understand_audio(
+        self,
+        audio: Union[bytes, str],
+        prompt: str = "Transcribe this audio.",
+        detect_speakers: bool = False,
+        model: Optional[str] = None,
+        guild_id: Optional[int] = None,
+        user_id: Optional[int] = None
+    ) -> GenerationResult:
+        """
+        Analyze and transcribe audio.
+        
+        Args:
+            audio: Audio bytes or file path
+            prompt: Instructions for analysis
+            detect_speakers: Identify different speakers
+            
+        Returns:
+            GenerationResult with transcript
+        """
+        provider = self._get_google_provider()
+        if not provider.gemini_service:
+            raise NotImplementedError("Audio understanding requires google-genai SDK")
+        
+        result = await provider.gemini_service.understand_audio(
+            audio=audio,
+            prompt=prompt,
+            model=model,
+            detect_speakers=detect_speakers
+        )
+        
+        if result.usage and self.db_session_factory:
+            await self._record_enhanced_usage(result.usage, guild_id, user_id)
+        
+        return result
+    
+    async def gemini_generate_embeddings(
+        self,
+        content: Union[str, List[str]],
+        task_type: str = "RETRIEVAL_DOCUMENT",
+        guild_id: Optional[int] = None,
+        user_id: Optional[int] = None
+    ) -> Union[List[float], List[List[float]]]:
+        """
+        Generate embeddings for text content.
+        
+        Args:
+            content: Text or list of texts
+            task_type: Embedding task type for optimization
+            
+        Returns:
+            Embedding vector(s)
+        """
+        provider = self._get_google_provider()
+        if not provider.gemini_service:
+            return await provider.embed_content(content)
+        
+        from .gemini import EmbeddingTaskType
+        try:
+            tt = EmbeddingTaskType(task_type)
+        except ValueError:
+            tt = EmbeddingTaskType.RETRIEVAL_DOCUMENT
+        
+        return await provider.gemini_service.generate_embeddings(
+            content=content,
+            task_type=tt
+        )
+    
+    async def gemini_generate_with_urls(
+        self,
+        prompt: str,
+        urls: Optional[List[str]] = None,
+        model: Optional[str] = None,
+        guild_id: Optional[int] = None,
+        user_id: Optional[int] = None
+    ) -> GenerationResult:
+        """
+        Generate with URL context grounding.
+        
+        Args:
+            prompt: Prompt that references URLs
+            urls: Optional explicit list of URLs
+            
+        Returns:
+            GenerationResult with grounding metadata
+        """
+        provider = self._get_google_provider()
+        result = await provider.generate_with_urls(
+            prompt=prompt,
+            urls=urls,
+            model=model
+        )
+        
+        if result.usage and self.db_session_factory:
+            await self._record_enhanced_usage(result.usage, guild_id, user_id)
+        
+        return result
+    
+    async def _record_enhanced_usage(
+        self,
+        usage: UsageMetadata,
+        guild_id: Optional[int] = None,
+        user_id: Optional[int] = None,
+        thinking_level: Optional[str] = None
+    ):
+        """Record enhanced usage metrics from Gemini operations."""
+        if not self.db_session_factory:
+            return
+        
+        try:
+            async with self.db_session_factory() as session:
+                usage_record = LLMUsage(
+                    guild_id=guild_id,
+                    user_id=user_id,
+                    provider="google",
+                    model=usage.model,
+                    prompt_tokens=usage.prompt_tokens,
+                    completion_tokens=usage.completion_tokens,
+                    thoughts_tokens=usage.thoughts_tokens,
+                    cached_tokens=usage.cached_tokens,
+                    tokens=usage.total_tokens,
+                    cost=usage.estimated_cost,
+                    capability_type=usage.capability_type.value if usage.capability_type else None,
+                    request_type=usage.capability_type.value if usage.capability_type else "text",
+                    latency=usage.latency_ms / 1000,
+                    timestamp=usage.timestamp,
+                    thinking_level=thinking_level
+                )
+                session.add(usage_record)
+                await session.commit()
+        except Exception as e:
+            logger.error("failed_to_record_enhanced_usage", error=str(e))

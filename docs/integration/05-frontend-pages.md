@@ -117,12 +117,12 @@ interface FeatureCardProps {
 
 export default function FeatureCard({ name, description, onDelete }: FeatureCardProps) {
     return (
-        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-            <h3 className="text-xl font-semibold mb-2">{name}</h3>
-            <p className="text-gray-400 mb-4">{description}</p>
+        <div className="bg-card rounded-lg p-4 border border-border">
+            <h3 className="text-xl font-semibold mb-2 text-foreground">{name}</h3>
+            <p className="text-muted-foreground mb-4">{description}</p>
             <button
                 onClick={onDelete}
-                className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded"
+                className="bg-destructive hover:bg-destructive/90 text-destructive-foreground px-4 py-2 rounded"
             >
                 Delete
             </button>
@@ -254,41 +254,41 @@ export default function CreateFeaturePage() {
             <h1 className="text-3xl font-bold mb-6">Create Feature</h1>
             
             {message && (
-                <div className="p-4 rounded-lg mb-6 bg-green-500/10 text-green-400">
+                <div className="p-4 rounded-lg mb-6 bg-primary/10 text-primary">
                     {message}
                 </div>
             )}
 
             <form onSubmit={handleSubmit} className="space-y-6">
                 <div>
-                    <label className="block text-sm font-medium mb-2">
+                    <label className="block text-sm font-medium mb-2 text-foreground">
                         Feature Name
                     </label>
                     <input
                         type="text"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
-                        className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3"
+                        className="w-full bg-background border border-input rounded-lg p-3 text-foreground focus:ring-2 focus:ring-ring"
                         required
                     />
                 </div>
 
                 <div>
-                    <label className="block text-sm font-medium mb-2">
+                    <label className="block text-sm font-medium mb-2 text-foreground">
                         Description
                     </label>
                     <textarea
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
                         rows={4}
-                        className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3"
+                        className="w-full bg-background border border-input rounded-lg p-3 text-foreground focus:ring-2 focus:ring-ring"
                     />
                 </div>
 
                 <button
                     type="submit"
                     disabled={saving}
-                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-lg disabled:opacity-50 flex items-center justify-center gap-2"
+                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground py-3 rounded-lg disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                     {saving ? (
                         <>
@@ -374,16 +374,19 @@ Common utility classes:
 <div className="space-y-6">              {/* Vertical spacing */}
 <div className="grid grid-cols-2 gap-4"> {/* Grid layout */}
 
-// Colors (dark theme)
-<div className="bg-gray-800">            {/* Background */}
-<div className="text-white">             {/* Text */}
-<div className="border border-gray-700"> {/* Border */}
+// Colors — always use semantic tokens, NEVER hardcode colors
+<div className="bg-card">               {/* Card/panel background */}
+<div className="bg-background">         {/* Page background */}
+<div className="text-foreground">       {/* Primary text */}
+<div className="text-muted-foreground"> {/* Secondary text */}
+<div className="border border-border">  {/* Border */}
 
 // Buttons
-<button className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg">
+<button className="bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-lg">
+<button className="bg-destructive hover:bg-destructive/90 text-destructive-foreground px-4 py-2 rounded-lg">
 
 // Forms
-<input className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500">
+<input className="w-full bg-background border border-input rounded-lg p-3 focus:ring-2 focus:ring-ring">
 ```
 
 ## Best Practices

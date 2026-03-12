@@ -2,13 +2,30 @@ import discord
 from discord.ext import commands
 import structlog
 import aiohttp
+import time
 from typing import Optional
 
 from services import BotServices
 from services.shard_monitor import ShardMonitor
 from core.loader import load_cogs
+from core.permission_validator import PermissionValidator
 
 logger = structlog.get_logger()
+
+BACKEND_INSTRUMENTATION_URL = "http://backend:8000/api/v1/instrumentation/bot-command"
+
+
+async def _post_command_metric(session: aiohttp.ClientSession, payload: dict) -> None:
+    """Fire-and-forget: send command timing to the instrumentation endpoint."""
+    try:
+        async with session.post(
+            BACKEND_INSTRUMENTATION_URL,
+            json=payload,
+            timeout=aiohttp.ClientTimeout(total=5),
+        ) as _:
+            pass
+    except Exception:
+        pass  # Never let metric recording affect the bot
 
 class BaselineBot(commands.AutoShardedBot):
     """
@@ -19,6 +36,7 @@ class BaselineBot(commands.AutoShardedBot):
     def __init__(self):
         self.services = BotServices()
         self.shard_monitor = None
+        self.permission_validator = PermissionValidator()
         
         intents = discord.Intents.default()
         intents.message_content = True
@@ -51,10 +69,13 @@ class BaselineBot(commands.AutoShardedBot):
         """
         logger.info("bot_setup_hook_started")
         
+        # Validate intents before proceeding
+        self.permission_validator.validate_intents(self.intents)
+        
         self.session = aiohttp.ClientSession()
         
         # Initialize services
-        await self.services.initialize()
+        await self.services.initialize(http_session=self.session)
         self.shard_monitor = ShardMonitor(self.services)
         
         # Load cogs
@@ -89,6 +110,9 @@ class BaselineBot(commands.AutoShardedBot):
                     user=str(self.user), 
                     id=self.user.id, 
                     shard_count=self.shard_count)
+        
+        # Validate permissions across all guilds
+        self.permission_validator.validate_all_guilds(self.guilds)
 
     async def on_shard_ready(self, shard_id):
         logger.info("shard_ready", shard_id=shard_id)
@@ -104,6 +128,40 @@ class BaselineBot(commands.AutoShardedBot):
         logger.info("shard_resumed", shard_id=shard_id)
         if self.shard_monitor:
             await self.shard_monitor.update_shard_status(shard_id, "online")
+
+    # ── Prefix command timing ──────────────────────────────────────────────────
+
+    async def on_command(self, ctx: commands.Context):
+        ctx._cmd_start = time.monotonic()
+
+    async def on_command_completion(self, ctx: commands.Context):
+        if not self.session:
+            return
+        duration_ms = (time.monotonic() - getattr(ctx, "_cmd_start", time.monotonic())) * 1000
+        cog_name = ctx.cog.__class__.__name__ if ctx.cog else None
+        await _post_command_metric(self.session, {
+            "command": ctx.command.qualified_name if ctx.command else "unknown",
+            "cog": cog_name,
+            "guild_id": ctx.guild.id if ctx.guild else None,
+            "user_id": ctx.author.id,
+            "duration_ms": duration_ms,
+            "success": True,
+        })
+
+    async def on_command_error(self, ctx: commands.Context, error: Exception):
+        if not self.session:
+            return
+        duration_ms = (time.monotonic() - getattr(ctx, "_cmd_start", time.monotonic())) * 1000
+        cog_name = ctx.cog.__class__.__name__ if ctx.cog else None
+        await _post_command_metric(self.session, {
+            "command": ctx.command.qualified_name if ctx.command else "unknown",
+            "cog": cog_name,
+            "guild_id": ctx.guild.id if ctx.guild else None,
+            "user_id": ctx.author.id,
+            "duration_ms": duration_ms,
+            "success": False,
+            "error_type": type(error).__name__,
+        })
 
     async def on_shutdown(self):
         """

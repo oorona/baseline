@@ -67,7 +67,7 @@ class IntrospectionCog(commands.Cog):
 
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.post(f"{self.backend_url}/bot/report", json=report_payload) as resp:
+                async with session.post(f"{self.backend_url}/bot-info/report", json=report_payload) as resp:
                     if resp.status == 200:
                         logger.info("Successfully reported bot info to backend")
                     else:

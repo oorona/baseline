@@ -7,6 +7,7 @@ interface AuthContextType {
     user: any;
     loading: boolean;
     logout: () => void;
+    logoutAll: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -41,8 +42,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const createSilentLoginIframe = () => {
         const iframe = document.createElement('iframe');
         iframe.style.display = 'none';
-        iframe.src = 'http://localhost:8000/api/v1/auth/discord/login?prompt=none&state=silent';
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+        iframe.src = `${apiUrl}/api/v1/auth/discord/login?prompt=none&state=silent`;
         document.body.appendChild(iframe);
+
 
         // Cleanup iframe after some time to avoid leaks
         setTimeout(() => {
@@ -115,8 +118,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
     };
 
+    const logoutAll = async () => {
+        try {
+            await apiClient.logoutAll();
+        } catch (error) {
+            console.error('Logout all failed:', error);
+        } finally {
+            setUser(null);
+            setSilentLoginAttempted(true);
+            if (typeof window !== 'undefined') {
+                localStorage.removeItem('access_token');
+                window.location.href = '/login';
+            }
+        }
+    };
+
     return (
-        <AuthContext.Provider value={{ user, loading, logout }}>
+        <AuthContext.Provider value={{ user, loading, logout, logoutAll }}>
             {children}
         </AuthContext.Provider>
     );

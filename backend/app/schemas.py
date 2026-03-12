@@ -1,5 +1,5 @@
 from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 
 class UserBase(BaseModel):
@@ -117,20 +117,58 @@ class DiscordMember(BaseModel):
     avatar_url: Optional[str] = None
 
 class LLMRequest(BaseModel):
-    prompt: str
-    system_prompt: Optional[str] = "You are a helpful assistant."
+    prompt: str = Field(..., min_length=1, max_length=8000)
+    system_prompt: Optional[str] = Field(default="You are a helpful assistant.", max_length=2000)
     provider: Optional[str] = "openai"
     model: Optional[str] = None
     guild_id: Optional[int] = None
 
 class ChatRequest(BaseModel):
-    message: str
-    context_id: str
-    name: Optional[str] = None
+    message: str = Field(..., min_length=1, max_length=4000)
+    context_id: str = Field(..., min_length=1, max_length=128)
+    name: Optional[str] = Field(default=None, max_length=64)
     provider: Optional[str] = "openai"
     model: Optional[str] = None
     guild_id: Optional[int] = None
 
 class LLMResponseBase(BaseModel):
     content: str
+
+# ── Structured Output ─────────────────────────────────────────────────────────
+
+STRUCTURED_SCHEMAS = ["user_intent", "discord_moderation_action", "server_health_report"]
+
+class StructuredOutputRequest(BaseModel):
+    prompt: str = Field(..., min_length=1, max_length=4000)
+    schema_name: str = Field(..., min_length=1, max_length=64)  # one of STRUCTURED_SCHEMAS
+    provider: Optional[str] = "openai"
+    model: Optional[str] = None
+    guild_id: Optional[int] = None
+
+class StructuredOutputResponse(BaseModel):
+    schema_name: str
+    prompt: str
+    output: Dict[str, Any]
+    raw_content: str
+
+# ── Function Calling ──────────────────────────────────────────────────────────
+
+FUNCTION_SCENARIOS = ["weather", "calculator", "discord_query"]
+
+class FunctionCallRequest(BaseModel):
+    prompt: str = Field(..., min_length=1, max_length=2000)
+    scenario: str = Field(default="weather", min_length=1, max_length=64)  # one of FUNCTION_SCENARIOS
+    provider: Optional[str] = "openai"
+    model: Optional[str] = None
+    guild_id: Optional[int] = None
+
+class FunctionCallResponse(BaseModel):
+    scenario: str
+    prompt: str
+    available_functions: List[str]
+    function_called: str
+    arguments: Dict[str, Any]
+    function_result: Any
+    final_answer: str
+    raw_tool_turn: str
 

@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { apiClient } from '@/app/api-client';
 import { usePlugins } from '@/app/plugins';
-import { Bot, Settings, Activity, Terminal, Shield, Lock, ExternalLink, User, FileText, ScrollText, Database, BarChart2 } from 'lucide-react';
+import { Bot, Settings, Activity, Terminal, Shield, Lock, ExternalLink, User, FileText, ScrollText, Database, BarChart2, Settings2, Wrench, Gauge, Sparkles, BrainCircuit } from 'lucide-react';
 import { usePermissions } from '@/lib/hooks/use-permissions';
 import { PermissionLevel } from '@/lib/permissions';
 
@@ -82,6 +82,7 @@ function DashboardContent() {
 
   // Define Cards
   interface DashboardCard {
+    id: string;
     title: string;
     description: string;
     icon: any;
@@ -93,54 +94,72 @@ function DashboardContent() {
     isAdminOnly?: boolean;
   }
 
+  // Friendly level labels shown on each card
+  const levelLabel = (level: PermissionLevel): string => {
+    switch (level) {
+      case PermissionLevel.PUBLIC:      return 'Public';
+      case PermissionLevel.PUBLIC_DATA: return 'Public';
+      case PermissionLevel.USER:        return 'Level 2 — Logged in';
+      case PermissionLevel.AUTHORIZED:  return 'Level 3 — Authorized';
+      case PermissionLevel.OWNER:       return 'Level 4 — Owner';
+      case PermissionLevel.DEVELOPER:   return 'Level 5 — Developer';
+      default:                          return `Level ${level}`;
+    }
+  };
+
   const cards: DashboardCard[] = [
     {
+      id: 'bot-settings',
       title: 'Bot Settings',
-      description: 'Configure general bot behavior, prefix, and language.',
+      description: 'Configure general bot behavior, command prefix, and language settings.',
       icon: Settings,
       href: `/dashboard/${activeGuildId}/settings`,
-      level: PermissionLevel.AUTHORIZED, // Level 3
+      level: PermissionLevel.AUTHORIZED,
       color: 'text-blue-500',
       bgColor: 'bg-blue-500/10',
       borderColor: 'group-hover:border-blue-500/50',
       isAdminOnly: false
     },
     {
+      id: 'permissions',
       title: 'Permissions',
-      description: 'Manage access levels, authorized users, and roles.',
+      description: 'Manage access levels, authorize users and roles for this server.',
       icon: Shield,
       href: `/dashboard/${activeGuildId}/permissions`,
-      level: PermissionLevel.OWNER, // Level 4
+      level: PermissionLevel.OWNER,
       color: 'text-purple-500',
       bgColor: 'bg-purple-500/10',
       borderColor: 'group-hover:border-purple-500/50',
       isAdminOnly: false
     },
     {
+      id: 'system-status',
       title: 'System Status',
-      description: 'View shard status, uptime, and database metrics.',
+      description: 'View shard health, uptime, and live database metrics.',
       icon: Activity,
-      href: `/dashboard/status`, // Global page, but potentially context aware later?
-      level: PermissionLevel.USER, // Level 2
+      href: `/dashboard/status`,
+      level: PermissionLevel.USER,
       color: 'text-green-500',
       bgColor: 'bg-green-500/10',
       borderColor: 'group-hover:border-green-500/50',
       isAdminOnly: false
     },
     {
+      id: 'account-settings',
       title: 'Account Settings',
-      description: 'Manage your personal preferences and profile.',
+      description: 'Manage your personal preferences, theme, and profile details.',
       icon: User,
       href: `/dashboard/account`,
-      level: PermissionLevel.USER, // Public in Sidebar, but User level is fine for logged in
+      level: PermissionLevel.USER,
       color: 'text-indigo-500',
       bgColor: 'bg-indigo-500/10',
       borderColor: 'group-hover:border-indigo-500/50',
       isAdminOnly: false
     },
     {
+      id: 'audit-logs',
       title: 'Audit Logs',
-      description: 'Track changes and actions within this server.',
+      description: 'Track all configuration changes and administrative actions in this server.',
       icon: FileText,
       href: `/dashboard/${activeGuildId}/audit-logs`,
       level: PermissionLevel.AUTHORIZED,
@@ -150,8 +169,9 @@ function DashboardContent() {
       isAdminOnly: false
     },
     {
+      id: 'logging-control',
       title: 'Logging Control',
-      description: 'Configure logging levels for this server.',
+      description: 'Configure channel-level and event-level logging for this server.',
       icon: ScrollText,
       href: `/dashboard/${activeGuildId}/logging`,
       level: PermissionLevel.AUTHORIZED,
@@ -161,19 +181,9 @@ function DashboardContent() {
       isAdminOnly: false
     },
     {
-      title: 'Platform Settings',
-      description: 'Global configuration for all bots.',
-      icon: Database,
-      href: `/dashboard/platform`,
-      level: PermissionLevel.DEVELOPER,
-      color: 'text-red-500',
-      bgColor: 'bg-red-500/10',
-      borderColor: 'group-hover:border-red-500/50',
-      isAdminOnly: true
-    },
-    {
+      id: 'ai-analytics',
       title: 'AI Analytics',
-      description: 'View LLM usage stats and costs.',
+      description: 'View LLM usage statistics, token consumption, and cost breakdowns.',
       icon: BarChart2,
       href: `/dashboard/ai-analytics`,
       level: PermissionLevel.DEVELOPER,
@@ -182,8 +192,69 @@ function DashboardContent() {
       borderColor: 'group-hover:border-cyan-500/50',
       isAdminOnly: true
     },
+    {
+      id: 'system-config',
+      title: 'System Configuration',
+      description: 'Manage all framework settings. Apply dynamic changes at runtime or configure static parameters.',
+      icon: Settings2,
+      href: `/dashboard/config`,
+      level: PermissionLevel.DEVELOPER,
+      color: 'text-red-500',
+      bgColor: 'bg-red-500/10',
+      borderColor: 'group-hover:border-red-500/50',
+      isAdminOnly: true
+    },
+    {
+      id: 'database',
+      title: 'Database Management',
+      description: 'Monitor connections, apply schema migrations, and validate database integrity.',
+      icon: Database,
+      href: `/dashboard/database`,
+      level: PermissionLevel.DEVELOPER,
+      color: 'text-amber-500',
+      bgColor: 'bg-amber-500/10',
+      borderColor: 'group-hover:border-amber-500/50',
+      isAdminOnly: true
+    },
+    {
+      id: 'instrumentation',
+      title: 'Instrumentation',
+      description: 'Performance metrics, guild growth, card usage stats, and bot command analytics across all servers.',
+      icon: Gauge,
+      href: `/dashboard/instrumentation`,
+      level: PermissionLevel.DEVELOPER,
+      color: 'text-orange-500',
+      bgColor: 'bg-orange-500/10',
+      borderColor: 'group-hover:border-orange-500/50',
+      isAdminOnly: true
+    },
+    {
+      id: 'gemini-demo',
+      title: 'Gemini Capabilities',
+      description: 'Demo suite for Gemini API: text generation, image generation, vision, TTS, embeddings, and more.',
+      icon: Sparkles,
+      href: `/dashboard/${activeGuildId}/gemini-demo`,
+      level: PermissionLevel.DEVELOPER,
+      color: 'text-sky-500',
+      bgColor: 'bg-sky-500/10',
+      borderColor: 'group-hover:border-sky-500/50',
+      isAdminOnly: true
+    },
+    {
+      id: 'llm-configs',
+      title: 'LLM Configs',
+      description: 'Manage output schemas and function sets for Gemini API calls. View call logs with token stats and cost.',
+      icon: BrainCircuit,
+      href: `/dashboard/llm-configs`,
+      level: PermissionLevel.DEVELOPER,
+      color: 'text-violet-500',
+      bgColor: 'bg-violet-500/10',
+      borderColor: 'group-hover:border-violet-500/50',
+      isAdminOnly: true
+    },
     // Plugins
     ...pluginNavItems.map((plugin: any) => ({
+      id: `plugin-${plugin.id || plugin.name}`,
       title: plugin.name,
       description: 'Plugin module',
       icon: plugin.icon || Terminal,
@@ -234,7 +305,10 @@ function DashboardContent() {
         {visibleCards.map((card, index) => (
           <div
             key={index}
-            onClick={() => router.push(card.href)}
+            onClick={() => {
+              apiClient.trackCardClick(card.id, activeGuildId);
+              router.push(card.href);
+            }}
             className={`group relative bg-card hover:bg-muted/40 border border-border ${card.borderColor} rounded-xl p-8 cursor-pointer transition-all duration-300 hover:shadow-lg hover:-translate-y-1 flex flex-col h-full`}
           >
             <div className={`absolute top-6 right-6 p-3 rounded-xl ${card.bgColor} ${card.color} transition-colors group-hover:scale-110 duration-300`}>
@@ -247,7 +321,7 @@ function DashboardContent() {
             </div>
 
             <div className="mt-8 pt-6 border-t border-border/50 flex items-center justify-between text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors">
-              <span>Access Level: {card.level}</span>
+              <span>{levelLabel(card.level)}</span>
               <ExternalLink size={16} className="opacity-0 group-hover:opacity-100 transition-opacity" />
             </div>
           </div>

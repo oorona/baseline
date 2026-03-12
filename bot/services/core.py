@@ -77,12 +77,16 @@ class BotServices:
                     logger.error(f"Failed to load secret {env_var}: {e}")
         
 
-    async def initialize(self):
+    async def initialize(self, http_session=None):
         from .llm import LLMService
         from .analysis import AnalysisService
         
         self.llm = LLMService(self.config)
         self.llm.set_redis(self.redis)
+        self.llm.set_db_session_factory(self.session_factory)
+        if http_session:
+            self.llm.set_http_session(http_session)
+        self.llm.set_db_session_factory(self.session_factory)
         
         self.analysis = AnalysisService(self.llm, self.redis)
         

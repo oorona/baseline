@@ -1,6 +1,7 @@
 from typing import Generator, Optional
 from fastapi import Depends, HTTPException, status, Cookie, Header
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from redis.asyncio import Redis
 import json
 
@@ -24,8 +25,15 @@ async def get_current_user(
         elif authorization.startswith("Bot "):
             # Bot Authentication
             from app.core.config import settings
+            import secrets
+            import structlog
+            
+            logger = structlog.get_logger()
             token = authorization.split(" ")[1]
-            if token == settings.DISCORD_BOT_TOKEN:
+            
+            # Constant-time comparison
+            if settings.DISCORD_BOT_TOKEN and secrets.compare_digest(token, settings.DISCORD_BOT_TOKEN):
+                logger.info("Bot authentication successful", user="system_bot")
                 # Return a synthetic system user
                 return {
                     "user_id": 0, # System ID
@@ -35,6 +43,9 @@ async def get_current_user(
                     "permission_level": "admin", # Bot is admin
                     "system": True
                 }
+            else:
+                logger.warning("Bot authentication failed", error="invalid_token")
+
     
     
     if not session_id:
@@ -44,14 +55,89 @@ async def get_current_user(
         )
 
     # Check Redis for session
-    session_data = await redis.get(f"session:{session_id}")
-    if not session_data:
+    session_data_json = await redis.get(f"session:{session_id}")
+    
+    # -------------------------------------------------------------------------
+    # PERSISTENT STORAGE FALLBACK
+    # If not in Redis, check DB (UserToken)
+    # -------------------------------------------------------------------------
+    if not session_data_json:
+        # 1. Hash the token
+        import hashlib
+        token_hash = hashlib.sha256(session_id.encode()).hexdigest()
+        
+        # 2. Query DB
+        from app.models import UserToken
+        stmt = select(UserToken).where(UserToken.token_hash == token_hash)
+        result = await db.execute(stmt)
+        user_token = result.scalar_one_or_none()
+        
+        # 3. Validate
+        if user_token:
+            import datetime
+            # Check expiry
+            # Ensure naive datetimes are handled if DB returns timezone-aware
+            now = datetime.datetime.now(datetime.timezone.utc)
+            if user_token.expires_at > now:
+                # 4. Fetch User
+                stmt_user = select(User).where(User.id == user_token.user_id)
+                res_user = await db.execute(stmt_user)
+                user = res_user.scalar_one_or_none()
+                
+                if user:
+                    # 5. Re-populate Redis (Warm-up)
+                    # token_created_at is used for immediate revocation checks.
+                    # Use user_token.created_at if available, otherwise fall back to now.
+                    import datetime as _dt
+                    if user_token.created_at:
+                        _created_at = user_token.created_at
+                        if _created_at.tzinfo is None:
+                            _created_at = _created_at.replace(tzinfo=_dt.timezone.utc)
+                        token_created_at_ts = _created_at.timestamp()
+                    else:
+                        token_created_at_ts = _dt.datetime.now(_dt.timezone.utc).timestamp()
+
+                    session_data = {
+                        "user_id": str(user.id),
+                        "username": user.username,
+                        "access_token": user.refresh_token,
+                        "refresh_token": user.refresh_token,
+                        "expires_at": user.token_expires_at.timestamp() if user.token_expires_at else 0,
+                        "token_db_id": user_token.id,
+                        "token_created_at": token_created_at_ts,
+                    }
+                    await redis.setex(f"session:{session_id}", 60 * 60 * 24 * 30, json.dumps(session_data))
+                    session_data_json = json.dumps(session_data)
+                    
+                    # Update last_used_at
+                    user_token.last_used_at = now
+                    await db.commit()
+
+    if not session_data_json:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Session expired or invalid",
         )
 
-    user_data = json.loads(session_data)
+    user_data = json.loads(session_data_json)
+
+    # -------------------------------------------------------------------------
+    # IMMEDIATE REVOCATION CHECK (logout-all)
+    # If the user called /auth/logout-all, a Redis key user:revoked_at:{user_id}
+    # is set with the timestamp of the revocation. Any session whose
+    # token_created_at is older than this timestamp is immediately rejected,
+    # even if its Redis session key is still live.
+    # -------------------------------------------------------------------------
+    revoked_at_str = await redis.get(f"user:revoked_at:{user_data['user_id']}")
+    if revoked_at_str:
+        revoked_at = float(revoked_at_str)
+        session_created_at = float(user_data.get("token_created_at", 0))
+        if session_created_at < revoked_at:
+            await redis.delete(f"session:{session_id}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Session revoked. Please log in again.",
+            )
     
     # Check if token needs refresh
     expires_at = user_data.get("expires_at")
@@ -64,17 +150,27 @@ async def get_current_user(
     
     # Refresh if no expiry (legacy session) or expiring within 5 minutes
     should_refresh = False
+    
+    # Use timezone-aware UTC datetime
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    
     if expires_at:
-        # expires_at is float timestamp
-        exp_dt = datetime.datetime.fromtimestamp(expires_at)
-        if datetime.datetime.utcnow() > exp_dt - datetime.timedelta(minutes=5):
+        # expires_at is float timestamp (always UTC)
+        # Convert timestamp to aware datetime
+        exp_dt = datetime.datetime.fromtimestamp(expires_at, tz=datetime.timezone.utc)
+        
+        # Refresh if expiring within 5 minutes
+        if now_utc > exp_dt - datetime.timedelta(minutes=5):
             should_refresh = True
     elif refresh_token: 
-        # No expiry but has refresh token (migration case?), try clear or refresh? 
-        # Safer to refresh if we can, or just let it be until 401 elsewhere.
-        pass
+        # No expiry but has refresh token (legacy/migration) - force refresh
+        should_refresh = True
 
     if should_refresh and refresh_token:
+        # Structured logging for refresh attempts
+        import structlog
+        logger = structlog.get_logger()
+        
         async with httpx.AsyncClient() as client:
             data = {
                 "client_id": settings.DISCORD_CLIENT_ID,
@@ -92,7 +188,9 @@ async def get_current_user(
                     new_access_token = token_data["access_token"]
                     new_refresh_token = token_data.get("refresh_token")
                     expires_in = token_data.get("expires_in", 604800)
-                    new_expires_at = datetime.datetime.utcnow() + datetime.timedelta(seconds=expires_in)
+                    
+                    # Calculate new expiry (timezone aware)
+                    new_expires_at = now_utc + datetime.timedelta(seconds=expires_in)
                     
                     # Update session data
                     user_data["access_token"] = new_access_token
@@ -115,12 +213,16 @@ async def get_current_user(
                 else:
                     # Refresh failed (revoked?), clear session
                     await redis.delete(f"session:{session_id}")
+                    # Also delete persistent token if refresh fails? 
+                    # Maybe not, as Discord token refresh failure shouldn't necessarily kill our app session mechanism 
+                    # if we want to treat them separately, BUT if Discord is the only ID provider, maybe yes.
+                    # For now, keep it simple.
                     raise HTTPException(
                         status_code=status.HTTP_401_UNAUTHORIZED,
                         detail="Session expired and refresh failed",
                     )
             except Exception as e:
-                print(f"Error checking refresh token: {e}")
+                logger.error("Token refresh failed with exception", user_id=user_data.get("user_id"), error=str(e))
                 # Don't block requests on transient errors, but token might be dead
                 pass
 
@@ -149,7 +251,8 @@ async def check_is_admin(user_id: str) -> bool:
             if dev_role_id in member_data.get("roles", []):
                 return True
     except Exception as e:
-        print(f"Platform admin check failed: {e}")
+        import structlog as _structlog
+        _structlog.get_logger().warning("platform_admin_check_failed", error=str(e))
         pass
         
     return False

@@ -3,6 +3,20 @@
 > [!IMPORTANT]
 > This guide details how to use the implemented LLM capabilities in the `baseline` framework. These features are available to both the **Bot** (Python/discord.py) and the **Backend/Frontend** (FastAPI/Next.js/React).
 
+## Quick Reference
+
+| Capability | Provider Support | Documentation |
+|------------|------------------|---------------|
+| Text Generation | All providers | This guide |
+| **Gemini 3 Advanced** | Google only | [GEMINI_CAPABILITIES.md](GEMINI_CAPABILITIES.md) |
+| Image Generation | Google (Gemini 3) | [GEMINI_CAPABILITIES.md](GEMINI_CAPABILITIES.md) |
+| Image Understanding | Google, OpenAI | [GEMINI_CAPABILITIES.md](GEMINI_CAPABILITIES.md) |
+| Text-to-Speech | Google (Gemini) | [GEMINI_CAPABILITIES.md](GEMINI_CAPABILITIES.md) |
+| Embeddings | Google, OpenAI | [GEMINI_CAPABILITIES.md](GEMINI_CAPABILITIES.md) |
+| Structured Output | All providers | [GEMINI_CAPABILITIES.md](GEMINI_CAPABILITIES.md) |
+
+> **For Gemini 3 specific features** (thinking levels, image generation, TTS, function calling, caching), see the dedicated **[Gemini Capabilities Guide](GEMINI_CAPABILITIES.md)**.
+
 ## 1. Overview
  The framework provides a centralized `LLMService` that abstracts away provider differences (OpenAI, Anthropic, Google, xAI) and handles:
 -   **Multi-Provider Support**: Switch models/providers via config or per-request.

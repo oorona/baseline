@@ -1,3 +1,20 @@
+/**
+ * ╔═══════════════════════════════════════════════════════════════════════════════╗
+ * ║                           *** DEMO CODE ***                                   ║
+ * ║                                                                               ║
+ * ║  This file is DEMONSTRATION CODE for the Baseline Framework.                  ║
+ * ║  It shows how to implement a Level 1 (public) access page that displays       ║
+ * ║  guild information accessible to all users.                                   ║
+ * ║                                                                               ║
+ * ║  You can:                                                                     ║
+ * ║    - Use this as reference for implementing public-facing pages               ║
+ * ║    - Modify and extend for production use                                     ║
+ * ║    - Delete this file when not needed                                         ║
+ * ║                                                                               ║
+ * ║  See: docs/integration/05-frontend-pages.md for documentation                 ║
+ * ╚═══════════════════════════════════════════════════════════════════════════════╝
+ */
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -6,7 +23,7 @@ import { apiClient } from '@/app/api-client';
 import { withPermission } from '@/lib/components/with-permission';
 import { PermissionLevel } from '@/lib/permissions';
 
-// Disposable Test Page for Level 1 Access
+// *** DEMO CODE *** - Disposable Test Page for Level 1 Access
 function TestLevel1Page() {
     const params = useParams();
     const guildId = params.guildId as string;
@@ -32,7 +49,7 @@ function TestLevel1Page() {
 
     return (
         <div className="p-8 max-w-4xl">
-            <h1 className="text-2xl font-bold mb-4 text-green-400">Level 1 Access Test (Public Data)</h1>
+            <h1 className="text-2xl font-bold mb-4 text-green-400">*** DEMO *** Level 1 Access Test (Public Data)</h1>
             <p className="mb-4 text-gray-400">This page is accessible to everyone (if Level 1 is truly public). Simulating public read-only data.</p>
 
             <div className="bg-gray-900 rounded-lg p-6 font-mono text-sm border border-gray-800">

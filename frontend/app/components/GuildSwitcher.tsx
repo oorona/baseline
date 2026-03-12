@@ -46,7 +46,7 @@ export function GuildSwitcher({ currentGuildId }: { currentGuildId?: string }) {
     // Determine effective guild ID from Prop > URL Param > Path Regex
     const paramGuildId = searchParams.get('guild_id');
     const pathGuildId = pathname?.match(/\/dashboard\/(\d+)/)?.[1];
-    const effectiveGuildId = currentGuildId || paramGuildId || pathGuildId;
+    const effectiveGuildId = currentGuildId || paramGuildId || pathGuildId || user?.preferences?.default_guild_id || guilds[0]?.id;
 
     const currentGuild = guilds.find((g) => g.id === effectiveGuildId);
 

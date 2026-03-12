@@ -360,10 +360,27 @@ function NodeItem({ node, type }: any) {
             </div>
             <div className="text-right">
                 <div className="text-xs font-mono text-muted-foreground">Uptime</div>
-                <div className="text-sm font-medium">{node.uptime?.toFixed(0)}s</div>
+                <div className="text-sm font-medium">{formatUptime(node.uptime)}</div>
             </div>
         </div>
     )
+}
+
+function formatUptime(seconds: number): string {
+    if (!seconds) return '0s';
+
+    const days = Math.floor(seconds / (3600 * 24));
+    const hours = Math.floor((seconds % (3600 * 24)) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+
+    const parts = [];
+    if (days > 0) parts.push(`${days}d`);
+    if (hours > 0) parts.push(`${hours}h`);
+    if (minutes > 0) parts.push(`${minutes}m`);
+    parts.push(`${secs}s`);
+
+    return parts.join(' ');
 }
 
 export default withPermission(SystemStatusPage, PermissionLevel.USER);

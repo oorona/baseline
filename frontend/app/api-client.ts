@@ -142,6 +142,14 @@ class APIClient {
         return response.data;
     }
 
+    async logoutAll() {
+        const response = await this.client.post('/auth/logout-all');
+        if (typeof window !== 'undefined') {
+            localStorage.removeItem('access_token');
+        }
+        return response.data;
+    }
+
     // User Settings
     async getUserSettings() {
         const response = await this.client.get('/users/me/settings');
@@ -297,11 +305,1136 @@ class APIClient {
         return response.data;
     }
 
+    // *** DEMO CODE *** - Gemini Demo Endpoints
+    // Full documentation: https://ai.google.dev/gemini-api/docs
+    
+    /**
+     * Generate text with Gemini models supporting thinking/reasoning.
+     * 
+     * @description Supports all Gemini 3 and 2.5 models with configurable thinking levels.
+     * Thinking tokens allow the model to reason before responding, improving accuracy
+     * for complex tasks. Thinking tokens are billed at output token rates.
+     * 
+     * Models available:
+     * - gemini-3-flash-preview: Fast, thinking levels: minimal, low, medium, high ($0.50/$3 per 1M)
+     * - gemini-3-pro-preview: Most capable, thinking levels: low, high ($2/$12 per 1M)
+     * - gemini-2.5-flash: Budget-friendly with thinking ($0.15/$0.60 per 1M)
+     * - gemini-2.5-pro: Powerful reasoning ($1.25/$10 per 1M)
+     * 
+     * @see https://ai.google.dev/gemini-api/docs/thinking
+     */
+    async geminiGenerate(request: {
+        /** The prompt/query to send to the model */
+        prompt: string;
+        /** Thinking level: 'minimal' | 'low' | 'medium' | 'high' (Gemini 3 only) */
+        thinking_level?: string;
+        /** Optional token budget for thinking (overrides thinking_level) */
+        thinking_budget?: number;
+        /** Model to use (defaults to gemini-2.5-flash) */
+        model?: string;
+        /** Include model's thinking summary in response */
+        include_thoughts?: boolean;
+        /** System instruction/persona for the model */
+        system_instruction?: string;
+        /** Temperature 0-2 (default 1.0, recommended to keep at 1.0 for Gemini 3) */
+        temperature?: number;
+        /** Maximum output tokens */
+        max_tokens?: number;
+        /** Guild ID for logging/analytics */
+        guild_id?: string;
+    }) {
+        const response = await this.client.post('/gemini/generate', request);
+        return response.data;
+    }
+
+    /**
+     * Count tokens in content before sending to API.
+     * 
+     * @description Use this to estimate costs and ensure content fits within context limits.
+     * Token costs vary by content type:
+     * - Text: ~4 characters per token for English
+     * - Images: 258 tokens (<384px) to 768 tokens (>768px)
+     * - Audio: 32 tokens per second
+     * - Video: 263 tokens/second (video) + 32 tokens/second (audio track)
+     * 
+     * @see https://ai.google.dev/gemini-api/docs/tokens
+     */
+    async geminiCountTokens(request: { 
+        /** The text content to count tokens for */
+        content: string; 
+        /** Model for tokenization (different models may tokenize differently) */
+        model?: string;
+        /** Include system instruction in count */
+        system_instruction?: string;
+        /** Include tools/function definitions in count */
+        tools?: any[];
+        /** Include chat history in count */
+        chat_history?: { role: string; content: string }[];
+        /** Return detailed model information */
+        include_model_info?: boolean;
+    }) {
+        const response = await this.client.post('/gemini/count-tokens', request);
+        return response.data;
+    }
+
+    /**
+     * Estimate token count for multimodal content (images, video, audio).
+     * 
+     * @description Provides token estimates based on media dimensions and duration.
+     * Useful for cost estimation before uploading large media files.
+     * 
+     * Token rates:
+     * - Images: 258 tokens (small) to 768 tokens (large)
+     * - Audio: 32 tokens per second (max 9.5 hours)
+     * - Video: ~263 tokens/second + audio track tokens
+     */
+    async geminiEstimateMultimodalTokens(request: {
+        /** Type of media: 'image' | 'video' | 'audio' */
+        media_type: 'image' | 'video' | 'audio';
+        /** Image/video width in pixels */
+        width?: number;
+        /** Image/video height in pixels */
+        height?: number;
+        /** Duration in seconds for audio/video */
+        duration_seconds?: number;
+        /** For video: count only audio track tokens */
+        audio_only?: boolean;
+    }) {
+        const response = await this.client.post('/gemini/estimate-multimodal-tokens', request);
+        return response.data;
+    }
+
+    /**
+     * Get detailed information about a specific model.
+     * 
+     * @description Returns model capabilities, context window, pricing, and supported features.
+     */
+    async geminiModelInfo(modelName: string) {
+        const response = await this.client.get(`/gemini/model-info/${modelName}`);
+        return response.data;
+    }
+
+    /**
+     * Generate structured JSON output with schema validation.
+     * 
+     * @description Forces the model to output valid JSON matching a specified schema.
+     * Supports predefined schemas, custom JSON schemas, enum classification, and tool integration.
+     * 
+     * **Modes:**
+     * - Predefined: Use schema_name (person, recipe, article, review, feedback, event, product, sentiment, language, intent)
+     * - Custom: Provide custom_schema with schema_name='custom'
+     * - Enum: Use enum_values for simple classification
+     * 
+     * **Features:**
+     * - Guaranteed valid JSON output
+     * - Schema validation
+     * - Tool integration (Google Search, URL Context) for Gemini 3
+     * - Nullable field support
+     * - Array/number constraints
+     * 
+     * @see https://ai.google.dev/gemini-api/docs/structured-output
+     */
+    async geminiStructured(request: { 
+        /** The text to extract structured data from */
+        prompt: string; 
+        /** Predefined schema name: person, recipe, article, review, feedback, event, product, sentiment, language, intent, custom */
+        schema_name?: string;
+        /** Custom JSON Schema (required when schema_name='custom') */
+        custom_schema?: Record<string, unknown>;
+        /** Model: gemini-3-flash-preview (recommended), gemini-3-pro-preview, gemini-2.5-flash, gemini-2.5-pro */
+        model?: string;
+        /** Simple enum classification: output constrained to one of these values */
+        enum_values?: string[];
+        /** Type for enum mode: 'string' | 'integer' | 'number' */
+        enum_type?: string;
+        /** Combine with tools: 'google_search', 'url_context' (Gemini 3 only) */
+        use_tools?: string[];
+        /** Enforce strict schema validation */
+        strict_mode?: boolean;
+        /** Allow null values for optional fields */
+        include_null?: boolean;
+        /** Explicit property order (required for Gemini 2.0/2.5) */
+        property_ordering?: string[];
+        /** Include the resolved schema in response */
+        return_schema?: boolean;
+        /** Validate response against schema before returning */
+        validate_response?: boolean;
+    }) {
+        const response = await this.client.post('/gemini/structured', request);
+        return response.data;
+    }
+
+    /**
+     * Get list of all available predefined schemas for structured output.
+     * 
+     * Returns schema definitions with their structure, required fields, and usage examples.
+     * Use this to understand what schemas are available and their expected output format.
+     * 
+     * @see https://ai.google.dev/gemini-api/docs/structured-output
+     */
+    async geminiStructuredSchemas() {
+        const response = await this.client.get('/gemini/structured/schemas');
+        return response.data;
+    }
+
+    /**
+     * Get list of all available Gemini capabilities and models.
+     */
+    async geminiCapabilities() {
+        const response = await this.client.get('/gemini/capabilities');
+        return response.data;
+    }
+
+    /**
+     * Generate images from text prompts using Gemini's native image generation (Nano Banana).
+     * 
+     * @description Text-to-image generation with advanced features including:
+     * - Multiple aspect ratios (1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9)
+     * - High resolution output (1K, 2K, 4K for Pro model)
+     * - Google Search grounding for real-time data (Pro model only)
+     * - Thinking process visualization (Pro model only)
+     * 
+     * Models:
+     * - gemini-2.5-flash-image: Fast generation, 1024px max, optimized for speed
+     * - gemini-3-pro-image-preview: Professional quality, up to 4K, with thinking
+     * 
+     * Prompting Best Practices:
+     * - Describe scenes narratively rather than listing keywords
+     * - Use photography terms for realism: "wide-angle shot", "macro", "low-angle"
+     * - Be hyper-specific about details, lighting, and composition
+     * - Use semantic negative prompts: describe what you want, not what to avoid
+     * 
+     * @see https://ai.google.dev/gemini-api/docs/image-generation
+     */
+    async geminiImageGenerate(request: { 
+        /** Detailed description of the image to generate. Use descriptive paragraphs, not keywords. */
+        prompt: string; 
+        /** Model: 'gemini-2.5-flash-image' (fast) or 'gemini-3-pro-image-preview' (pro, up to 4K) */
+        model?: string;
+        /** Aspect ratio: '1:1' | '2:3' | '3:2' | '3:4' | '4:3' | '4:5' | '5:4' | '9:16' | '16:9' | '21:9' */
+        aspect_ratio?: string;
+        /** Image size for Pro model only: '1K' | '2K' | '4K'. Must be uppercase. */
+        image_size?: string;
+        /** Include text in response (default: true). Set false for image-only output. */
+        include_text?: boolean;
+        /** Enable Google Search grounding for real-time data (Pro model only) */
+        use_google_search?: boolean;
+        /** Include thinking/interim images in response (Pro model only) */
+        include_thoughts?: boolean;
+    }) {
+        // Extended timeout for image generation (can take 30-60s)
+        const response = await this.client.post('/gemini/image-generate', request, {
+            timeout: 120000, // 2 minutes
+        });
+        return response.data;
+    }
+
+    /**
+     * Edit images using text prompts (text+image-to-image).
+     * 
+     * @description Image editing capabilities including:
+     * - Add/remove elements from images
+     * - Inpainting (semantic masking) - edit specific parts while preserving others
+     * - Style transfer - recreate content in different artistic styles
+     * - Color grading and lighting adjustments
+     * 
+     * Prompting Tips:
+     * - "Using the provided image, change only [element] to [new element]"
+     * - "Keep everything else exactly the same, preserving style and lighting"
+     * - "Add [element] to the [position] of the scene"
+     * 
+     * @see https://ai.google.dev/gemini-api/docs/image-generation#image-editing
+     */
+    async geminiImageEdit(request: {
+        /** Edit instruction (e.g., "Add a red hat to the person") */
+        prompt: string;
+        /** URL of the base image to edit */
+        image_url: string;
+        /** Model: 'gemini-2.5-flash-image' or 'gemini-3-pro-image-preview' */
+        model?: string;
+        /** Aspect ratio: '1:1' | '2:3' | '3:2' | '3:4' | '4:3' | '4:5' | '5:4' | '9:16' | '16:9' | '21:9' */
+        aspect_ratio?: string;
+        /** Image size for Pro model: '1K' | '2K' | '4K' */
+        image_size?: string;
+    }) {
+        // Extended timeout for image editing (can take 30-60s)
+        const response = await this.client.post('/gemini/image-edit', request, {
+            timeout: 120000, // 2 minutes
+        });
+        return response.data;
+    }
+
+    /**
+     * Compose images from multiple reference images (up to 14).
+     * 
+     * @description Multi-image composition for complex creations:
+     * - Combine elements from multiple source images
+     * - Character consistency across multiple images (up to 5 humans)
+     * - Object fidelity for product mockups (up to 6 objects)
+     * - Total up to 14 reference images with Pro model
+     * 
+     * Model Limits:
+     * - gemini-2.5-flash-image: Best with up to 3 images
+     * - gemini-3-pro-image-preview: Up to 14 images (5 humans + 6 objects + extras)
+     * 
+     * @see https://ai.google.dev/gemini-api/docs/image-generation#use-up-to-14-reference-images
+     */
+    async geminiImageCompose(request: {
+        /** Composition instruction describing the final image */
+        prompt: string;
+        /** List of image URLs to use as references */
+        image_urls: string[];
+        /** Model: 'gemini-2.5-flash-image' or 'gemini-3-pro-image-preview' */
+        model?: string;
+        /** Aspect ratio: '1:1' | '2:3' | '3:2' | '3:4' | '4:3' | '4:5' | '5:4' | '9:16' | '16:9' | '21:9' */
+        aspect_ratio?: string;
+        /** Image size for Pro model: '1K' | '2K' | '4K' */
+        image_size?: string;
+    }) {
+        // Extended timeout for multi-image composition (can take 30-90s)
+        const response = await this.client.post('/gemini/image-compose', request, {
+            timeout: 120000, // 2 minutes
+        });
+        return response.data;
+    }
+
+    /**
+     * Analyze and understand image content.
+     * 
+     * @description Uses Gemini's vision capabilities to analyze images.
+     * Can describe content, extract text (OCR), answer questions about images.
+     * 
+     * Token calculation:
+     * - 258 tokens if both dimensions ≤ 384px
+     * - Larger images tiled into 768x768 tiles at 258 tokens each
+     * 
+     * @see https://ai.google.dev/gemini-api/docs/image-understanding
+     */
+    async geminiImageUnderstand(request: { 
+        /** URL of the image to analyze */
+        image_url: string; 
+        /** Question or instruction about the image */
+        prompt?: string;
+        /** Model: gemini-3-flash-preview, gemini-3-pro-preview */
+        model?: string;
+        /** Media resolution: low, medium, high, ultra_high (Gemini 3 only) */
+        media_resolution?: string;
+    }) {
+        const response = await this.client.post('/gemini/image-understand', request);
+        return response.data;
+    }
+
+    /**
+     * Detect objects in an image with bounding boxes.
+     * 
+     * @description Get bounding box coordinates for objects in an image.
+     * Coordinates are normalized to 0-1000 scale: [ymin, xmin, ymax, xmax].
+     * 
+     * To convert to pixels:
+     * - abs_x1 = int(box_2d[1] / 1000 * image_width)
+     * - abs_y1 = int(box_2d[0] / 1000 * image_height)
+     * 
+     * @see https://ai.google.dev/gemini-api/docs/image-understanding#object-detection
+     */
+    async geminiImageDetect(request: {
+        /** URL of the image to analyze */
+        image_url: string;
+        /** Detection prompt (e.g., 'Detect all green objects') */
+        prompt?: string;
+        /** Model: gemini-3-flash-preview, gemini-3-pro-preview */
+        model?: string;
+        /** Media resolution: low, medium, high, ultra_high */
+        media_resolution?: string;
+    }) {
+        const response = await this.client.post('/gemini/image-detect', request);
+        return response.data;
+    }
+
+    /**
+     * Segment objects in an image with contour masks.
+     * 
+     * @description Get segmentation masks for objects in an image.
+     * Returns bounding boxes and base64 PNG masks (probability maps 0-255).
+     * Threshold masks at 127 for binary segmentation.
+     * 
+     * @note This operation can take 30-120 seconds for complex images.
+     * Uses dedicated route handler to bypass Next.js rewrite timeout (~30s limit).
+     * 
+     * @see https://ai.google.dev/gemini-api/docs/image-understanding#segmentation
+     */
+    async geminiImageSegment(request: {
+        /** URL of the image to segment */
+        image_url: string;
+        /** Segmentation prompt (e.g., 'Segment all wooden and glass items') */
+        prompt?: string;
+        /** Model: gemini-2.5-flash, gemini-2.5-pro (ONLY 2.5+ models support segmentation) */
+        model?: string;
+        /** Media resolution: low, medium, high, ultra_high */
+        media_resolution?: string;
+    }) {
+        const response = await this.client.post('/gemini/image-segment', request);
+        return response.data;
+    }
+
+    /**
+     * Analyze multiple images in a single request.
+     * 
+     * @description Compare, find differences, or analyze image sequences.
+     * Limit: Up to 3600 images per request.
+     * 
+     * @see https://ai.google.dev/gemini-api/docs/image-understanding#prompting-with-multiple-images
+     */
+    async geminiImageUnderstandMulti(request: {
+        /** List of image URLs to analyze */
+        image_urls: string[];
+        /** Analysis prompt for comparing/analyzing multiple images */
+        prompt?: string;
+        /** Model: gemini-3-flash-preview, gemini-3-pro-preview */
+        model?: string;
+        /** Media resolution: low, medium, high, ultra_high */
+        media_resolution?: string;
+    }) {
+        const response = await this.client.post('/gemini/image-understand-multi', request);
+        return response.data;
+    }
+
+    /**
+     * Convert text to speech with 30+ voices and emotion control.
+     * 
+     * @description High-quality text-to-speech using Gemini's TTS models.
+     * Supports expressive speech with Director's Notes for emotion/style control.
+     * 
+     * Models: gemini-2.5-flash-preview-tts, gemini-2.5-pro-preview-tts
+     * 
+     * Voices (30 total):
+     * - Professional: Zephyr, Charon, Fenrir, Leda, Orus, Aoede, Callirrhoe, Autonoe
+     * - Expressive: Puck, Kore, Perseus, Iapetus, Umbriel, Algieba, Despina, Erinome
+     * - Casual: Achernar, Gacrux, Pulcherrima, Vindemiatrix, Sadachbia, Sadaltager
+     * - Special: Sulafat, Laomedeia, Zubenelgenubi, Zubeneschamali, Schedar, Elara, Enceladus, Alnilam
+     * 
+     * @see https://ai.google.dev/gemini-api/docs/speech-generation
+     */
+    async geminiTTS(request: { 
+        /** Text to convert to speech (supports SSML-like Director's Notes) */
+        text: string; 
+        /** Voice name (e.g., 'Puck', 'Charon', 'Kore') */
+        voice_name?: string;
+        /** Style prompt for emotion (e.g., 'cheerful', 'serious', 'whisper') */
+        style_prompt?: string;
+        /** Advanced voice configuration */
+        voice_config?: any;
+    }) {
+        const response = await this.client.post('/gemini/tts', request);
+        return response.data;
+    }
+
+    /**
+     * Generate multi-speaker dialogue audio.
+     * 
+     * @description Creates audio with multiple distinct voices for conversations,
+     * podcasts, or dramatic readings. Maximum 2 speakers per request.
+     * 
+     * **Text Format:**
+     * ```
+     * Speaker1: Hello, how are you?
+     * Speaker2: I'm doing well, thanks for asking!
+     * Speaker1: That's great to hear!
+     * ```
+     * 
+     * **Important:** Speaker names in text must exactly match the 'name' field in speakers config.
+     * 
+     * **Style Control:**
+     * ```
+     * Make Speaker1 sound tired and bored, and Speaker2 sound excited and happy:
+     * Speaker1: So... what's on the agenda today?
+     * Speaker2: You're never going to guess!
+     * ```
+     * 
+     * @see https://ai.google.dev/gemini-api/docs/speech-generation#multi-speaker
+     */
+    async geminiTTSMulti(request: {
+        /** Script with speaker labels (format: 'Speaker1: text\nSpeaker2: text') */
+        text: string;
+        /** Speaker configurations with voice assignments (max 2) */
+        speakers: { name: string; voice_name?: string }[];
+        /** Model: gemini-2.5-flash-preview-tts or gemini-2.5-pro-preview-tts */
+        model?: string;
+    }) {
+        const response = await this.client.post('/gemini/tts-multi', request);
+        return response.data;
+    }
+
+    /**
+     * Transcribe audio with speaker diarization and emotion detection.
+     * 
+     * @description Converts speech to text with structured output including:
+     * - Summary of entire audio
+     * - Segments with speaker diarization
+     * - Timestamps in MM:SS format
+     * - Language detection and translation
+     * - Emotion detection (happy, sad, angry, neutral)
+     * - Non-speech understanding (music, sirens, birdsong)
+     * 
+     * **Supported Formats:** WAV, MP3, AIFF, AAC, OGG, FLAC
+     * **Max Duration:** 9.5 hours per prompt
+     * **Token Rate:** 32 tokens per second of audio
+     * **Resolution:** Downsampled to 16 Kbps, multi-channel → mono
+     * 
+     * **Structured Output Schema:**
+     * ```json
+     * {
+     *   "summary": "Brief summary",
+     *   "language": "Detected language",
+     *   "segments": [{
+     *     "speaker": "Speaker 1",
+     *     "start_time": "00:00",
+     *     "end_time": "00:15",
+     *     "text": "Transcribed text",
+     *     "emotion": "happy"
+     *   }]
+     * }
+     * ```
+     * 
+     * @see https://ai.google.dev/gemini-api/docs/audio
+     */
+    async geminiAudioTranscribe(request: {
+        /** URL to audio file (MP3, WAV, etc.) */
+        audio_url?: string;
+        /** YouTube video URL (extracts and transcribes audio) */
+        youtube_url?: string;
+        /** Base64-encoded audio data (for microphone recordings) */
+        audio_base64?: string;
+        /** Include MM:SS timestamps for each segment */
+        include_timestamps?: boolean;
+        /** Enable speaker diarization (identify different speakers) */
+        include_speaker_labels?: boolean;
+        /** Detect speaker emotion (happy, sad, angry, neutral) */
+        detect_emotion?: boolean;
+        /** Detect the spoken language */
+        detect_language?: boolean;
+        /** Translate non-English segments to English */
+        translate_to_english?: boolean;
+        /** Expected number of speakers (for diarization) */
+        num_speakers?: number;
+        /** Language hint (e.g., 'en', 'es', 'ja') */
+        language?: string;
+        /** Start timestamp MM:SS for segment extraction */
+        start_time?: string;
+        /** End timestamp MM:SS for segment extraction */
+        end_time?: string;
+        /** Custom prompt for specialized transcription */
+        prompt?: string;
+    }) {
+        // Extended timeout for YouTube download + transcription (can take 60-180s)
+        const response = await this.client.post('/gemini/audio-transcribe', request, {
+            timeout: 180000, // 3 minutes
+        });
+        return response.data;
+    }
+
+    /**
+     * Generate vector embeddings for semantic search and similarity.
+     * 
+     * @description Creates numerical vector representations of text for:
+     * - Semantic search (find by meaning, not keywords)
+     * - Document clustering
+     * - Text classification
+     * - RAG (Retrieval Augmented Generation)
+     * 
+     * Model: gemini-embedding-001 (free tier)
+     * Max tokens: 2048
+     * Dimensions: 768, 1536, or 3072 (default)
+     * 
+     * @see https://ai.google.dev/gemini-api/docs/embeddings
+     */
+    async geminiEmbeddings(request: { 
+        /** Text to embed */
+        content: string; 
+        /** Task type: SEMANTIC_SIMILARITY, RETRIEVAL_DOCUMENT, RETRIEVAL_QUERY, CLASSIFICATION, CLUSTERING, CODE_RETRIEVAL_QUERY, QUESTION_ANSWERING, FACT_VERIFICATION */
+        task_type?: string; 
+        /** Vector dimensions: 768 (fast), 1536 (balanced), 3072 (highest quality) */
+        output_dimensionality?: number 
+    }) {
+        const response = await this.client.post('/gemini/embeddings', request);
+        return response.data;
+    }
+
+    /**
+     * Ground responses with web page content.
+     * 
+     * @description Fetches and processes web pages to provide context for responses.
+     * Can combine with Google Search for comprehensive grounding.
+     */
+    async geminiURLContext(request: { 
+        /** URLs to fetch and use as context (1-20) */
+        urls: string[];
+        /** Question or instruction about the content */
+        prompt: string;
+        /** Model to use */
+        model?: string;
+        /** System instruction to guide response style */
+        system_instruction?: string;
+        /** Also include Google Search results */
+        combine_with_search?: boolean;
+        /** Include source citations in response */
+        include_citations?: boolean;
+        /** Dynamic retrieval threshold (0.0-1.0, lower = more retrieval) */
+        dynamic_retrieval_threshold?: number;
+    }) {
+        const response = await this.client.post('/gemini/url-context', request);
+        return response.data;
+    }
+
+    /**
+     * List all predefined function calling scenarios.
+     * 
+     * @description Returns available scenarios with their functions and example prompts.
+     * Each scenario demonstrates different function calling patterns:
+     * - weather: Basic function calling
+     * - smart_home: Parallel function calling (multiple functions at once)
+     * - calendar: Compositional/sequential calling
+     * - ecommerce: Complex multi-step workflows
+     * - database: Data manipulation patterns
+     * - api_workflow: External API integration
+     * 
+     * @see https://ai.google.dev/gemini-api/docs/function-calling
+     */
+    async geminiFunctionCallingScenarios() {
+        const response = await this.client.get('/gemini/function-calling/scenarios');
+        return response.data;
+    }
+
+    /**
+     * Get details of a specific function calling scenario.
+     * 
+     * @description Returns full function declarations and example prompts for a scenario.
+     */
+    async geminiFunctionCallingScenario(scenarioId: string) {
+        const response = await this.client.get(`/gemini/function-calling/scenarios/${scenarioId}`);
+        return response.data;
+    }
+
+    /**
+     * Simulate function execution with mock data.
+     * 
+     * @description Executes a function with realistic mock results for demos.
+     * Useful for testing without real integrations.
+     */
+    async geminiFunctionSimulate(functionName: string, args: Record<string, any>) {
+        const response = await this.client.post(`/gemini/function-calling/simulate?function_name=${functionName}`, args);
+        return response.data;
+    }
+
+    /**
+     * Comprehensive function calling with all features.
+     * 
+     * @description Enables the model to call predefined functions to get data
+     * or perform actions. Supports all function calling patterns:
+     * 
+     * **Modes:**
+     * - AUTO: Model decides when to call functions (default)
+     * - ANY: Force function call, optionally restricted to specific functions
+     * - NONE: Disable function calling (functions as context only)
+     * - VALIDATED: Like ANY but allows text responses when appropriate
+     * 
+     * **Features:**
+     * - Parallel function calling (multiple functions in one turn)
+     * - Compositional calling (chained function workflows)
+     * - Multi-tool use (combine with Google Search, Code Execution)
+     * - Multi-turn conversation support
+     * - Automatic simulation for demos
+     * - 6 predefined scenarios with 25+ functions
+     * 
+     * @example
+     * ```typescript
+     * // Basic usage with predefined scenario
+     * const result = await apiClient.geminiFunctionCalling({
+     *   prompt: "What's the weather in Tokyo?",
+     *   scenario: "weather"
+     * });
+     * 
+     * // Parallel calling with smart home
+     * const result = await apiClient.geminiFunctionCalling({
+     *   prompt: "Turn on lights, set thermostat to 72, and play jazz",
+     *   scenario: "smart_home",
+     *   simulate_execution: true
+     * });
+     * 
+     * // Custom functions with mode restriction
+     * const result = await apiClient.geminiFunctionCalling({
+     *   prompt: "Get user data",
+     *   mode: "ANY",
+     *   allowed_function_names: ["query_users"],
+     *   functions: [{ name: "query_users", ... }]
+     * });
+     * ```
+     * 
+     * @see https://ai.google.dev/gemini-api/docs/function-calling
+     */
+    async geminiFunctionCalling(request: { 
+        /** The prompt/query */
+        prompt: string;
+        /** Model to use */
+        model?: string;
+        /** Function calling mode: AUTO, ANY, NONE, VALIDATED */
+        mode?: 'AUTO' | 'ANY' | 'NONE' | 'VALIDATED';
+        /** Restrict to specific functions by name (for ANY/VALIDATED modes) */
+        allowed_function_names?: string[];
+        /** Custom function declarations */
+        functions?: Array<{
+            name: string;
+            description: string;
+            parameters: Record<string, any>;
+        }>;
+        /** Use predefined scenario: weather, smart_home, calendar, ecommerce, database, api_workflow */
+        scenario?: string;
+        /** Results from previous function calls for multi-turn */
+        function_results?: Array<{
+            name: string;
+            result: Record<string, any>;
+        }>;
+        /** Full conversation history for complex multi-turn */
+        conversation_history?: Array<{
+            role: 'user' | 'model' | 'function';
+            content?: string;
+            function_call?: { name: string; args: Record<string, any> };
+            function_response?: { name: string; result: Record<string, any> };
+        }>;
+        /** Enable Google Search alongside function calling */
+        enable_google_search?: boolean;
+        /** Enable Code Execution alongside function calling */
+        enable_code_execution?: boolean;
+        /** Automatically execute functions with mock data (for demos) */
+        simulate_execution?: boolean;
+        /** Temperature (0.0 recommended for function calling) */
+        temperature?: number;
+        /** Maximum tokens in response */
+        max_tokens?: number;
+    }) {
+        const response = await this.client.post('/gemini/function-calling', request);
+        return response.data;
+    }
+
+    // =========================================================================
+    // FILE SEARCH (RAG) API
+    // =========================================================================
+
+    /**
+     * Create a semantic file search store.
+     * 
+     * @description Creates a vector store for semantic search across documents.
+     * Documents are automatically chunked and embedded for efficient retrieval.
+     * 
+     * @see https://ai.google.dev/gemini-api/docs/file-search
+     */
+    async geminiFileSearchStore(request: {
+        /** Unique name for the store */
+        name: string;
+        /** Human-readable display name */
+        display_name?: string;
+        /** Description of the store */
+        description?: string;
+    }) {
+        const response = await this.client.post('/gemini/file-search-store', request);
+        return response.data;
+    }
+
+    /**
+     * Upload content to a file search store.
+     * 
+     * @description Uploads and indexes content for semantic search.
+     * Supports custom chunking configuration and metadata for filtering.
+     */
+    async geminiFileSearchUpload(request: {
+        /** Name of the target store */
+        store_name: string;
+        /** Text content to upload */
+        content: string;
+        /** Display name for the document */
+        display_name?: string;
+        /** Custom metadata for filtering (array of {key, string_value?, numeric_value?}) */
+        custom_metadata?: Array<{
+            key: string;
+            string_value?: string;
+            numeric_value?: number;
+        }>;
+        /** Chunking configuration */
+        chunking_config?: {
+            /** Max tokens per chunk (100-2000, default: 1024) */
+            max_tokens_per_chunk?: number;
+            /** Overlap between chunks (0-200, default: 100) */
+            max_overlap_tokens?: number;
+        };
+    }) {
+        const response = await this.client.post('/gemini/file-search-upload', request);
+        return response.data;
+    }
+
+    /**
+     * Query file search stores with semantic search.
+     * 
+     * @description Performs semantic search across indexed documents.
+     * Supports metadata filtering, structured output, and citations.
+     */
+    async geminiFileSearchQuery(request: {
+        /** Name(s) of the store(s) to search (comma-separated for multiple) */
+        store_names: string[] | string;
+        /** Search query (natural language) */
+        query: string;
+        /** Model to use (default: gemini-2.5-flash) */
+        model?: string;
+        /** Metadata filter for results */
+        metadata_filter?: Record<string, string | number>;
+        /** JSON schema for structured output */
+        response_schema?: Record<string, unknown>;
+        /** Include source citations in response */
+        include_citations?: boolean;
+    }) {
+        const response = await this.client.post('/gemini/file-search-query', request);
+        return response.data;
+    }
+
+    /**
+     * List all file search stores.
+     */
+    async geminiFileSearchList() {
+        const response = await this.client.get('/gemini/file-search-stores');
+        return response.data;
+    }
+
+    /**
+     * Get details about a specific store.
+     */
+    async geminiFileSearchGetStore(storeName: string) {
+        const response = await this.client.get(`/gemini/file-search-stores/${encodeURIComponent(storeName)}`);
+        return response.data;
+    }
+
+    /**
+     * Delete a file search store.
+     * 
+     * @description Permanently removes a store and all its indexed content.
+     */
+    async geminiFileSearchDeleteStore(storeName: string, force: boolean = false) {
+        const response = await this.client.delete(`/gemini/file-search-stores/${encodeURIComponent(storeName)}?force=${force}`);
+        return response.data;
+    }
+
+    /**
+     * List documents in a file search store.
+     */
+    async geminiFileSearchDocuments(storeName: string) {
+        const response = await this.client.get(`/gemini/file-search-documents/${encodeURIComponent(storeName)}`);
+        return response.data;
+    }
+
+    /**
+     * Delete a document from a file search store.
+     */
+    async geminiFileSearchDeleteDocument(documentName: string) {
+        const response = await this.client.delete(`/gemini/file-search-documents/${encodeURIComponent(documentName)}`);
+        return response.data;
+    }
+
+    // =========================================================================
+    // CONTEXT CACHING API
+    // =========================================================================
+
+    /**
+     * Get context caching info and capabilities.
+     * 
+     * @description Returns information about implicit vs explicit caching,
+     * model requirements, and pricing details.
+     */
+    async geminiCacheInfo() {
+        const response = await this.client.get('/gemini/cache-info');
+        return response.data;
+    }
+
+    /**
+     * Create a cached context for repeated queries.
+     * 
+     * @description Caches large content (documents, system prompts, context) for reuse.
+     * Reduces costs by 75% for cached tokens.
+     * 
+     * Minimum tokens for caching:
+     * - Gemini 2.5 Flash: 1,024 tokens (~4,096 chars)
+     * - Gemini 2.5 Pro: 4,096 tokens (~16,384 chars)
+     * 
+     * @see https://ai.google.dev/gemini-api/docs/caching
+     */
+    async geminiCacheCreate(request: {
+        /** Unique name for the cache */
+        name?: string;
+        /** Human-readable display name */
+        display_name?: string;
+        /** Text content to cache (required if not using file_uri) */
+        content?: string;
+        /** File URI to cache (from File API, for video/PDF/audio) */
+        file_uri?: string;
+        /** MIME type of the file (e.g., 'video/mp4', 'application/pdf') */
+        file_mime_type?: string;
+        /** System instruction to cache */
+        system_instruction?: string;
+        /** Time to live in seconds (e.g., 3600 for 1 hour) */
+        ttl_seconds?: number;
+        /** Explicit expiration time (ISO 8601 format) */
+        expire_time?: string;
+        /** Model to use (default: gemini-2.5-flash-001) */
+        model?: string;
+    }) {
+        const response = await this.client.post('/gemini/cache-create', request);
+        return response.data;
+    }
+
+    /**
+     * Query using cached context.
+     * 
+     * @description Sends a query using a previously cached context.
+     * Response includes cache_info showing cached token usage.
+     */
+    async geminiCacheQuery(request: {
+        /** Name/ID of the cache to use */
+        cache_name: string;
+        /** Query to run against the cached context */
+        prompt: string;
+        /** Temperature (0.0-2.0, default: 1.0) */
+        temperature?: number;
+    }) {
+        const response = await this.client.post('/gemini/cache-query', request);
+        return response.data;
+    }
+
+    /**
+     * List all active context caches.
+     * 
+     * @description Returns all caches that haven't expired.
+     */
+    async geminiCacheList() {
+        const response = await this.client.get('/gemini/cache-list');
+        return response.data;
+    }
+
+    /**
+     * Get details about a specific cache.
+     */
+    async geminiCacheGet(cacheName: string) {
+        const response = await this.client.get(`/gemini/cache-get/${encodeURIComponent(cacheName)}`);
+        return response.data;
+    }
+
+    /**
+     * Update cache TTL or expiration time.
+     * 
+     * @description Extends or shortens the lifetime of a cache.
+     */
+    async geminiCacheUpdate(request: {
+        /** Name/ID of the cache to update */
+        cache_name: string;
+        /** New TTL in seconds */
+        ttl_seconds?: number;
+        /** Explicit expiration timestamp (ISO 8601) */
+        expire_time?: string;
+    }) {
+        const response = await this.client.post('/gemini/cache-update', request);
+        return response.data;
+    }
+
+    /**
+     * Delete a context cache.
+     * 
+     * @description Immediately removes a cache and frees resources.
+     */
+    async geminiCacheDelete(cacheName: string) {
+        const response = await this.client.delete(`/gemini/cache-delete/${encodeURIComponent(cacheName)}`);
+        return response.data;
+    }
+    // *** END DEMO CODE ***
+
 
     // Health check
     async healthCheck() {
         const response = await this.client.get('/health');
         return response.data;
+    }
+
+    // ── Setup wizard (public — uses X-Setup-Key, no Discord auth) ────────────
+
+    /** Check whether the platform is in wizard (unconfigured) mode. */
+    async getSetupState() {
+        const response = await this.client.get('/setup/state');
+        return response.data;
+    }
+
+    // ── System Configuration (Level 5) ──────────────────────────────────────
+
+    /** List all application settings with metadata and current values. */
+    async getConfigSettings() {
+        const response = await this.client.get('/config/settings');
+        return response.data;
+    }
+
+    /** List database connection settings (PostgreSQL + Redis). */
+    async getDatabaseSettings() {
+        const response = await this.client.get('/config/settings/database');
+        return response.data;
+    }
+
+    /** Bulk-update one or more settings. Dynamic settings apply immediately. */
+    async updateConfigSettings(settings: Array<{ key: string; value: string }>) {
+        const response = await this.client.put('/config/settings', { settings });
+        return response.data;
+    }
+
+    /** Re-publish all dynamic DB overrides to Redis (use after Redis restart). */
+    async refreshDynamicSettings() {
+        const response = await this.client.post('/config/settings/refresh');
+        return response.data;
+    }
+
+    /** Remove a database override for a setting key, reverting to env default. */
+    async deleteConfigOverride(key: string) {
+        const response = await this.client.delete(`/config/settings/${encodeURIComponent(key)}`);
+        return response.data;
+    }
+
+    // ── Database Management (Level 5) ────────────────────────────────────────
+
+    /** Get framework version, DB schema version, and connection status. */
+    async getDatabaseInfo() {
+        const response = await this.client.get('/database/info');
+        return response.data;
+    }
+
+    /** List Alembic migration history and current revision. */
+    async getDatabaseMigrations() {
+        const response = await this.client.get('/database/migrations');
+        return response.data;
+    }
+
+    /** Run `alembic upgrade head` to apply all pending migrations. */
+    async applyDatabaseMigrations() {
+        const response = await this.client.post('/database/migrations/upgrade');
+        return response.data;
+    }
+
+    /** Test that the currently configured PostgreSQL and Redis connections are healthy. */
+    async testDatabaseConnection() {
+        const response = await this.client.post('/database/test-connection');
+        return response.data;
+    }
+
+    /** Run the full database validation suite (tables, columns, schema version, seeded data). */
+    async validateDatabase() {
+        const response = await this.client.get('/database/validate');
+        return response.data;
+    }
+
+    // ── Bot Identity (public) ────────────────────────────────────────────────
+
+    /** Fetch public bot identity (name, tagline, description, logo, invite URL). No auth required. */
+    async getBotPublicInfo() {
+        const response = await this.client.get('/bot-info/public');
+        return response.data;
+    }
+
+    // ── Instrumentation ──────────────────────────────────────────────────────
+
+    /**
+     * Record a dashboard card click.
+     * Fire-and-forget — errors are silently swallowed so tracking never blocks navigation.
+     */
+    trackCardClick(cardId: string, guildId?: string | null): void {
+        this.client.post('/instrumentation/card-click', {
+            card_id: cardId,
+            guild_id: guildId ? parseInt(guildId) : null,
+        }).catch(() => { /* non-critical */ });
+    }
+
+    /**
+     * Fetch aggregated instrumentation stats for the developer dashboard.
+     * range: "24h" | "7d" | "30d"
+     */
+    async getInstrumentationStats(range: '24h' | '7d' | '30d' = '7d', guildId?: string | null) {
+        const params: Record<string, string> = { range };
+        if (guildId) params.guild_id = guildId;
+        const response = await this.client.get('/instrumentation/stats', { params });
+        return response.data;
+    }
+
+    // ── LLM Schema Store ──────────────────────────────────────────────────
+
+    async listLlmSchemas() {
+        const response = await this.client.get('/gemini/schemas');
+        return response.data;
+    }
+
+    async getLlmSchema(schemaId: string) {
+        const response = await this.client.get(`/gemini/schemas/${schemaId}`);
+        return response.data;
+    }
+
+    async upsertLlmSchema(schemaId: string, body: Record<string, any>) {
+        const response = await this.client.post(`/gemini/schemas/${schemaId}`, body);
+        return response.data;
+    }
+
+    async deleteLlmSchema(schemaId: string) {
+        const response = await this.client.delete(`/gemini/schemas/${schemaId}`);
+        return response.data;
+    }
+
+    // ── LLM Function Set Store ────────────────────────────────────────────
+
+    async listLlmFunctionSets() {
+        const response = await this.client.get('/gemini/function-sets');
+        return response.data;
+    }
+
+    async getLlmFunctionSet(setId: string) {
+        const response = await this.client.get(`/gemini/function-sets/${setId}`);
+        return response.data;
+    }
+
+    async upsertLlmFunctionSet(setId: string, body: Record<string, any>) {
+        const response = await this.client.post(`/gemini/function-sets/${setId}`, body);
+        return response.data;
+    }
+
+    async deleteLlmFunctionSet(setId: string) {
+        const response = await this.client.delete(`/gemini/function-sets/${setId}`);
+        return response.data;
+    }
+
+    // ── LLM Call Logs ─────────────────────────────────────────────────────
+
+    async getLlmLogs(params: { limit?: number; offset?: number; model?: string; endpoint?: string } = {}) {
+        const response = await this.client.get('/gemini/logs', { params });
+        return response.data;
+    }
+
+    // ── Generic LLM (multi-provider) ──────────────────────────────────────
+
+    async llmGenerate(prompt: string, options: { system_prompt?: string; provider?: string; model?: string; guild_id?: number } = {}) {
+        const response = await this.client.post('/llm/generate', { prompt, ...options });
+        return response.data as { content: string };
+    }
+
+    async llmStructured(prompt: string, schema_name: string, options: { provider?: string; model?: string; guild_id?: number } = {}) {
+        const response = await this.client.post('/llm/structured', { prompt, schema_name, ...options });
+        return response.data;
+    }
+
+    async llmTools(prompt: string, scenario: string, options: { provider?: string; model?: string; guild_id?: number } = {}) {
+        const response = await this.client.post('/llm/tools', { prompt, scenario, ...options });
+        return response.data;
+    }
+
+    // ── Generic helpers ────────────────────────────────────────────────────
+
+    async post<T = unknown>(path: string, data?: unknown): Promise<T> {
+        const response = await this.client.post(path, data);
+        return response.data as T;
     }
 }
 

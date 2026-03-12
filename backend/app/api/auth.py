@@ -1,29 +1,40 @@
+import os
 import uuid
 import json
-from fastapi import APIRouter, Depends, HTTPException, status, Response, Cookie
+import hashlib
+from datetime import datetime, timedelta, timezone
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Request, Cookie, Body
 from fastapi.responses import RedirectResponse, HTMLResponse
 import httpx
+import structlog
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import delete
 
 from app.core.config import settings
 from app.db.redis import get_redis
 from app.db.session import get_db
-from app.db.session import get_db
-from app.models import User
+from app.models import User, UserToken
+from app.api.deps import get_current_user, check_is_admin
+from app.core.limiter import limiter
+
+logger = structlog.get_logger()
 
 router = APIRouter()
+
 
 DISCORD_API_BASE = "https://discord.com/api/v10"
 
 @router.get("/discord/login")
-async def login_discord(state: str = "redirect", prompt: str = "none"):
+@limiter.limit("5/minute")
+async def login_discord(request: Request, state: str = "redirect", prompt: str = "none"):
+
     if not settings.DISCORD_CLIENT_ID or not settings.DISCORD_REDIRECT_URI:
         raise HTTPException(status_code=500, detail="Discord OAuth not configured")
-    
+
     from urllib.parse import urlencode, quote
-    
+
     scope = "identify guilds"
     base_params = {
         "client_id": settings.DISCORD_CLIENT_ID,
@@ -32,20 +43,25 @@ async def login_discord(state: str = "redirect", prompt: str = "none"):
         "scope": scope,
         "state": state,
     }
-    
-    # Try with prompt=none first to skip consent if already authorized
+
+    # Add prompt parameter based on context:
+    # prompt=none (default): Skip consent screen if already authorized - auto-redirect for returning users
+    # prompt=consent: Force re-authorization (for account switching)
+    # For silent login iframe, prompt=none is used with state=silent
+    # For popup login, prompt=none is used with state=popup to minimize flash
     params = base_params.copy()
     if prompt:
         params["prompt"] = prompt
-    
+
     # Use standard web URL, not API endpoint, to avoid app triggering issues
     login_url = f"https://discord.com/oauth2/authorize?{urlencode(params, quote_via=quote)}"
-    print(f"DEBUG: Login URL: {login_url}")
-    print(f"DEBUG: Redirect URI: {settings.DISCORD_REDIRECT_URI}")
+    logger.info("oauth_login_initiated", state=state, prompt=prompt)
     return RedirectResponse(login_url)
 
 @router.get("/discord/callback")
+@limiter.limit("10/minute")
 async def callback_discord(
+    request: Request,
     code: str = None,
     error: str = None,
     state: str = "redirect",
@@ -53,10 +69,11 @@ async def callback_discord(
     db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis)
 ):
-    print(f"DEBUG: Callback received. Code: {code}, Error: {error}, State: {state}")
-    
+
+    logger.info("oauth_callback_received", has_code=bool(code), error=error, state=state)
+
     def return_silent_error(error_msg: str):
-        print(f"DEBUG: Silent Login Error: {error_msg}")
+        logger.warning("silent_login_error", error=error_msg)
         html_content = f"""
         <html>
             <body>
@@ -74,7 +91,8 @@ async def callback_discord(
     if error == "interaction_required":
         print("DEBUG: Interaction required from Discord. Redirecting to consent flow.")
         if state == "silent":
-             return HTMLResponse(content="""
+            logger.info("silent_login_interaction_required")
+            return HTMLResponse(content="""
             <html><body><script>
                 window.parent.postMessage({type: 'DISCORD_SILENT_LOGIN_REQUIRED'}, '*');
             </script></body></html>
@@ -98,8 +116,8 @@ async def callback_discord(
         if state == "silent":
              return return_silent_error(error)
         # Redirect to frontend access denied page
-        frontend_url = "http://localhost:3000"
-        return RedirectResponse(f"{frontend_url}/access-denied?error={error}")
+        return RedirectResponse(f"{settings.FRONTEND_URL}/access-denied?error={error}")
+
         
     if not code:
         if state == "silent":
@@ -124,7 +142,7 @@ async def callback_discord(
             token_res = await client.post(f"{DISCORD_API_BASE}/oauth2/token", data=data, headers=headers)
             
             if token_res.status_code != 200:
-                print(f"DEBUG: Discord Token Exchange Failed: {token_res.status_code} {token_res.text}")
+                logger.error("discord_token_exchange_failed", status_code=token_res.status_code)
                 if state == "silent":
                     return return_silent_error(f"Token exchange failed: {token_res.text}")
                     
@@ -142,7 +160,7 @@ async def callback_discord(
             token_expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
             
         except Exception as e:
-            print(f"DEBUG: Exception during token exchange: {e}")
+            logger.error("token_exchange_exception", error=str(e))
             if state == "silent":
                 return return_silent_error(f"Exception: {str(e)}")
             from urllib.parse import quote
@@ -184,59 +202,106 @@ async def callback_discord(
     
     await db.commit()
     
-    # Create session
-    session_id = str(uuid.uuid4())
+    # --- PERSISTENT SESSION LOGIC ---
+    # 1. Generate new API Token
+    api_token = str(uuid.uuid4())
+    
+    # 2. Hash it
+    token_hash = hashlib.sha256(api_token.encode()).hexdigest()
+    
+    # 3. Store in DB (UserToken)
+    # Expires in 30 days
+    expires_at = datetime.utcnow() + timedelta(days=30)
+    
+    user_token = UserToken(
+        user_id=user.id,
+        token_hash=token_hash,
+        expires_at=expires_at
+    )
+    db.add(user_token)
+    await db.commit()
+    
+    # 4. Cache in Redis
+    # Key: session:{api_token}  Value: User Session Data
+    # Used for fast authentication on every request
+    token_created_at = datetime.now(timezone.utc).timestamp()
     session_data = {
         "user_id": str(user.id),
         "username": user.username,
-        "access_token": access_token,
+        "access_token": access_token, # Discord access token
         "refresh_token": refresh_token,
-        "expires_at": token_expires_at.timestamp()
+        "expires_at": token_expires_at.timestamp(),
+        "token_db_id": user_token.id,          # Track DB ID for specific logout
+        "token_created_at": token_created_at,  # Used for immediate revocation check
     }
     
-    # Store in Redis (expire in 30 days)
-    # Using 30 days allows us to refresh the Discord token (which usually expires in 7 days) logic in the backend
-    await redis.setex(f"session:{session_id}", 60 * 60 * 24 * 30, json.dumps(session_data))
+    await redis.setex(f"session:{api_token}", 60 * 60 * 24 * 30, json.dumps(session_data))
     
-    # Set cookie
+    # Set cookie (Optional, frontend often uses localStorage)
     response.set_cookie(
         key="session_id",
-        value=session_id,
+        value=api_token,
         httponly=True,
         max_age=60 * 60 * 24 * 30,
         samesite="lax",
-        secure=False # Set to True in production with HTTPS
+        # Secure=True in production (HTTPS only). False only for local HTTP dev.
+        secure=(os.environ.get("ENVIRONMENT", "development") == "production"),
     )
     
     if state == "popup" or state == "silent":
         message_type = 'DISCORD_LOGIN_SUCCESS' if state == "popup" else 'DISCORD_SILENT_LOGIN_SUCCESS'
+        # Use the configured frontend URL as the postMessage target origin (security: prevents token
+        # leakage to other origins). Falls back to '*' only if FRONTEND_URL is not set.
+        target_origin = settings.FRONTEND_URL or '*'
+        logger.info("oauth_login_success", state=state, user_id=str(user.id))
         html_content = f"""
+        <!DOCTYPE html>
         <html>
-            <body>
+            <head>
+                <title>Login Successful</title>
+            </head>
+            <body style="font-family: sans-serif; text-align: center; padding: 50px;">
+                <h2>Login Successful!</h2>
+                <p>This window will close automatically...</p>
+                <p><button onclick="window.close()" style="padding: 10px 20px; cursor: pointer;">Close Window</button></p>
                 <script>
-                    window.parent.postMessage({{
-                        type: '{message_type}',
-                        token: '{session_id}'
-                    }}, '*');
-                    if (window.opener) {{
-                        window.opener.postMessage({{
+                    var targetOrigin = '{target_origin}';
+
+                    // Send to parent (for iframe / silent login)
+                    try {{
+                        window.parent.postMessage({{
                             type: '{message_type}',
-                            token: '{session_id}'
-                        }}, '*');
-                        window.close();
+                            token: '{api_token}'
+                        }}, targetOrigin);
+                    }} catch(e) {{
+                        console.error('Failed to send to parent:', e);
+                    }}
+
+                    // Send to opener (for popup)
+                    if (window.opener && !window.opener.closed) {{
+                        try {{
+                            window.opener.postMessage({{
+                                type: '{message_type}',
+                                token: '{api_token}'
+                            }}, targetOrigin);
+
+                            setTimeout(function() {{
+                                window.close();
+                            }}, 1000);
+                        }} catch(e) {{
+                            console.error('Failed to send to opener:', e);
+                        }}
                     }}
                 </script>
-                <p>Login successful! Closing window...</p>
             </body>
         </html>
         """
         return HTMLResponse(content=html_content)
     
     # Redirect to frontend with token
-    frontend_url = "http://localhost:3000"
-    return RedirectResponse(f"{frontend_url}?token={session_id}")
+    return RedirectResponse(f"{settings.FRONTEND_URL}?token={api_token}")
 
-from app.api.deps import get_current_user, check_is_admin
+
 
 @router.get("/me")
 async def read_users_me(current_user: dict = Depends(get_current_user)):
@@ -248,10 +313,85 @@ async def read_users_me(current_user: dict = Depends(get_current_user)):
         current_user["is_admin"] = False
         
     return current_user
+
 @router.post("/logout")
-async def logout(response: Response):
+async def logout(
+    response: Response,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis),
+    authorization: str = Depends(lambda x: x.headers.get("Authorization", "").split(" ")[1] if " " in x.headers.get("Authorization", "") else None)
+):
+    # Determine token from logic in get_current_user (it might be cookie or header)
+    # Since get_current_user already validated it, we need the raw token to clear Redis
+    # and to hash it for DB deletion.
+    
+    # NOTE: get_current_user returns the user dict, not the raw token.
+    # We re-extract the token here similar to get_current_user logic.
+    # Ideally get_current_user should return a context object, but for minimal changes:
+    
+    # 1. Try Header
+    token = authorization
+    
+    # 2. Try Cookie
+    if not token and response.headers.get("cookie"):
+        # This part is tricky if we are in API route context where cookies are incoming
+        # But here 'response' is outgoing. 
+        pass
+        
+    # Fallback: We can pass the token through the dependency or just extract it again here.
+    # Simpler: Just rely on Authorization header for API calls. Default cookie logic is handled by browser.
+    
+    if not token:
+         # Try to get from request cookies?
+         # Since we don't have request object directly in signature here effectively without Depends
+         # Let's assume Authorization header is present as frontend uses it.
+         pass
+         
+    if token:
+        # 1. Clear Redis
+        await redis.delete(f"session:{token}")
+        
+        # 2. Clear Database (UserToken)
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        stmt = delete(UserToken).where(UserToken.token_hash == token_hash)
+        await db.execute(stmt)
+        await db.commit()
+
     response.delete_cookie("session_id")
     return {"message": "Logged out"}
+
+@router.post("/logout-all")
+async def logout_all(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis)
+):
+    """
+    Log out all devices for the current user immediately.
+
+    Strategy for immediate revocation:
+    - Delete all UserToken records from DB (prevents DB-based session restore).
+    - Set a Redis revocation marker `user:revoked_at:{user_id}` with the current
+      timestamp. Any active Redis session whose `token_created_at` is older than
+      this timestamp will be rejected by `get_current_user`, providing instant
+      invalidation without needing to enumerate individual session keys.
+    - TTL on the revocation marker is 30 days (the maximum session lifetime).
+    """
+    user_id = int(current_user["user_id"])
+
+    # 1. Delete all persistent tokens from DB
+    stmt = delete(UserToken).where(UserToken.user_id == user_id)
+    await db.execute(stmt)
+    await db.commit()
+
+    # 2. Set immediate revocation marker in Redis
+    revoked_at = datetime.now(timezone.utc).timestamp()
+    SESSION_MAX_TTL = 60 * 60 * 24 * 30  # 30 days matches max session lifetime
+    await redis.setex(f"user:revoked_at:{user_id}", SESSION_MAX_TTL, str(revoked_at))
+
+    logger.info("user_logged_out_all_devices", user_id=user_id)
+    return {"message": "Logged out from all devices"}
 
 @router.get("/discord-config")
 async def get_discord_config():

@@ -83,7 +83,15 @@ These fundamental decisions guide the baseline's design and deployment strategy:
     - Settings configurable through the web UI
     - No hard-coded guild IDs in environment variables (except the main/developer server)
 
-### 4.3 Dependency Injection & Services
+### 4.3 Network Architecture & Security
+
+*   **FR-EXT-1: Hidden Backend Topology**
+    To ensure maximum security, the backend API is **completely isolated** from the public internet.
+    - **Intranet Only**: The backend container resides on a private `intranet` Docker network. It is NOT accessible directly from the browser.
+    - **Frontend Proxy**: All client-side API requests MUST go through the Next.js Frontend (e.g., `/api/v1/...`). The Frontend proxies these requests to the backend container.
+    - **Guest Mode**: The Frontend supports unauthenticated "Guest" access for specific public pages, rendering limited UI without requiring a user session.
+
+### 4.4 Dependency Injection & Services
 
 * **FR-7: Service Container for Cogs**
     The baseline shall provide a dependency injection system for cogs:
@@ -135,7 +143,7 @@ These fundamental decisions guide the baseline's design and deployment strategy:
     - Displays real-time shard health and status
     - Shows which shard serves which guild
     - Restricted to developer team members (main server members)
-    - Displays: shard ID, guild assignments, connection status, latency, uptime, last heartbeat
+    - Displays: shard ID, guild assignments, connection status, latency, uptime (human-readable), last heartbeat
 
 ### 4.6 LLM Integration Module
 
@@ -225,7 +233,7 @@ These fundamental decisions guide the baseline's design and deployment strategy:
 * **FR-23: Ephemeral Status Command**
     The bot provides a `/status` slash command:
     - Returns bot information as ephemeral message (visible only to command user)
-    - Displays: uptime, guild count, shard info, database status, Redis status
+    - Displays: uptime (human-readable), guild count, shard info, database status, Redis status
     - Available to all users in guilds where bot is present
     - No startup/shutdown notifications to Discord channels (multi-server bot)
 
@@ -239,7 +247,7 @@ These fundamental decisions guide the baseline's design and deployment strategy:
     The bot tracks shard health in Redis:
     - Each shard periodically writes status to Redis (guild assignments, latency, heartbeat timestamp)
     - Backend API provides endpoints to retrieve shard status grouped by guild
-    - Shard data includes: shard ID, guild IDs, connection status, latency, uptime, last heartbeat
+    - Shard data includes: shard ID, guild IDs, connection status, latency, uptime (human-readable), last heartbeat
 
 ### 3.6 Scalability
 

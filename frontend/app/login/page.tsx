@@ -2,16 +2,83 @@
 
 import { LogIn } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
-import { Suspense } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { siteConfig } from '../config';
 
 function LoginContent() {
     const searchParams = useSearchParams();
     const error = searchParams.get('error');
     const details = searchParams.get('details');
+    const [loggingIn, setLoggingIn] = useState(false);
 
-    const handleLogin = () => {
-        window.location.href = 'http://localhost:8000/api/v1/auth/discord/login';
+    useEffect(() => {
+        const handleMessage = (event: MessageEvent) => {
+            console.log('Message received on login page:', event.data);
+            console.log('Message origin:', event.origin);
+
+            if (event.data.type === 'DISCORD_LOGIN_SUCCESS' && event.data.token) {
+                console.log('Discord login success! Token:', event.data.token);
+                localStorage.setItem('access_token', event.data.token);
+                setLoggingIn(false);
+                // Use window.location instead of router.push for more reliable redirect
+                window.location.href = `/?token=${event.data.token}`;
+            } else if (event.data.type === 'DISCORD_SILENT_LOGIN_SUCCESS' && event.data.token) {
+                console.log('Discord silent login success! Token:', event.data.token);
+                localStorage.setItem('access_token', event.data.token);
+                setLoggingIn(false);
+                window.location.href = `/?token=${event.data.token}`;
+            }
+        };
+
+        console.log('Setting up message listener for Discord login');
+        window.addEventListener('message', handleMessage);
+        return () => {
+            console.log('Cleaning up message listener');
+            window.removeEventListener('message', handleMessage);
+        };
+    }, []); // Empty dependency array - listener stays active for component lifetime
+
+    const handleLogin = (useRedirect: boolean = false) => {
+        console.log('Starting login, useRedirect:', useRedirect);
+        setLoggingIn(true);
+
+        // Use simple redirect instead of popup for now (more reliable)
+        if (useRedirect) {
+            window.location.href = 'http://localhost:8000/api/v1/auth/discord/login';
+            return;
+        }
+
+        const width = 500;
+        const height = 700;
+        const left = window.screen.width / 2 - width / 2;
+        const top = window.screen.height / 2 - height / 2;
+
+        // Use a unique window name each time to avoid caching issues
+        const windowName = `discord-login-${Date.now()}`;
+
+        const popup = window.open(
+            'http://localhost:8000/api/v1/auth/discord/login?state=popup',
+            windowName,
+            `width=${width},height=${height},left=${left},top=${top}`
+        );
+
+        if (!popup) {
+            console.error('Failed to open popup - may be blocked by browser');
+            setLoggingIn(false);
+            alert('Popup was blocked. Please allow popups for this site.');
+            return;
+        }
+
+        console.log('Popup opened successfully with name:', windowName);
+
+        // Check if popup was closed manually
+        const checkPopup = setInterval(() => {
+            if (popup && popup.closed) {
+                console.log('Popup was closed');
+                clearInterval(checkPopup);
+                setLoggingIn(false);
+            }
+        }, 500);
     };
 
     // ...
@@ -28,11 +95,13 @@ function LoginContent() {
                     <div className="bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded-lg relative mb-4" role="alert">
                         <strong className="font-bold">Login Failed! </strong>
                         <span className="block sm:inline">
-                            {error === 'discord_error'
-                                ? 'Discord Login Failed. You may be rate limited. Please try again later.'
+                            {error === 'discord_error' && details?.includes('rate limit')
+                                ? 'Discord Rate Limit: Too many login attempts. Wait 5 minutes and try again.'
+                                : error === 'discord_error'
+                                ? 'Discord Login Failed. Please try again.'
                                 : 'An unexpected error occurred during login.'}
                         </span>
-                        {details && (
+                        {details && !details.includes('rate limit') && (
                             <div className="mt-2 text-xs bg-black/10 p-2 rounded overflow-auto max-h-20 text-destructive font-mono">
                                 Details: {decodeURIComponent(details)}
                             </div>
@@ -41,11 +110,21 @@ function LoginContent() {
                 )}
 
                 <button
-                    onClick={handleLogin}
-                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-4 px-6 rounded-xl transition-all duration-200 flex items-center justify-center gap-3 shadow-md hover:shadow-lg hover:scale-[1.02]"
+                    onClick={() => handleLogin(true)}
+                    disabled={loggingIn}
+                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-4 px-6 rounded-xl transition-all duration-200 flex items-center justify-center gap-3 shadow-md hover:shadow-lg hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                    <LogIn className="w-5 h-5" />
-                    Login with Discord
+                    {loggingIn ? (
+                        <>
+                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                            Logging in...
+                        </>
+                    ) : (
+                        <>
+                            <LogIn className="w-5 h-5" />
+                            Login with Discord (Redirect)
+                        </>
+                    )}
                 </button>
 
                 <button

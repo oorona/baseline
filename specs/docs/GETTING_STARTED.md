@@ -201,7 +201,7 @@ In Discord, type:
 /status
 ```
 
-You should see an ephemeral message with bot status, uptime, shard info, etc.
+You should see an ephemeral message with bot status, uptime (human-readable), shard info, etc.
 
 ---
 

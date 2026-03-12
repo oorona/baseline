@@ -127,8 +127,6 @@ class MyCog(commands.Cog):
 After creating your cog, restart the bot:
 
 ```bash
-make restart-bot
-# or
 docker compose restart bot
 ```
 

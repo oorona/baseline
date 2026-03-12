@@ -1,12 +1,15 @@
 # Baseline Discord Bot Platform
 
-A comprehensive Discord bot platform with authentication, settings management, audit logging, and granular permissions.
+A comprehensive Discord bot platform with authentication, settings management, audit logging, granular permissions, and **full Gemini 3 AI capabilities**.
 
 ## Documentation
 
 - **[Developer Manual](docs/DEVELOPER_MANUAL.md)**: The authoritative guide for AI Agents and Developers.
+- **[Security Reference](docs/SECURITY.md)**: **Read before deploying.** All 6 permission levels with code examples, security checklist, and production hardening guide.
 - **[Architecture](docs/ARCHITECTURE.md)**: High-level system design.
 - **[LLM Guide](docs/LLM_USAGE_GUIDE.md)**: How to use the shared LLM service.
+- **[Gemini Capabilities](docs/GEMINI_CAPABILITIES.md)**: Complete Gemini 3 API guide (13 capabilities).
+- **[Integration Guides](docs/integration/README.md)**: Step-by-step feature development guides.
 
 ## Using as a Template
 
@@ -49,12 +52,12 @@ This guide covers:
 
 3. **Start the development environment**
    ```bash
-   make up
+   docker compose up -d
    ```
 
 4. **Run database migrations**
    ```bash
-   make migrate
+   docker compose exec backend alembic upgrade head
    ```
 
 5. **Access the application**
@@ -62,20 +65,19 @@ This guide covers:
    - Backend API: http://localhost:8000
    - API Docs: http://localhost:8000/docs
 
-## Available Commands
+## Common Commands
 
-The `Makefile` provides convenient shortcuts:
-
-- `make help` - Show all available commands
-- `make up` - Start development environment
-- `make down` - Stop all services
-- `make prod` - Start production environment
-- `make logs` - View logs from all services
-- `make migrate` - Run database migrations
-- `make restart-backend` - Restart backend service
-- `make restart-bot` - Restart bot service
-- `make restart-frontend` - Restart frontend service
-- `make clean` - Stop and remove containers, volumes
+```bash
+docker compose up -d                                        # Start dev environment
+docker compose down                                         # Stop all services
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d  # Production
+docker compose logs -f                                      # View logs
+docker compose exec backend alembic upgrade head            # Run DB migrations
+docker compose restart backend                              # Restart backend
+docker compose restart bot                                  # Restart bot
+docker compose restart frontend                             # Restart frontend
+docker compose down -v                                      # Stop + remove volumes
+```
 
 ## Production Deployment
 
@@ -94,9 +96,36 @@ This will:
 ### Manual deployment
 
 ```bash
-make prod
-make migrate
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+docker compose exec backend alembic upgrade head
 ```
+
+## Testing
+
+The framework includes a live integration test suite that runs against the real Docker stack. Tests validate health, security headers, all 6 permission levels, rate limiting, and API contract backwards compatibility.
+
+```bash
+# 1. Start the stack
+docker compose up -d
+
+# 2. Run all tests (one-shot)
+docker compose -f docker-compose.yml -f docker-compose.test.yml run --rm test-runner
+
+# 3. Run with authenticated tests (L2+ endpoints)
+TEST_API_TOKEN=your_token docker compose -f docker-compose.yml -f docker-compose.test.yml run --rm test-runner
+```
+
+**Output**: Each test shows `[PASS/FAIL/SKIP]  test name  response_time_ms` in real time, followed by a summary table with per-suite stats (pass counts, avg/max response times).
+
+**Test suites:**
+- `01 Health` — all services reachable, response times within limits
+- `02 Security Headers` — all required headers present (CSP, HSTS, X-Frame-Options, etc.)
+- `03 Authentication` — OAuth endpoints, token validation, rejection of invalid auth
+- `04 Security Levels` — L0–L5 access control enforced on every endpoint
+- `05 Rate Limiting` — nginx burst protection verified
+- `06 Backwards Compatibility` — API response shape contract tests
+
+See [`tests/runner/`](tests/runner/) for source and [`docker-compose.test.yml`](docker-compose.test.yml) for configuration.
 
 ## Development
 
@@ -114,12 +143,40 @@ baseline/
 ├── bot/              # Discord bot
 │   ├── cogs/         # Bot commands
 │   ├── core/         # Bot core logic
-│   └── services/     # Background services
+│   └── services/     # LLM & background services
 ├── frontend/         # Next.js application
 │   └── app/          # App router pages
+├── docs/             # Documentation
+│   └── integration/  # Feature development guides
 ├── secrets/          # Secret files (not in git)
 └── docker-compose.yml
 ```
+
+### AI/LLM Capabilities
+
+The framework includes comprehensive LLM support with **full Gemini 3 integration**:
+
+| Provider | Features |
+|----------|----------|
+| **Google Gemini 3** | Text, images, TTS, embeddings, thinking levels, structured output |
+| **OpenAI** | GPT-4o, function calling, vision |
+| **Anthropic** | Claude 3 Opus/Sonnet/Haiku |
+| **xAI** | Grok |
+
+**Quick usage in a cog:**
+```python
+class MyCog(commands.Cog):
+    def __init__(self, bot):
+        self.llm = bot.services.llm
+    
+    @app_commands.command()
+    async def ask(self, interaction, question: str):
+        await interaction.response.defer()
+        response = await self.llm.chat(message=question)
+        await interaction.followup.send(response)
+```
+
+See [GEMINI_CAPABILITIES.md](docs/GEMINI_CAPABILITIES.md) for the complete guide.
 
 ### Adding a Database Migration
 

@@ -50,10 +50,50 @@ For a complete understanding of the system design, see:
 |-----------|----------------|-------|
 | **Bot** | Add commands | [01-adding-cogs.md](01-adding-cogs.md) |
 | **Bot** | Use LLM | [02-llm-integration.md](02-llm-integration.md) |
+| **Bot** | **Gemini 3 AI** | [GEMINI_CAPABILITIES.md](../GEMINI_CAPABILITIES.md) |
 | **Bot** | Configuration | [06-bot-configuration.md](06-bot-configuration.md) |
 | **Backend** | Add API endpoints | [04-backend-endpoints.md](04-backend-endpoints.md) |
 | **Frontend** | Add pages | [05-frontend-pages.md](05-frontend-pages.md) |
 | **All** | Logging | [03-logging-environment.md](03-logging-environment.md) |
+
+---
+
+## Gemini 3 AI Capabilities
+
+The framework includes **full Gemini 3 API support** with 13 capabilities:
+
+| Capability | What It Does |
+|------------|--------------|
+| **Text + Thinking** | Generate text with configurable reasoning depth |
+| **Image Generation** | Create images from text prompts |
+| **Image Understanding** | Analyze and describe images |
+| **Text-to-Speech** | Convert text to natural speech |
+| **Embeddings** | Generate vector embeddings |
+| **Structured Output** | Get typed JSON responses |
+| **Function Calling** | Let AI call your functions |
+| **And more...** | URL context, file search, caching, token counting |
+
+### Quick Example
+
+```python
+from bot.services.gemini import ThinkingLevel
+
+@app_commands.command()
+async def smart_ask(self, interaction, question: str):
+    await interaction.response.defer()
+    
+    result = await self.bot.services.llm.generate_with_thinking(
+        prompt=question,
+        thinking_level=ThinkingLevel.HIGH,
+        guild_id=interaction.guild_id
+    )
+    
+    await interaction.followup.send(result["content"])
+```
+
+→ **Full Guide**: [GEMINI_CAPABILITIES.md](../GEMINI_CAPABILITIES.md)
+
+---
 
 ## Example: Adding a Complete Feature
 
@@ -98,7 +138,7 @@ export default function PollsPage() {
 
 1. **Read the Architecture Guide First**: Understand the system design
 2. **Follow Existing Patterns**: Study existing code before creating new features
-3. **Test Locally**: Use `make up` to run the full stack
+3. **Test Locally**: Use `docker compose up -d` to run the full stack
 4. **Use TypeScript/Type Hints**: Maintain type safety
 5. **Log Important Events**: Use structured logging
 6. **Handle Errors**: Always provide user-friendly error messages
@@ -181,7 +221,7 @@ When adding features to the baseline framework:
 2. Add tests for new functionality
 3. Update documentation
 4. Create a migration if modifying database
-5. Test with `make up` and `make prod`
+5. Test with `docker compose up -d` and `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`
 
 ---
 

@@ -161,13 +161,14 @@ This plan breaks down the implementation of the baseline bot platform into manag
   - `on_shard_disconnect`
   - `on_shard_resumed`
 - [ ] Write shard status to Redis
+  - Shard data includes: shard ID, guild IDs, connection status, latency, uptime (human-readable), last heartbeat system
 - [ ] Create shard heartbeat system
 - [ ] Build shard status API endpoint
 - [ ] Implement shard status cleanup (stale data)
 
 #### 3.4 Status Command (Week 2-3)
 - [ ] Implement `/status` slash command
-- [ ] Show bot uptime
+- [ ] Show bot uptime (human-readable)
 - [ ] Display guild count
 - [ ] Show shard information
 - [ ] Display database/Redis status

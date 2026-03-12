@@ -1,3 +1,20 @@
+/**
+ * ╔═══════════════════════════════════════════════════════════════════════════════╗
+ * ║                           *** DEMO CODE ***                                   ║
+ * ║                                                                               ║
+ * ║  This file is DEMONSTRATION CODE for the Baseline Framework.                  ║
+ * ║  It shows how to implement a Level 2 (User) access page that displays         ║
+ * ║  guild information accessible to logged-in users with the USER role.          ║
+ * ║                                                                               ║
+ * ║  You can:                                                                     ║
+ * ║    - Use this as reference for implementing user-facing pages                 ║
+ * ║    - Modify and extend for production use                                     ║
+ * ║    - Delete this file when not needed                                         ║
+ * ║                                                                               ║
+ * ║  See: docs/integration/05-frontend-pages.md for documentation                 ║
+ * ╚═══════════════════════════════════════════════════════════════════════════════╝
+ */
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -6,7 +23,7 @@ import { apiClient } from '@/app/api-client';
 import { withPermission } from '@/lib/components/with-permission';
 import { PermissionLevel } from '@/lib/permissions';
 
-// Disposable Test Page for Level 2 Access
+// *** DEMO CODE *** - Disposable Test Page for Level 2 Access
 function TestLevel2Page() {
     const params = useParams();
     const guildId = params.guildId as string;
@@ -32,11 +49,11 @@ function TestLevel2Page() {
 
     return (
         <div className="p-8 max-w-4xl">
-            <h1 className="text-2xl font-bold mb-4 text-blue-400">Level 2 Access Test (User)</h1>
+            <h1 className="text-2xl font-bold mb-4 text-blue-400">*** DEMO *** Level 2 Access Test (User)</h1>
             <p className="mb-4 text-gray-400">
                 This page requires <strong>Level 2 (User)</strong> access.
                 By default, everyone in the guild has this.
-                If the owner toggles "Allow Everyone" to OFF, only users with allowed roles can see this.
+                If the owner toggles &quot;Allow Everyone&quot; to OFF, only users with allowed roles can see this.
             </p>
 
             <div className="bg-gray-900 rounded-lg p-6 font-mono text-sm border border-gray-800">

@@ -1,3 +1,20 @@
+"""
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║                           *** DEMO CODE ***                                   ║
+║                                                                               ║
+║  This file is DEMONSTRATION CODE for the Baseline Framework.                  ║
+║  It shows how to implement guild event logging (message edits/deletes,        ║
+║  member join/leave) and channel-based log output.                             ║
+║                                                                               ║
+║  You can:                                                                     ║
+║    - Use this as reference for implementing your own logging features         ║
+║    - Modify and extend for production use                                     ║
+║    - Delete this file if you don't need logging functionality                 ║
+║                                                                               ║
+║  See: docs/integration/03-logging-environment.md for documentation            ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+"""
+
 import discord
 from discord.ext import commands
 import structlog
@@ -5,7 +22,24 @@ from services.guild_logger import GuildLogger
 
 logger = structlog.get_logger()
 
+
+# ============================================================================
+# *** DEMO CODE *** - Guild Event Logging Cog
+# ============================================================================
+
 class LoggingCog(commands.Cog):
+    """
+    *** DEMO COG ***
+    
+    Demonstrates guild event logging functionality including:
+    - Message delete logging
+    - Message edit logging  
+    - Member join/leave logging
+    - Configurable log channel per guild
+    
+    This cog can be safely removed or modified for production.
+    """
+    
     def __init__(self, bot):
         self.bot = bot
         self.backend_url = f"http://backend:8000/api/v1"

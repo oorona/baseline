@@ -9,6 +9,7 @@ import json
 from redis.asyncio import Redis
 
 from app.db.session import get_db
+from app.db.guild_session import get_guild_db
 from app.db.redis import get_redis
 from ..models import Guild, User, AuthorizedUser, AuthorizedRole, PermissionLevel, GuildSettings, AuditLog
 from ..schemas import (
@@ -27,10 +28,18 @@ from ..schemas import (
     DiscordMember
 )
 from ..core.config import settings as app_settings
+from fastapi import APIRouter, Depends, HTTPException, status, Request
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from sqlalchemy.orm import Session, joinedload
+from typing import List, Dict, Any
+from redis.asyncio import Redis
+
 from app.core.discord import discord_client
 from app.core.config import settings
 from app.core.discord import discord_client
 from app.api.deps import get_current_user, check_is_admin
+from app.core.limiter import limiter
 
 router = APIRouter()
 
@@ -41,7 +50,7 @@ class AddUserRequest(BaseModel):
 @router.get("/{guild_id}/public")
 async def get_guild_public_info(
     guild_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_guild_db)
 ):
     """Get public info for a guild (Name, Icon, Member Count). No Auth Required."""
     guild = await db.get(Guild, guild_id)
@@ -57,7 +66,7 @@ async def get_guild_public_info(
 @router.get("/{guild_id}")
 async def get_guild(
     guild_id: int,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_guild_db),
     current_user: dict = Depends(get_current_user),
     redis: Redis = Depends(get_redis)
 ):
@@ -148,7 +157,7 @@ async def get_guild(
 @router.get("/{guild_id}/settings")
 async def get_guild_settings(
     guild_id: int,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_guild_db),
     current_user: dict = Depends(get_current_user)
 ):
     """Get settings for a guild."""
@@ -221,7 +230,7 @@ async def get_guild_settings(
 async def update_guild_settings(
     guild_id: int,
     settings_update: SettingsUpdate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_guild_db),
     current_user: dict = Depends(get_current_user)
 ):
     """Update settings for a guild."""
@@ -351,7 +360,7 @@ async def update_guild_settings(
 @router.get("/{guild_id}/authorized-users")
 async def get_authorized_users(
     guild_id: int,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_guild_db),
     current_user: dict = Depends(get_current_user)
 ):
     """Get list of authorized users for a guild."""
@@ -422,7 +431,7 @@ async def get_authorized_users(
 async def add_authorized_user(
     guild_id: int,
     request: AddUserRequest,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_guild_db),
     current_user: dict = Depends(get_current_user)
 ):
     """Add an authorized user to a guild."""
@@ -539,7 +548,7 @@ async def add_authorized_user(
 async def remove_authorized_user(
     guild_id: int,
     user_id: int,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_guild_db),
     current_user: dict = Depends(get_current_user)
 ):
     """Remove an authorized user from a guild."""
@@ -611,7 +620,7 @@ async def remove_authorized_user(
 @router.get("/{guild_id}/authorized-roles")
 async def get_authorized_roles(
     guild_id: int,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_guild_db),
     current_user: dict = Depends(get_current_user)
 ):
     """Get list of authorized roles for a guild."""
@@ -648,7 +657,7 @@ async def get_authorized_roles(
 async def add_authorized_role(
     guild_id: int,
     request: AddRoleRequest,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_guild_db),
     current_user: dict = Depends(get_current_user)
 ):
     """Add an authorized role (Level 3) to a guild."""
@@ -721,7 +730,7 @@ async def add_authorized_role(
 async def remove_authorized_role(
     guild_id: int,
     role_id: str,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_guild_db),
     current_user: dict = Depends(get_current_user)
 ):
     """Remove an authorized role from a guild."""
@@ -778,7 +787,7 @@ async def remove_authorized_role(
 @router.get("/{guild_id}/audit-logs", response_model=List[AuditLogSchema])
 async def get_audit_logs(
     guild_id: int,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_guild_db),
     current_user: dict = Depends(get_current_user)
 ):
     """Get audit logs for a guild."""
@@ -824,7 +833,7 @@ async def get_audit_logs(
 @router.get("/{guild_id}/channels", response_model=List[DiscordChannel])
 async def get_guild_channels(
     guild_id: int,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_guild_db),
     current_user: dict = Depends(get_current_user)
 ):
     """Get list of channels for a guild from Discord API."""
@@ -860,7 +869,7 @@ async def get_guild_channels(
 @router.get("/{guild_id}/roles", response_model=List[DiscordRole])
 async def get_guild_roles(
     guild_id: int,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_guild_db),
     current_user: dict = Depends(get_current_user)
 ):
     """Get list of roles for a guild from Discord API."""
@@ -890,13 +899,16 @@ async def get_guild_roles(
     try:
         roles = await discord_client.get_guild_roles(str(guild_id))
         return roles
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 # --- Generic Guild Endpoints (Must be defined AFTER specific /{guild_id}/*) ---
 
 @router.get("", response_model=List[GuildSchema])
+@limiter.limit("20/minute")
 async def list_guilds(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
     redis: Redis = Depends(get_redis)
@@ -1031,7 +1043,7 @@ async def create_or_update_guild(
 @router.get("/{guild_id}", response_model=GuildSchema)
 async def read_guild(
     guild_id: int,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_guild_db),
     current_user: dict = Depends(get_current_user)
 ):
     user_id = int(current_user["user_id"])
@@ -1159,7 +1171,7 @@ async def read_guild(
 async def search_guild_members(
     guild_id: int,
     query: str,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_guild_db),
     current_user: dict = Depends(get_current_user)
 ):
     """Search for members in a guild."""

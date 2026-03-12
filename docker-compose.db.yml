@@ -1,0 +1,53 @@
+# Database infrastructure stack
+# Start this ONCE before launching the application stack:
+#   docker compose -f docker-compose.db.yml up -d
+#
+# The application stack (docker-compose.yml) connects to these services
+# via the external 'baseline_dbnet' network.
+
+services:
+  # PostgreSQL
+  # Starts with trust authentication on the internal dbnet network.
+  # No application users or databases are pre-created — the Setup Wizard
+  # handles all database configuration once credentials are provided.
+  postgres:
+    image: postgres:15-alpine
+    container_name: bot-postgres
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    networks:
+      - dbnet
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: bot-redis
+    networks:
+      - dbnet
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+networks:
+  dbnet:
+    driver: bridge
+    name: baseline_dbnet
+    internal: true
+    # Database access only — no external routing.
+    # Named explicitly so the app stack can reference it as an external network.
+
+volumes:
+  postgres_data:

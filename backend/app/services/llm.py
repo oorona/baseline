@@ -11,9 +11,27 @@ from redis.asyncio import Redis
 from app.core.config import settings
 from app.models import LLMUsage, LLMModelPricing
 
-from openai import AsyncOpenAI
-import anthropic
-import google.generativeai as genai
+# Optional imports - these providers may not be installed
+try:
+    from openai import AsyncOpenAI
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+    AsyncOpenAI = None
+
+try:
+    import anthropic
+    ANTHROPIC_AVAILABLE = True
+except ImportError:
+    ANTHROPIC_AVAILABLE = False
+    anthropic = None
+
+try:
+    from google import genai
+    GENAI_AVAILABLE = True
+except ImportError:
+    GENAI_AVAILABLE = False
+    genai = None
 
 logger = structlog.get_logger()
 
@@ -147,50 +165,47 @@ class AnthropicProvider(LLMProvider):
             raise e
 
 class GoogleProvider(LLMProvider):
-    def __init__(self, api_key: str, model: str = "gemini-1.5-flash"):
-        genai.configure(api_key=api_key)
+    def __init__(self, api_key: str, model: str = "gemini-2.5-flash"):
+        self.client = genai.Client(api_key=api_key)
         self.model_name = model
-        self.model = genai.GenerativeModel(model)
 
     async def get_available_models(self) -> List[str]:
-        return ["gemini-1.5-flash", "gemini-1.5-pro"]
+        return ["gemini-3-flash-preview", "gemini-3-pro-preview", "gemini-2.5-flash", "gemini-2.5-pro"]
 
     async def generate_response(self, messages: List[LLMMessage], system_prompt: str = "You are a helpful assistant.", model: Optional[str] = None) -> LLMResponse:
-        history = []
-        for msg in messages[:-1]:
+        # Build conversation history for the new SDK
+        contents = []
+        for msg in messages:
             role = "user" if msg.role == "user" else "model"
             content = msg.content
             if msg.name:
                 content = f"[{msg.name}] {content}"
-            history.append({"role": role, "parts": [content]})
-            
-        last_msg = messages[-1]
-        last_content = last_msg.content
-        if last_msg.name:
-             last_content = f"[{last_msg.name}] {last_content}"
+            contents.append({"role": role, "parts": [{"text": content}]})
 
         target_model_name = model or self.model_name
         
         try:
+            from google.genai import types
+            
             loop = asyncio.get_running_loop()
             def _generate():
-                target_model = self.model
-                if model and model != self.model_name:
-                    target_model = genai.GenerativeModel(model)
-                
-                chat = target_model.start_chat(history=history)
-                prompt = f"System Instruction: {system_prompt}\n\nUser: {last_content}"
-                response = chat.send_message(prompt)
+                response = self.client.models.generate_content(
+                    model=target_model_name,
+                    contents=contents,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_prompt
+                    )
+                )
                 return response
 
             response = await loop.run_in_executor(None, _generate)
             content = response.text
             
-            # Gemini usage metadata might detailed in newer versions, assuming standard access
+            # Extract usage from new SDK
             usage = {
-                "prompt_tokens": response.usage_metadata.prompt_token_count,
-                "completion_tokens": response.usage_metadata.candidates_token_count,
-                "total_tokens": response.usage_metadata.total_token_count
+                "prompt_tokens": getattr(response.usage_metadata, 'prompt_token_count', 0) or 0,
+                "completion_tokens": getattr(response.usage_metadata, 'candidates_token_count', 0) or 0,
+                "total_tokens": getattr(response.usage_metadata, 'total_token_count', 0) or 0
             }
             return LLMResponse(content=content, usage=usage)
         except Exception as e:
@@ -203,13 +218,13 @@ class LLMService:
         self._initialize_providers()
 
     def _initialize_providers(self):
-        if settings.OPENAI_API_KEY:
+        if OPENAI_AVAILABLE and settings.OPENAI_API_KEY:
             self.providers["openai"] = OpenAIProvider(settings.OPENAI_API_KEY)
-        if settings.ANTHROPIC_API_KEY:
+        if ANTHROPIC_AVAILABLE and settings.ANTHROPIC_API_KEY:
             self.providers["anthropic"] = AnthropicProvider(settings.ANTHROPIC_API_KEY)
-        if settings.GOOGLE_API_KEY:
+        if GENAI_AVAILABLE and settings.GOOGLE_API_KEY:
             self.providers["google"] = GoogleProvider(settings.GOOGLE_API_KEY)
-        if settings.XAI_API_KEY:
+        if OPENAI_AVAILABLE and settings.XAI_API_KEY:  # XAI uses OpenAI client
             self.providers["xai"] = XAIProvider(settings.XAI_API_KEY)
         logger.info("llm_providers_initialized", providers=list(self.providers.keys()))
 

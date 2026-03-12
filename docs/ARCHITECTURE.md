@@ -80,11 +80,98 @@ Baseline is a modular framework for building Discord bots with web dashboards. I
 
 To ensure maximum security, the backend API is **completely isolated from the public internet**.
 
-1.  **Hidden Backend**: The `backend` container resides on an internal `intranet` Docker network. It exposes port 8000 only to other containers (Frontend, Bot). It is **NOT** accessible directly from the user's browser.
-2.  **Frontend Proxy**: The `frontend` container (Next.js) acts as a **Secure Proxy**.
-    *   Browser API calls (e.g., `GET /api/v1/someting`) are sent to the Frontend.
-    *   Next.js forwards these requests to `http://backend:8000/api/v1/something` via the internal network.
-3.  **Benefit**: Attackers cannot directly target the API or Database. All traffic must pass through the Frontend application layer.
+```
+┌────────────────────────────────────────────────────────────────┐
+│                      INTERNET (Public)                          │
+└────────────────────────────┬───────────────────────────────────┘
+                             │
+                    ┌────────▼────────┐
+                    │  Gateway (nginx)│ ← Rate limiting, Security headers
+                    │    Port 8000    │   X-Gateway-Request header
+                    └────────┬────────┘
+                             │
+┌────────────────────────────┼───────────────────────────────────┐
+│                     INTRANET (Private)                          │
+│                            │                                    │
+│    ┌─────────────┬─────────┴─────────┬───────────────┐         │
+│    │             │                   │               │         │
+│    ▼             ▼                   ▼               ▼         │
+│ ┌──────┐    ┌──────────┐       ┌─────────┐     ┌─────────┐    │
+│ │ Bot  │    │ Frontend │       │ Backend │     │  Redis  │    │
+│ │      │    │ (Next.js)│       │(FastAPI)│     │ (Cache) │    │
+│ └──────┘    └──────────┘       └────┬────┘     └─────────┘    │
+│                                      │                         │
+└──────────────────────────────────────┼─────────────────────────┘
+                                       │
+┌──────────────────────────────────────┼─────────────────────────┐
+│                      DBNET (Database)                           │
+│                             ▼                                   │
+│                       ┌──────────┐                              │
+│                       │ Postgres │                              │
+│                       │   (DB)   │                              │
+│                       └──────────┘                              │
+└────────────────────────────────────────────────────────────────┘
+```
+
+**Security Layers (Defense in Depth):**
+
+| Layer | Component | Protection |
+|-------|-----------|------------|
+| 1. Network | Docker Networks | Backend NOT on internet network |
+| 2. Gateway | Nginx | Rate limiting, security headers, CSP |
+| 3. Middleware | SecurityMiddleware | Validates `X-Gateway-Request` header |
+| 4. Auth | `get_current_user` | Requires session/JWT for all endpoints |
+| 5. Rate Limit | slowapi | Per-endpoint rate limiting |
+| 6. Database | dbnet (internal) | Only backend can access |
+
+**Traffic Flow:**
+1.  **User → Gateway**: External requests hit nginx on port 8000
+2.  **Gateway → Backend**: Nginx adds `X-Gateway-Request: true` header
+3.  **Backend validates**: SecurityMiddleware checks header for sensitive endpoints
+4.  **Backend authenticates**: `get_current_user` verifies session/JWT
+5.  **Backend processes**: Rate limiting, business logic, database access
+
+**Sensitive Endpoints (Extra Protection):**
+- `/api/v1/gemini/*` - Gemini AI features (cost-sensitive)
+- `/api/v1/llm/*` - LLM provider access (cost-sensitive)
+
+These endpoints require:
+- Valid `X-Gateway-Request` header (from nginx) OR internal Docker IP
+- Authenticated session (user logged in)
+- Stricter rate limits (5 req/sec vs 10 req/sec)
+
+**Security Module Location:** `backend/app/core/security.py`
+
+```python
+# Example: Checking if request is trusted
+from app.core.security import is_trusted_request, require_internal_network
+
+# In middleware - automatic for /api/v1/gemini/* and /api/v1/llm/*
+if not is_trusted_request(request):
+    return 403 Forbidden
+
+# Decorator for custom endpoints
+@router.post("/admin/dangerous-operation")
+@require_internal_network
+async def dangerous_operation(request: Request):
+    ...
+```
+
+
+### Authentication Architecture
+
+The system uses a custom persistent session mechanism backed by Discord OAuth2.
+
+**Key Components:**
+-   **UserToken (DB)**: A long-lived, hashed token stored in the `user_tokens` table. Support multiple tokens per user (Multi-Device).
+-   **Redis Session**: Ephemeral session cache (Key: `session:{api_token}`) for fast access.
+-   **API Token**: UUIDv4 token sent to the frontend and stored in `localStorage`.
+
+**Session Logic:**
+1.  **Login**: User logs in with Discord -> Backend generates `api_token` -> Hashes and stores in DB -> Stores raw in Redis -> Returns raw to Client.
+2.  **Validation**: Middleware checks Redis. If missing (expired/evicted), checks DB for valid hash. If valid, restores Redis session (Self-Healing).
+3.  **Logout**: Removes specific token from DB & Redis (Single Device).
+4.  **Logout All**: Removes all tokens for user from DB (Global Revocation).
 
 ## Component Deep Dive
 
@@ -338,6 +425,8 @@ Bot receives guild_join event
 6. **CORS**: Configured to only allow frontend origin
 7. **Secrets Management**: Docker secrets for sensitive data
 8. **Audit Logging**: All changes tracked with user attribution
+9. **Rate Limiting**: `slowapi` and Nginx limit request rates to prevent abuse
+
 
 ## Performance Considerations
 

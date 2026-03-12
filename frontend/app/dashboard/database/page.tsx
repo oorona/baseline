@@ -1,0 +1,668 @@
+'use client';
+
+import { useEffect, useState, useCallback } from 'react';
+import {
+  Database, RefreshCw, Play, CheckCircle2, XCircle, AlertTriangle,
+  ArrowUpCircle, Activity, Layers, TestTube2, Eye, EyeOff, ChevronDown, ChevronRight
+} from 'lucide-react';
+import { apiClient } from '@/app/api-client';
+import { withPermission } from '@/lib/components/with-permission';
+import { PermissionLevel } from '@/lib/permissions';
+import { DATABASE_SETTINGS, DB_CATEGORIES } from '@/config/settings-definitions';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+interface DbInfo {
+  framework_version: string;
+  required_db_revision: string;
+  current_db_revision: string | null;
+  schema_match: boolean;
+  upgrade_needed: boolean;
+  revision_history: Record<string, string>;
+  postgres: {
+    status: string;
+    version?: string;
+    size?: string;
+    active_connections?: number;
+    current_revision?: string;
+    error?: string;
+  };
+  redis: {
+    status: string;
+    version?: string;
+    used_memory_human?: string;
+    connected_clients?: number;
+    uptime_in_days?: number;
+    error?: string;
+  };
+}
+
+interface MigrationInfo {
+  current_revision: string | null;
+  head_revision: string;
+  history: Array<{ line: string; is_current: boolean }>;
+  needs_upgrade: boolean;
+}
+
+interface ValidationResult {
+  passed: boolean;
+  total_checks: number;
+  passed_count: number;
+  failed_count: number;
+  results: Array<{ check: string; passed: boolean; detail: string }>;
+}
+
+interface ConnectionTestResult {
+  postgres: { ok: boolean; database?: string; user?: string; version?: string; error?: string };
+  redis: { ok: boolean; version?: string; uptime_seconds?: number; error?: string };
+  all_ok: boolean;
+}
+
+interface DbSettingEntry {
+  key: string;
+  friendly_name: string;
+  description: string;
+  category: string;
+  type: string;
+  is_dynamic: boolean;
+  is_secret: boolean;
+  effective_value?: string | null;
+  source?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+type TabId = 'overview' | 'connection' | 'migrations' | 'validation';
+
+function StatusPill({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+      ok ? 'bg-green-500/10 text-green-400 border border-green-500/30'
+         : 'bg-red-500/10 text-red-400 border border-red-500/30'
+    }`}>
+      {ok ? <CheckCircle2 size={11} /> : <XCircle size={11} />}
+      {label}
+    </span>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value?: string | number | null }) {
+  return (
+    <div className="flex items-center justify-between py-2 border-b border-border/40 last:border-0">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className="text-sm font-medium font-mono text-foreground">{value ?? '—'}</span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Tabs
+// ---------------------------------------------------------------------------
+
+function OverviewTab({ info, onRefresh }: { info: DbInfo; onRefresh: () => void }) {
+  return (
+    <div className="space-y-6">
+      {/* Version status banner */}
+      <div className={`flex items-start gap-3 p-4 rounded-lg border text-sm ${
+        info.schema_match
+          ? 'bg-green-500/10 border-green-500/30 text-green-400'
+          : 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+      }`}>
+        {info.schema_match
+          ? <CheckCircle2 size={18} className="mt-0.5 shrink-0" />
+          : <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+        }
+        <div>
+          <p className="font-semibold">
+            {info.schema_match
+              ? 'Database schema is up to date'
+              : 'Database schema upgrade required'
+            }
+          </p>
+          <p className="text-xs mt-0.5 opacity-80">
+            Framework {info.framework_version} requires revision {info.required_db_revision}.
+            {info.current_db_revision
+              ? ` Current revision: ${info.current_db_revision}.`
+              : ' Current revision: unknown.'
+            }
+            {info.upgrade_needed && ' Go to the Migrations tab to apply pending patches.'}
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Framework info */}
+        <div className="bg-card border border-border rounded-xl p-5">
+          <h3 className="font-semibold text-foreground mb-3 flex items-center gap-2">
+            <Layers size={16} className="text-indigo-400" />
+            Framework
+          </h3>
+          <div>
+            <InfoRow label="Framework Version"   value={info.framework_version} />
+            <InfoRow label="Required DB Revision" value={info.required_db_revision} />
+            <InfoRow label="Current DB Revision"  value={info.current_db_revision} />
+            <InfoRow label="Schema Status"        value={info.schema_match ? 'Matched ✓' : 'Mismatch — upgrade needed'} />
+          </div>
+        </div>
+
+        {/* PostgreSQL */}
+        <div className="bg-card border border-border rounded-xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-foreground flex items-center gap-2">
+              <Database size={16} className="text-blue-400" />
+              PostgreSQL
+            </h3>
+            <StatusPill ok={info.postgres.status === 'connected'} label={info.postgres.status} />
+          </div>
+          {info.postgres.error
+            ? <p className="text-xs text-red-400">{info.postgres.error}</p>
+            : (
+              <>
+                <InfoRow label="Version"            value={info.postgres.version?.split(' ')[1]} />
+                <InfoRow label="Database Size"      value={info.postgres.size} />
+                <InfoRow label="Active Connections" value={info.postgres.active_connections} />
+              </>
+            )
+          }
+        </div>
+
+        {/* Redis */}
+        <div className="bg-card border border-border rounded-xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-foreground flex items-center gap-2">
+              <Activity size={16} className="text-red-400" />
+              Redis
+            </h3>
+            <StatusPill ok={info.redis.status === 'connected'} label={info.redis.status} />
+          </div>
+          {info.redis.error
+            ? <p className="text-xs text-red-400">{info.redis.error}</p>
+            : (
+              <>
+                <InfoRow label="Version"           value={info.redis.version} />
+                <InfoRow label="Memory Used"       value={info.redis.used_memory_human} />
+                <InfoRow label="Connected Clients" value={info.redis.connected_clients} />
+                <InfoRow label="Uptime (days)"     value={info.redis.uptime_in_days} />
+              </>
+            )
+          }
+        </div>
+
+        {/* Revision history */}
+        <div className="bg-card border border-border rounded-xl p-5">
+          <h3 className="font-semibold text-foreground mb-3 flex items-center gap-2">
+            <Layers size={16} className="text-purple-400" />
+            Framework ↔ DB Version History
+          </h3>
+          <div className="space-y-1.5">
+            {Object.entries(info.revision_history).map(([fw, rev]) => (
+              <div key={fw} className="flex items-center justify-between text-xs">
+                <code className="font-mono text-muted-foreground">Framework {fw}</code>
+                <code className="font-mono text-foreground bg-muted/30 px-2 py-0.5 rounded">{rev}</code>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConnectionTab() {
+  const [dbSettings, setDbSettings]     = useState<Record<string, DbSettingEntry[]> | null>(null);
+  const [loading, setLoading]           = useState(true);
+  const [testing, setTesting]           = useState(false);
+  const [testResult, setTestResult]     = useState<ConnectionTestResult | null>(null);
+  const [showSecrets, setShowSecrets]   = useState<Record<string, boolean>>({});
+  const [collapsed, setCollapsed]       = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    apiClient.getDatabaseSettings()
+      .then(res => setDbSettings(res.settings))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleTestConnection = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const res = await apiClient.testDatabaseConnection();
+      setTestResult(res);
+    } catch {
+      setTestResult({ all_ok: false, postgres: { ok: false, error: 'Request failed' }, redis: { ok: false } });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  if (loading) return <div className="text-muted-foreground text-sm py-8 text-center">Loading connection settings…</div>;
+
+  return (
+    <div className="space-y-6">
+      {/* Test connection button */}
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          Test the currently configured connections. Settings are read-only here — change them in your
+          environment variables or Docker secrets and restart the server.
+        </p>
+        <button
+          onClick={handleTestConnection}
+          disabled={testing}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-medium transition-colors disabled:opacity-50 shrink-0 ml-4"
+        >
+          <Play size={14} className={testing ? 'animate-pulse' : ''} />
+          {testing ? 'Testing…' : 'Test Connection'}
+        </button>
+      </div>
+
+      {/* Test results */}
+      {testResult && (
+        <div className={`p-4 rounded-lg border text-sm ${
+          testResult.all_ok
+            ? 'bg-green-500/10 border-green-500/30 text-green-400'
+            : 'bg-red-500/10 border-red-500/30 text-red-400'
+        }`}>
+          <p className="font-semibold mb-2">{testResult.all_ok ? '✓ All connections healthy' : '✗ Connection issue detected'}</p>
+          <div className="space-y-1 text-xs">
+            <p>PostgreSQL: {testResult.postgres.ok ? `✓ Connected as ${testResult.postgres.user} on ${testResult.postgres.database}` : `✗ ${testResult.postgres.error ?? 'Failed'}`}</p>
+            <p>Redis: {testResult.redis.ok ? `✓ Connected — Redis ${testResult.redis.version}` : `✗ ${testResult.redis.error ?? 'Failed'}`}</p>
+          </div>
+        </div>
+      )}
+
+      {/* DB settings display (read-only) */}
+      {Object.keys(DB_CATEGORIES).map(catKey => {
+        const catLabel    = DB_CATEGORIES[catKey as keyof typeof DB_CATEGORIES];
+        const catSettings = dbSettings?.[catKey] ?? [];
+        if (catSettings.length === 0) return null;
+        const isCollapsed = collapsed[catKey] ?? false;
+
+        return (
+          <div key={catKey} className="bg-card border border-border rounded-xl overflow-hidden">
+            <button
+              type="button"
+              className="w-full flex items-center justify-between px-6 py-4 hover:bg-muted/20 transition-colors"
+              onClick={() => setCollapsed(prev => ({ ...prev, [catKey]: !prev[catKey] }))}
+            >
+              <h3 className="font-semibold text-foreground">{catLabel}</h3>
+              {isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
+            </button>
+
+            {!isCollapsed && (
+              <div className="border-t border-border divide-y divide-border/50">
+                {catSettings.map((s: DbSettingEntry) => (
+                  <div key={s.key} className="px-6 py-4">
+                    <div className="flex flex-col md:flex-row md:items-start gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <span className="font-medium text-sm text-foreground">{s.friendly_name}</span>
+                          <code className="text-xs text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded font-mono">{s.key}</code>
+                          {s.is_secret && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs border bg-red-500/10 text-red-400 border-red-500/30">Secret</span>
+                          )}
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs border bg-amber-500/10 text-amber-400 border-amber-500/30">Requires restart</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mb-2">{s.description}</p>
+                        <div className="flex items-center gap-2">
+                          {s.is_secret ? (
+                            <>
+                              <code className="text-sm font-mono bg-muted/30 px-2 py-1 rounded text-foreground">
+                                {showSecrets[s.key] ? (s.effective_value ?? '(not set)') : '••••••••'}
+                              </code>
+                              <button
+                                type="button"
+                                onClick={() => setShowSecrets(prev => ({ ...prev, [s.key]: !prev[s.key] }))}
+                                className="text-muted-foreground hover:text-foreground"
+                              >
+                                {showSecrets[s.key] ? <EyeOff size={14} /> : <Eye size={14} />}
+                              </button>
+                            </>
+                          ) : (
+                            <code className="text-sm font-mono bg-muted/30 px-2 py-1 rounded text-foreground">
+                              {s.effective_value ?? '(not set)'}
+                            </code>
+                          )}
+                          {s.source && (
+                            <span className="text-xs text-muted-foreground">from {s.source}</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function MigrationsTab() {
+  const [data, setData]         = useState<MigrationInfo | null>(null);
+  const [loading, setLoading]   = useState(true);
+  const [applying, setApplying] = useState(false);
+  const [result, setResult]     = useState<{ success: boolean; stdout: string; stderr: string } | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await apiClient.getDatabaseMigrations();
+      setData(res);
+    } catch {
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleUpgrade = async () => {
+    setApplying(true);
+    setResult(null);
+    try {
+      const res = await apiClient.applyDatabaseMigrations();
+      setResult(res);
+      await load();
+    } catch {
+      setResult({ success: false, stdout: '', stderr: 'Request failed' });
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  if (loading) return <div className="text-muted-foreground text-sm py-8 text-center">Loading migration history…</div>;
+  if (!data) return <div className="text-red-400 text-sm py-8 text-center">Failed to load migrations.</div>;
+
+  return (
+    <div className="space-y-6">
+      {/* Status + action */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          {data.needs_upgrade ? (
+            <div className="flex items-center gap-2 text-amber-400">
+              <AlertTriangle size={16} />
+              <span className="font-medium">Schema upgrade required</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-green-400">
+              <CheckCircle2 size={16} />
+              <span className="font-medium">Database schema is current</span>
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground mt-1">
+            Current: <code className="font-mono">{data.current_revision ?? 'none'}</code>
+            {' '} · Head: <code className="font-mono">{data.head_revision}</code>
+          </p>
+        </div>
+
+        {data.needs_upgrade && (
+          <button
+            onClick={handleUpgrade}
+            disabled={applying}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-500 text-white hover:bg-amber-500/90 text-sm font-medium transition-colors disabled:opacity-50"
+          >
+            <ArrowUpCircle size={14} className={applying ? 'animate-bounce' : ''} />
+            {applying ? 'Applying…' : 'Apply Migrations (upgrade head)'}
+          </button>
+        )}
+      </div>
+
+      {/* Migration result */}
+      {result && (
+        <div className={`p-4 rounded-lg border text-xs font-mono whitespace-pre-wrap ${
+          result.success
+            ? 'bg-green-500/10 border-green-500/30 text-green-300'
+            : 'bg-red-500/10 border-red-500/30 text-red-300'
+        }`}>
+          {result.success ? '✓ Upgrade successful\n' : '✗ Upgrade failed\n'}
+          {result.stdout}
+          {result.stderr}
+        </div>
+      )}
+
+      {/* History */}
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <div className="px-6 py-4 border-b border-border">
+          <h3 className="font-semibold text-foreground">Migration History</h3>
+        </div>
+        <div className="divide-y divide-border/50">
+          {data.history.map((item, idx) => (
+            <div key={idx} className={`px-6 py-3 flex items-center gap-3 ${item.is_current ? 'bg-primary/5' : ''}`}>
+              <code className={`text-xs font-mono flex-1 ${item.is_current ? 'text-primary' : 'text-muted-foreground'}`}>
+                {item.line}
+              </code>
+              {item.is_current && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-primary/10 text-primary border border-primary/20">
+                  Current
+                </span>
+              )}
+            </div>
+          ))}
+          {data.history.length === 0 && (
+            <div className="px-6 py-4 text-sm text-muted-foreground">No migration history available.</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ValidationTab() {
+  const [data, setData]       = useState<ValidationResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [ran, setRan]         = useState(false);
+
+  const run = async () => {
+    setLoading(true);
+    setRan(true);
+    try {
+      const res = await apiClient.validateDatabase();
+      setData(res);
+    } catch {
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h3 className="font-semibold text-foreground">Database Validation Suite</h3>
+          <p className="text-sm text-muted-foreground mt-1">
+            Validates table existence, column structure, schema version, and seeded catalog data.
+          </p>
+        </div>
+        <button
+          onClick={run}
+          disabled={loading}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-medium transition-colors disabled:opacity-50 shrink-0"
+        >
+          <TestTube2 size={14} className={loading ? 'animate-pulse' : ''} />
+          {loading ? 'Running…' : ran ? 'Re-run Validation' : 'Run Validation'}
+        </button>
+      </div>
+
+      {loading && (
+        <div className="flex items-center justify-center py-12">
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+            <p className="text-sm text-muted-foreground">Running validation checks…</p>
+          </div>
+        </div>
+      )}
+
+      {!loading && data && (
+        <>
+          {/* Summary */}
+          <div className={`flex items-center gap-4 p-4 rounded-lg border ${
+            data.passed
+              ? 'bg-green-500/10 border-green-500/30'
+              : 'bg-red-500/10 border-red-500/30'
+          }`}>
+            {data.passed
+              ? <CheckCircle2 size={24} className="text-green-400 shrink-0" />
+              : <XCircle size={24} className="text-red-400 shrink-0" />
+            }
+            <div>
+              <p className={`font-semibold ${data.passed ? 'text-green-400' : 'text-red-400'}`}>
+                {data.passed ? 'All checks passed' : `${data.failed_count} check(s) failed`}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {data.passed_count} / {data.total_checks} checks passed
+              </p>
+            </div>
+          </div>
+
+          {/* Results list */}
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="divide-y divide-border/50">
+              {data.results.map((r, idx) => (
+                <div key={idx} className={`px-6 py-3 flex items-start gap-3 ${r.check.startsWith('  ') ? 'pl-10' : ''}`}>
+                  {r.passed
+                    ? <CheckCircle2 size={14} className="text-green-400 mt-0.5 shrink-0" />
+                    : <XCircle size={14} className="text-red-400 mt-0.5 shrink-0" />
+                  }
+                  <div className="min-w-0">
+                    <code className="text-xs font-mono text-foreground">{r.check.trim()}</code>
+                    {!r.passed && (
+                      <p className="text-xs text-red-400 mt-0.5">{r.detail}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
+      {!loading && ran && !data && (
+        <div className="text-center py-12 text-red-400 text-sm">
+          Validation request failed. Check backend logs.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main page
+// ---------------------------------------------------------------------------
+
+function DatabaseManagementPage() {
+  const [info, setInfo]       = useState<DbInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setTab]   = useState<TabId>('overview');
+
+  const loadInfo = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await apiClient.getDatabaseInfo();
+      setInfo(res);
+    } catch {
+      setInfo(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadInfo(); }, [loadInfo]);
+
+  const tabs: { id: TabId; label: string; icon: any }[] = [
+    { id: 'overview',    label: 'Overview',    icon: Database },
+    { id: 'connection',  label: 'Connection',  icon: Activity },
+    { id: 'migrations',  label: 'Migrations',  icon: ArrowUpCircle },
+    { id: 'validation',  label: 'Validation',  icon: TestTube2 },
+  ];
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-8 p-6 md:p-8">
+
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <div className="p-2 rounded-lg bg-blue-500/10">
+              <Database className="text-blue-500" size={22} />
+            </div>
+            <h1 className="text-3xl font-bold text-foreground">Database Management</h1>
+          </div>
+          <p className="text-muted-foreground">
+            Monitor connections, manage schema migrations, and validate the database state.
+          </p>
+        </div>
+        <button
+          onClick={loadInfo}
+          disabled={loading}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border bg-background hover:bg-muted/40 text-sm font-medium transition-colors disabled:opacity-50"
+        >
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          Refresh
+        </button>
+      </div>
+
+      {/* Quick status bar */}
+      {info && (
+        <div className="flex flex-wrap gap-3">
+          <StatusPill ok={info.postgres.status === 'connected'} label={`PostgreSQL: ${info.postgres.status}`} />
+          <StatusPill ok={info.redis.status === 'connected'} label={`Redis: ${info.redis.status}`} />
+          <StatusPill ok={info.schema_match} label={info.schema_match ? 'Schema: current' : 'Schema: upgrade needed'} />
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">
+            <Layers size={11} />
+            Framework {info.framework_version}
+          </span>
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div className="border-b border-border">
+        <div className="flex gap-0">
+          {tabs.map(tab => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setTab(tab.id)}
+                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === tab.id
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+                }`}
+              >
+                <Icon size={14} />
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Tab content */}
+      {loading && activeTab === 'overview' ? (
+        <div className="flex items-center justify-center py-20">
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+            <p className="text-muted-foreground animate-pulse">Loading database info…</p>
+          </div>
+        </div>
+      ) : (
+        <>
+          {activeTab === 'overview'   && info   && <OverviewTab info={info} onRefresh={loadInfo} />}
+          {activeTab === 'overview'   && !info  && !loading && <div className="text-center py-12 text-red-400 text-sm">Failed to load database information. Check backend connectivity.</div>}
+          {activeTab === 'connection'  && <ConnectionTab />}
+          {activeTab === 'migrations'  && <MigrationsTab />}
+          {activeTab === 'validation'  && <ValidationTab />}
+        </>
+      )}
+    </div>
+  );
+}
+
+export default withPermission(DatabaseManagementPage, PermissionLevel.DEVELOPER);

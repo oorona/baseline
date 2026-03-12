@@ -42,7 +42,7 @@ class CustomFeature(Base):
 docker compose exec backend alembic revision --autogenerate -m "add_custom_feature"
 
 # Apply migration
-make migrate
+docker compose exec backend alembic upgrade head
 ```
 
 ## Step 3: Define Pydantic Schemas
@@ -181,7 +181,7 @@ app.include_router(
 ## Step 6: Restart Backend
 
 ```bash
-make restart-backend
+docker compose restart backend
 ```
 
 ## Advanced Patterns

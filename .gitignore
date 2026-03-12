@@ -49,6 +49,6 @@ secrets/
 # ============================================
 # frontend/app/dashboard/developer/logging/
 # frontend/app/dashboard/[guildId]/logging/
-bot/cogs/logging.py
-frontend/app/dashboard/[guildId]/test-l1/
-frontend/app/dashboard/[guildId]/test-l2/
+#bot/cogs/logging.py
+#frontend/app/dashboard/[guildId]/test-l1/
+#frontend/app/dashboard/[guildId]/test-l2/

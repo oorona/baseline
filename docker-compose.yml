@@ -1,3 +1,10 @@
+secrets:
+  # Create this file before first run:
+  #   mkdir -p secrets && openssl rand -hex 32 > secrets/encryption_key && chmod 600 secrets/encryption_key
+  # Never commit the secrets/ directory.
+  encryption_key:
+    file: ./secrets/encryption_key
+
 services:
   # Backend API (FastAPI)
   backend:
@@ -6,37 +13,20 @@ services:
       dockerfile: Dockerfile
     # container_name: bot-backend # Removed to allow scaling
     secrets:
-      - discord_client_secret
-      - api_secret_key
-      - postgres_password
-      - openai_api_key
-      - google_api_key
-      - anthropic_api_key
-      - xai_api_key
-      - discord_bot_token
-    env_file:
-      - .env # Contains DATABASE_URL and REDIS_URL for external services
+      - encryption_key
     environment:
-      # Secrets loaded from files
-      DISCORD_CLIENT_SECRET_FILE: /run/secrets/discord_client_secret
-      API_SECRET_KEY_FILE: /run/secrets/api_secret_key
-      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
-      OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
-      GOOGLE_API_KEY_FILE: /run/secrets/google_api_key
-      ANTHROPIC_API_KEY_FILE: /run/secrets/anthropic_api_key
-      XAI_API_KEY_FILE: /run/secrets/xai_api_key
-      DISCORD_BOT_TOKEN_FILE: /run/secrets/discord_bot_token
+      ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
+      SETTINGS_FILE_PATH: /data/settings.enc
     dns:
       - 8.8.8.8
     networks:
-      # - internet # Removed for security (Ingress via Gateway only)
-      - intranet # For frontend and bot communication
-      - dbnet # For database access
-    # Ports removed: Accessed via Gateway on port 8000
+      - intranet
+      - dbnet
     expose:
       - "8000"
     volumes:
       - ./backend:/app
+      - platform_data:/data   # Encrypted settings file shared across all backend replicas
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped
     healthcheck:
@@ -69,34 +59,20 @@ services:
       dockerfile: Dockerfile
     container_name: bot-discord
     secrets:
-      - discord_bot_token
-      - postgres_password
-      - openai_api_key
-      - google_api_key
-      - anthropic_api_key
-      - xai_api_key
-    env_file:
-      - .env # Contains DATABASE_URL and REDIS_URL for external services
+      - encryption_key
     environment:
-      # Secrets loaded from files
-      DISCORD_BOT_TOKEN_FILE: /run/secrets/discord_bot_token
-      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
-      OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
-      GOOGLE_API_KEY_FILE: /run/secrets/google_api_key
-      ANTHROPIC_API_KEY_FILE: /run/secrets/anthropic_api_key
-      XAI_API_KEY_FILE: /run/secrets/xai_api_key
+      ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
+      SETTINGS_FILE_PATH: /data/settings.enc
+    volumes:
+      - platform_data:/data   # Same encrypted settings as backend
     networks:
       - internet # For Discord API access
-      - intranet # For backend API communication (if needed)
-      - dbnet # For database access
+      - intranet # For backend API communication
+      - dbnet    # For direct database access (postgres/redis on external dbnet)
     ports:
       - "8080:8080" # Health check endpoint
     depends_on:
       backend:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-      redis:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
@@ -112,22 +88,20 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        - NEXT_PUBLIC_APP_NAME=${NEXT_PUBLIC_APP_NAME}
+        - NEXT_PUBLIC_APP_NAME=${NEXT_PUBLIC_APP_NAME:-Baseline Bot}
     container_name: bot-frontend
-    env_file:
-      - .env # Frontend config (non-sensitive)
     networks:
       - internet # Public facing
-      - intranet # For backend API calls
+      - intranet # For server-side backend API calls
     ports:
       - "3000:3000"
     depends_on:
       backend:
         condition: service_healthy
     environment:
-      - NODE_ENV=production
-      - NEXT_TELEMETRY_DISABLED=1
-      - INTERNAL_API_URL=http://backend:8000 # For server-side heartbeat
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+      INTERNAL_API_URL: http://backend:8000
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:3000/api/health" ]
@@ -136,85 +110,21 @@ services:
       retries: 3
       start_period: 40s
 
-  # PostgreSQL
-  postgres:
-    image: postgres:15-alpine
-    container_name: bot-postgres
-    secrets:
-      - postgres_password
-    environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
-      POSTGRES_DB: bot_platform
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./postgres-init:/docker-entrypoint-initdb.d:ro
-      - ./postgres-init/entrypoint-wrapper.sh:/usr/local/bin/entrypoint-wrapper.sh:ro
-    ports:
-      - 5432:5432
-    networks:
-      - dbnet
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U user -d bot_platform" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-    entrypoint: [ "/usr/local/bin/entrypoint-wrapper.sh" ]
-    command: [ "postgres" ]
-
-  # Redis
-  redis:
-    image: redis:7-alpine
-    container_name: bot-redis
-    networks:
-      - intranet
-      - dbnet
-    healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
 networks:
   internet:
     driver: bridge
-    # Public-facing network (frontend publicly accessible)
+    # Public-facing network (frontend, gateway)
   intranet:
     driver: bridge
-    # internal: true # Disabled to allow Backend outbound access (Discord/LLMs) while keeping it off 'internet' network
     # Private communication: frontend ↔ backend, bot ↔ backend
   dbnet:
-    driver: bridge
-    internal: true
-    # Database access
+    external: true
+    name: baseline_dbnet
+    # Postgres and Redis run in the separate database stack (docker-compose.db.yml).
+    # Start that stack first: docker compose -f docker-compose.db.yml up -d
 
 volumes:
-  postgres_data:
-
-
-secrets:
-  # Discord secrets
-  discord_bot_token:
-    file: ./secrets/discord_bot_token.txt
-  discord_client_secret:
-    file: ./secrets/discord_client_secret.txt
-
-  # API secrets
-  api_secret_key:
-    file: ./secrets/api_secret_key.txt
-
-  # Database secrets
-  postgres_password:
-    file: ./secrets/postgres_password.txt
-
-  # LLM API Keys
-  openai_api_key:
-    file: ./secrets/openai_api_key.txt
-  google_api_key:
-    file: ./secrets/google_api_key.txt
-  anthropic_api_key:
-    file: ./secrets/anthropic_api_key.txt
-  xai_api_key:
-    file: ./secrets/xai_api_key.txt
+  platform_data:
+    # Persists /data/settings.enc across container restarts.
+    # Shared by all backend replicas.  Deleting this volume causes the
+    # Setup Wizard to run again on next start.

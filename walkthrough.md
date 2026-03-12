@@ -136,13 +136,12 @@ The platform is now production-ready with deployment tooling and configurations.
 
 ### Features
 - **Production Config**: `docker-compose.prod.yml` with restart policies and resource limits.
-- **Makefile**: Common commands (`make up`, `make prod`, `make logs`, etc.).
 - **Deployment Script**: Automated deployment with `./scripts/deploy.sh`.
 - **Documentation**: Comprehensive README with setup and deployment instructions.
 
 ### Implementation Details
-- **Configuration**: Production-specific Docker Compose override.
-- **Tooling**: Makefile and bash script for streamlined operations.
+- **Configuration**: Production-specific Docker Compose override (`docker-compose.prod.yml`).
+- **Commands**: All operations run via `docker compose` directly (see README for reference).
 
 ## 11. Phase 8: Integration Documentation
 

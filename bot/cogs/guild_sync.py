@@ -16,12 +16,32 @@ class GuildSyncCog(commands.Cog):
     async def on_guild_join(self, guild: discord.Guild):
         logger.info("Joined new guild", guild_id=guild.id, name=guild.name)
         await self.sync_guild(guild)
+        await self._record_guild_event(guild, "JOIN")
 
     @commands.Cog.listener()
     async def on_guild_remove(self, guild: discord.Guild):
         logger.info("Removed from guild", guild_id=guild.id, name=guild.name)
-        # Ideally we mark it as inactive, but for now we just log
-        # We could add an endpoint to mark inactive if needed
+        await self._record_guild_event(guild, "LEAVE")
+
+    async def _record_guild_event(self, guild: discord.Guild, event_type: str):
+        """Fire-and-forget: POST a guild join/leave event to the instrumentation endpoint."""
+        payload = {
+            "guild_id": guild.id,
+            "guild_name": guild.name,
+            "event_type": event_type,
+            "member_count": guild.member_count,
+        }
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.backend_url}/instrumentation/guild-event",
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=5),
+                ) as resp:
+                    if resp.status not in (200, 204):
+                        logger.warning("Failed to record guild event", guild_id=guild.id, status=resp.status)
+        except Exception as e:
+            logger.warning("Error recording guild event", guild_id=guild.id, error=str(e))
 
     async def sync_guild(self, guild: discord.Guild):
         payload = {
