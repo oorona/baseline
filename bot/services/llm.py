@@ -23,31 +23,11 @@ except ImportError:
     ANTHROPIC_AVAILABLE = False
     anthropic = None
 
-# Try new google-genai SDK first, fall back to legacy
-try:
-    from google import genai
-    from google.genai import types
-    NEW_GENAI = True
-    GENAI_AVAILABLE = True
-except ImportError:
-    try:
-        import google.generativeai as genai
-        from google.generativeai.types import HarmCategory, HarmBlockThreshold
-        from google.api_core import retry
-        NEW_GENAI = False
-        GENAI_AVAILABLE = True
-        types = None
-    except ImportError:
-        NEW_GENAI = False
-        GENAI_AVAILABLE = False
-        genai = None
-        types = None
-
-# Import the new enhanced Gemini service
+# Import the Gemini service
 from .gemini import (
     GeminiService, GeminiModel, ThinkingLevel, CapabilityType,
     UsageMetadata, GenerationResult, create_gemini_service,
-    GENAI_AVAILABLE as ENHANCED_GENAI
+    GENAI_AVAILABLE,
 )
 
 from sqlalchemy import Column, String, BigInteger, Float, DateTime, select
@@ -198,38 +178,30 @@ class OpenAIProvider(LLMProvider):
 class GoogleProvider(LLMProvider):
     """
     Google/Gemini LLM Provider.
-    
-    Supports both legacy google-generativeai and new google-genai SDKs.
-    When google-genai is available, uses the enhanced GeminiService for
-    full Gemini 3 capabilities including:
-    - Image generation (Nano Banana)
-    - Thinking levels & budgets
+
+    Uses the google-genai SDK via GeminiService for full Gemini capabilities:
+    - Text generation with configurable thinking levels & budgets
+    - Image generation
     - Speech generation (TTS)
     - Audio understanding
     - File search (RAG)
     - URL context
     - Content caching
-    
+
     See: docs/GEMINI_CAPABILITIES.md for full documentation.
     """
-    
+
     def __init__(self, api_key: str, model: str = "gemini-2.5-flash"):
         self.api_key = api_key
         self.model_name = model
         self._usage_callback: Optional[Callable[[UsageMetadata], None]] = None
-        
-        # Initialize enhanced service if available
-        if ENHANCED_GENAI:
-            self.gemini_service = create_gemini_service(
-                api_key=api_key,
-                default_model=model
-            )
-            self.gemini_service.set_usage_callback(self._handle_usage)
-            self.model = None
-        else:
-            self.gemini_service = None
-            genai.configure(api_key=api_key)
-            self.model = genai.GenerativeModel(model)
+
+        self.gemini_service = create_gemini_service(
+            api_key=api_key,
+            default_model=model
+        )
+        self.gemini_service.set_usage_callback(self._handle_usage)
+        self.model = None
     
     def _handle_usage(self, usage: UsageMetadata):
         """Handle usage reports from GeminiService."""
@@ -239,210 +211,103 @@ class GoogleProvider(LLMProvider):
     def set_usage_callback(self, callback: Callable[[UsageMetadata], None]):
         """Set callback for usage tracking."""
         self._usage_callback = callback
-        if self.gemini_service:
-            self.gemini_service.set_usage_callback(callback)
+        self.gemini_service.set_usage_callback(callback)
 
     async def get_available_models(self) -> List[str]:
         """List available Gemini models."""
-        if self.gemini_service:
-            # Return known Gemini 3 models
-            return [
-                GeminiModel.GEMINI_3_FLASH.value,
-                GeminiModel.GEMINI_3_PRO.value,
-                GeminiModel.GEMINI_3_PRO_IMAGE.value,
-                GeminiModel.GEMINI_25_FLASH.value,
-                GeminiModel.GEMINI_25_PRO.value,
-            ]
-        try:
-            loop = asyncio.get_running_loop()
-            def _list():
-                return [m.name.replace("models/", "") for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-            return await loop.run_in_executor(None, _list)
-        except Exception as e:
-            logger.error("google_list_models_failed", error=str(e))
-            return ["gemini-2.5-flash", "gemini-2.5-pro"]
-
-    def _convert_messages(self, messages: List[LLMMessage]):
-        """Convert LLMMessage format to Gemini format."""
-        history = []
-        for msg in messages:
-            role = "user" if msg.role == "user" else "model"
-            parts = []
-            for part in msg.parts:
-                if part.type == "text":
-                    parts.append(part.data)
-                elif part.type == "image_url":
-                    if part.blob:
-                        parts.append({
-                            "mime_type": part.mime_type or "image/jpeg",
-                            "data": part.blob
-                        })
-                    else:
-                        parts.append(f"[Image URL: {part.data}]") 
-                elif part.type == "blob":
-                     parts.append({
-                        "mime_type": part.mime_type or "application/octet-stream",
-                        "data": part.data
-                     })
-                elif part.type == "file_uri":
-                     parts.append(part.data)
-            history.append({"role": role, "parts": parts})
-        return history
+        return [
+            GeminiModel.GEMINI_3_FLASH.value,
+            GeminiModel.GEMINI_3_PRO.value,
+            GeminiModel.GEMINI_3_PRO_IMAGE.value,
+            GeminiModel.GEMINI_25_FLASH.value,
+            GeminiModel.GEMINI_25_PRO.value,
+        ]
 
     async def generate_response(
-        self, 
-        messages: List[LLMMessage], 
-        system_prompt: str = "You are a helpful assistant.", 
-        model: Optional[str] = None, 
-        tools: Optional[List[Dict]] = None, 
+        self,
+        messages: List[LLMMessage],
+        system_prompt: str = "You are a helpful assistant.",
+        model: Optional[str] = None,
+        tools: Optional[List[Dict]] = None,
         config: Optional[Dict] = None
     ) -> str:
         """Generate a text response."""
         target_model = model or self.model_name
-        
-        # Use enhanced service if available
-        if self.gemini_service:
-            # Extract text content from messages
-            prompt_parts = []
-            for msg in messages:
-                for part in msg.parts:
-                    if part.type == "text":
-                        prompt_parts.append(part.data)
-                    elif part.type == "blob" and part.blob:
-                        from .gemini import GeminiContent
-                        prompt_parts.append(GeminiContent(
-                            type="image",
-                            data=part.blob,
-                            mime_type=part.mime_type
-                        ))
-            
-            # Determine thinking level from config
-            thinking_level = None
-            if config and "thinking_level" in config:
-                thinking_level = ThinkingLevel(config["thinking_level"])
-            
-            result = await self.gemini_service.generate_text(
-                prompt=prompt_parts if len(prompt_parts) > 1 else prompt_parts[0] if prompt_parts else "",
-                model=target_model,
-                system_instruction=system_prompt,
-                thinking_level=thinking_level,
-                tools=tools
-            )
-            return result.text or ""
-        
-        # Legacy SDK path
-        gen_model = genai.GenerativeModel(target_model, system_instruction=system_prompt, tools=tools)
-        history = self._convert_messages(messages[:-1])
-        last_message_parts = self._convert_messages([messages[-1]])[0]["parts"]
-        
-        try:
-            loop = asyncio.get_running_loop()
-            def _generate():
-                chat = gen_model.start_chat(history=history)
-                return chat.send_message(last_message_parts, generation_config=config or {})
-            
-            response = await loop.run_in_executor(None, _generate)
-            return response.text
-        except Exception as e:
-            logger.error("google_generation_failed", error=str(e), model=target_model)
-            raise e
+
+        prompt_parts = []
+        for msg in messages:
+            for part in msg.parts:
+                if part.type == "text":
+                    prompt_parts.append(part.data)
+                elif part.type == "blob" and part.blob:
+                    from .gemini import GeminiContent
+                    prompt_parts.append(GeminiContent(
+                        type="image",
+                        data=part.blob,
+                        mime_type=part.mime_type
+                    ))
+
+        thinking_level = None
+        if config and "thinking_level" in config:
+            thinking_level = ThinkingLevel(config["thinking_level"])
+
+        result = await self.gemini_service.generate_text(
+            prompt=prompt_parts if len(prompt_parts) > 1 else prompt_parts[0] if prompt_parts else "",
+            model=target_model,
+            system_instruction=system_prompt,
+            thinking_level=thinking_level,
+            tools=tools
+        )
+        return result.text or ""
 
     async def generate_structured_response(
-        self, 
-        messages: List[LLMMessage], 
-        schema: Dict[str, Any], 
-        system_prompt: str = "You are a helpful assistant.", 
+        self,
+        messages: List[LLMMessage],
+        schema: Dict[str, Any],
+        system_prompt: str = "You are a helpful assistant.",
         model: Optional[str] = None
     ) -> Dict[str, Any]:
         """Generate structured JSON output."""
         target_model = model or self.model_name
-        
-        # Use enhanced service if available
-        if self.gemini_service:
-            prompt = " ".join(msg.content for msg in messages)
-            return await self.gemini_service.generate_structured(
-                prompt=prompt,
-                schema=schema,
-                model=target_model,
-                system_instruction=system_prompt
-            )
-        
-        # Legacy SDK path
-        gen_model = genai.GenerativeModel(
-            target_model,
-            system_instruction=system_prompt,
-            generation_config={"response_mime_type": "application/json", "response_schema": schema}
+        prompt = " ".join(msg.content for msg in messages)
+        return await self.gemini_service.generate_structured(
+            prompt=prompt,
+            schema=schema,
+            model=target_model,
+            system_instruction=system_prompt
         )
-        content_parts = self._convert_messages(messages)
-        history = content_parts[:-1]
-        last_msg = content_parts[-1]["parts"]
-
-        try:
-            loop = asyncio.get_running_loop()
-            def _generate():
-                chat = gen_model.start_chat(history=history)
-                return chat.send_message(last_msg).text
-            return json.loads(await loop.run_in_executor(None, _generate))
-        except Exception as e:
-            logger.error("google_structured_generation_failed", error=str(e), model=target_model)
-            raise e
 
     async def count_tokens(self, messages: List[LLMMessage], model: Optional[str] = None) -> int:
         """Count tokens in messages."""
         target_model = model or self.model_name
-        
-        if self.gemini_service:
-            text = " ".join(msg.content for msg in messages)
-            return await self.gemini_service.count_tokens(text, model=target_model)
-        
-        gen_model = genai.GenerativeModel(target_model)
-        contents = self._convert_messages(messages)
-        try:
-            loop = asyncio.get_running_loop()
-            res = await loop.run_in_executor(None, lambda: gen_model.count_tokens(contents))
-            return res.total_tokens
-        except Exception:
-            return 0
+        text = " ".join(msg.content for msg in messages)
+        return await self.gemini_service.count_tokens(text, model=target_model)
 
     async def embed_content(
-        self, 
-        content: Union[str, List[str]], 
+        self,
+        content: Union[str, List[str]],
         model: Optional[str] = None
     ) -> Union[List[float], List[List[float]]]:
         """Generate embeddings."""
-        if self.gemini_service:
-            return await self.gemini_service.generate_embeddings(content)
-        
-        model = model or "models/text-embedding-004"
-        try:
-            loop = asyncio.get_running_loop()
-            res = await loop.run_in_executor(None, lambda: genai.embed_content(model=model, content=content))
-            return res['embedding']
-        except Exception:
-            return []
-            
+        return await self.gemini_service.generate_embeddings(content)
+
     async def generate_image(
-        self, 
-        prompt: str, 
-        model: Optional[str] = None, 
+        self,
+        prompt: str,
+        model: Optional[str] = None,
         number: int = 1
     ) -> List[str]:
-        """Generate images using Gemini image models (Nano Banana)."""
-        if self.gemini_service:
-            from .gemini import ImageAspectRatio
-            result = await self.gemini_service.generate_image(
-                prompt=prompt,
-                model=model or GeminiModel.GEMINI_25_FLASH_IMAGE.value
-            )
-            # Convert bytes to base64 for compatibility
-            import base64
-            return [base64.b64encode(img).decode() for img in result.images]
-        
-        return ["Image generation requires google-genai SDK. Install with: pip install google-genai"]
-    
+        """Generate images using Gemini image models."""
+        from .gemini import ImageAspectRatio
+        result = await self.gemini_service.generate_image(
+            prompt=prompt,
+            model=model or GeminiModel.GEMINI_25_FLASH_IMAGE.value
+        )
+        import base64
+        return [base64.b64encode(img).decode() for img in result.images]
+
     # =========================================================================
-    # GEMINI 3 ENHANCED CAPABILITIES
-    # These methods are only available with the google-genai SDK
+    # GEMINI ENHANCED CAPABILITIES
     # =========================================================================
     
     async def generate_with_thinking(
@@ -464,9 +329,6 @@ class GoogleProvider(LLMProvider):
         Returns:
             GenerationResult with text and optional thoughts
         """
-        if not self.gemini_service:
-            raise NotImplementedError("Thinking requires google-genai SDK")
-        
         return await self.gemini_service.generate_text(
             prompt=prompt,
             model=model or GeminiModel.GEMINI_3_FLASH.value,
@@ -490,9 +352,6 @@ class GoogleProvider(LLMProvider):
             detect_objects: Return bounding boxes
             model: Model to use
         """
-        if not self.gemini_service:
-            raise NotImplementedError("Image understanding requires google-genai SDK")
-        
         return await self.gemini_service.understand_image(
             image=image,
             prompt=prompt,
@@ -517,9 +376,6 @@ class GoogleProvider(LLMProvider):
         Returns:
             WAV audio bytes
         """
-        if not self.gemini_service:
-            raise NotImplementedError("TTS requires google-genai SDK")
-        
         return await self.gemini_service.generate_speech(
             text=text,
             voice=voice,
@@ -540,9 +396,6 @@ class GoogleProvider(LLMProvider):
             prompt: Instructions for analysis
             model: Model to use
         """
-        if not self.gemini_service:
-            raise NotImplementedError("Audio understanding requires google-genai SDK")
-        
         return await self.gemini_service.understand_audio(
             audio=audio,
             prompt=prompt,
@@ -563,9 +416,6 @@ class GoogleProvider(LLMProvider):
             urls: URLs to analyze
             model: Model to use
         """
-        if not self.gemini_service:
-            raise NotImplementedError("URL context requires google-genai SDK")
-        
         return await self.gemini_service.generate_with_urls(
             prompt=prompt,
             urls=urls,
@@ -813,9 +663,6 @@ class LLMService:
             GenerationResult with images as bytes
         """
         provider = self._get_google_provider()
-        if not provider.gemini_service:
-            raise NotImplementedError("Image generation requires google-genai SDK")
-        
         from .gemini import ImageAspectRatio
         ar = ImageAspectRatio(aspect_ratio) if aspect_ratio else ImageAspectRatio.SQUARE
         
@@ -916,9 +763,6 @@ class LLMService:
             GenerationResult with transcript
         """
         provider = self._get_google_provider()
-        if not provider.gemini_service:
-            raise NotImplementedError("Audio understanding requires google-genai SDK")
-        
         result = await provider.gemini_service.understand_audio(
             audio=audio,
             prompt=prompt,
@@ -949,9 +793,6 @@ class LLMService:
             Embedding vector(s)
         """
         provider = self._get_google_provider()
-        if not provider.gemini_service:
-            return await provider.embed_content(content)
-        
         from .gemini import EmbeddingTaskType
         try:
             tt = EmbeddingTaskType(task_type)

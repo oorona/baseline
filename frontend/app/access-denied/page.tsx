@@ -4,12 +4,10 @@ import Link from 'next/link';
 import { ShieldAlert } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
-import { useTranslation } from '@/lib/i18n';
 
 function AccessDeniedContent() {
     const searchParams = useSearchParams();
     const error = searchParams.get('error');
-    const { t } = useTranslation();
 
     return (
         <div className="flex min-h-screen flex-col items-center justify-center bg-zinc-950 text-white p-4">
@@ -18,17 +16,17 @@ function AccessDeniedContent() {
                     <ShieldAlert className="h-16 w-16 text-red-500" />
                 </div>
 
-                <h1 className="text-3xl font-bold tracking-tight">{t('accessDenied.title')}</h1>
+                <h1 className="text-3xl font-bold tracking-tight">Access Denied</h1>
 
                 <p className="text-zinc-400 text-lg">
                     {error === 'access_denied'
-                        ? t('accessDenied.cancelledMsg')
-                        : t('accessDenied.noPermissionMsg')}
+                        ? 'You cancelled the login process.'
+                        : 'You do not have permission to access this page.'}
                 </p>
 
                 {error && error !== 'access_denied' && (
                     <p className="text-red-400 text-sm font-mono bg-red-950/30 px-2 py-1 rounded">
-                        {t('accessDenied.errorLabel', { error })}
+                        Error: {error}
                     </p>
                 )}
 
@@ -37,13 +35,13 @@ function AccessDeniedContent() {
                         href="/"
                         className="rounded-md bg-white px-6 py-2.5 text-sm font-semibold text-black hover:bg-zinc-200 transition-colors"
                     >
-                        {t('accessDenied.returnHome')}
+                        Return Home
                     </Link>
                     <Link
                         href="/login"
                         className="rounded-md bg-zinc-800 px-6 py-2.5 text-sm font-semibold text-white hover:bg-zinc-700 transition-colors"
                     >
-                        {t('accessDenied.tryAgain')}
+                        Try Again
                     </Link>
                 </div>
             </div>
