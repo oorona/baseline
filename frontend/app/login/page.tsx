@@ -4,12 +4,14 @@ import { LogIn } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { siteConfig } from '../config';
+import { useTranslation } from '@/lib/i18n';
 
 function LoginContent() {
     const searchParams = useSearchParams();
     const error = searchParams.get('error');
     const details = searchParams.get('details');
     const [loggingIn, setLoggingIn] = useState(false);
+    const { t } = useTranslation();
 
     useEffect(() => {
         const handleMessage = (event: MessageEvent) => {
@@ -65,7 +67,7 @@ function LoginContent() {
         if (!popup) {
             console.error('Failed to open popup - may be blocked by browser');
             setLoggingIn(false);
-            alert('Popup was blocked. Please allow popups for this site.');
+            alert(t('login.popupBlocked'));
             return;
         }
 
@@ -93,17 +95,17 @@ function LoginContent() {
 
                 {error && (
                     <div className="bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded-lg relative mb-4" role="alert">
-                        <strong className="font-bold">Login Failed! </strong>
+                        <strong className="font-bold">{t('login.loginFailed')} </strong>
                         <span className="block sm:inline">
                             {error === 'discord_error' && details?.includes('rate limit')
-                                ? 'Discord Rate Limit: Too many login attempts. Wait 5 minutes and try again.'
+                                ? t('login.rateLimitError')
                                 : error === 'discord_error'
-                                ? 'Discord Login Failed. Please try again.'
-                                : 'An unexpected error occurred during login.'}
+                                ? t('login.discordError')
+                                : t('login.unexpectedError')}
                         </span>
                         {details && !details.includes('rate limit') && (
                             <div className="mt-2 text-xs bg-black/10 p-2 rounded overflow-auto max-h-20 text-destructive font-mono">
-                                Details: {decodeURIComponent(details)}
+                                {t('login.detailsLabel', { details: decodeURIComponent(details) })}
                             </div>
                         )}
                     </div>
@@ -117,12 +119,12 @@ function LoginContent() {
                     {loggingIn ? (
                         <>
                             <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                            Logging in...
+                            {t('login.loggingIn')}
                         </>
                     ) : (
                         <>
                             <LogIn className="w-5 h-5" />
-                            Login with Discord (Redirect)
+                            {t('login.loginButton')}
                         </>
                     )}
                 </button>
@@ -131,11 +133,11 @@ function LoginContent() {
                     onClick={() => window.location.href = 'http://localhost:8000/api/v1/auth/discord/login?prompt=consent'}
                     className="w-full mt-4 bg-secondary hover:bg-secondary/80 text-secondary-foreground font-semibold py-3 px-6 rounded-xl transition-all duration-200 flex items-center justify-center gap-3 border border-border"
                 >
-                    Switch Account
+                    {t('login.switchAccount')}
                 </button>
 
                 <p className="text-muted-foreground text-sm text-center mt-6">
-                    Sign in with your Discord account to manage your bots
+                    {t('login.signInPrompt')}
                 </p>
             </div>
         </div>
@@ -144,7 +146,7 @@ function LoginContent() {
 
 export default function LoginPage() {
     return (
-        <Suspense fallback={<div>Loading...</div>}>
+        <Suspense fallback={<div>{/* loading */}</div>}>
             <LoginContent />
         </Suspense>
     );

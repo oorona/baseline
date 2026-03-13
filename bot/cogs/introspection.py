@@ -55,6 +55,13 @@ class IntrospectionCog(commands.Cog):
             if value:
                 intents_data[intent] = True
 
+        # 4. Collect settings schemas declared by cogs
+        settings_schemas = []
+        for cog in self.bot.cogs.values():
+            schema = getattr(cog, "SETTINGS_SCHEMA", None)
+            if schema:
+                settings_schemas.append(schema)
+
         report_payload = {
             "commands": commands_list,
             "listeners": listeners_list,
@@ -62,6 +69,7 @@ class IntrospectionCog(commands.Cog):
                 "guild_permissions_example": permissions_data,
                 "intents": intents_data
             },
+            "settings_schemas": settings_schemas,
             "timestamp": time.time()
         }
 

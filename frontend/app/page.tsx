@@ -8,9 +8,11 @@ import { usePlugins } from '@/app/plugins';
 import { Bot, Settings, Activity, Terminal, Shield, Lock, ExternalLink, User, FileText, Database, BarChart2, Settings2, Wrench, Gauge, Sparkles, BrainCircuit, Globe, BookOpen } from 'lucide-react';
 import { usePermissions } from '@/lib/hooks/use-permissions';
 import { PermissionLevel } from '@/lib/permissions';
+import { useTranslation } from '@/lib/i18n';
 
 function DashboardContent() {
   const { user, loading: authLoading } = useAuth();
+  const { t } = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { navItems: pluginNavItems } = usePlugins();
@@ -25,6 +27,20 @@ function DashboardContent() {
 
   // Permission Hook
   const { hasAccess, permissionLevel, loading: permLoading } = usePermissions(activeGuildId || undefined);
+
+  // First-time login detection: redirect to Account Settings if no language
+  // preference is saved.  The sessionStorage flag is set by the account page
+  // when the user saves OR skips, preventing a redirect loop when navigating
+  // back to the dashboard via the breadcrumb or after router.push('/').
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) return;
+    const setupDone = typeof window !== 'undefined' &&
+      sessionStorage.getItem('firstLoginSetupDone') === '1';
+    if (!user.preferences?.language && !setupDone) {
+      router.push('/dashboard/account?firstLogin=1');
+    }
+  }, [user, authLoading, router]);
 
   useEffect(() => {
     if (!user) {
@@ -69,14 +85,14 @@ function DashboardContent() {
       <div className="flex items-center justify-center min-h-[50vh]">
         <div className="flex flex-col items-center gap-4">
           <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
-          <p className="text-muted-foreground animate-pulse">Loading dashboard...</p>
+          <p className="text-muted-foreground animate-pulse">{t('common.loadingDashboard')}</p>
         </div>
       </div>
     );
   }
 
   if (!user) {
-    router.push('/login');
+    router.push('/welcome');
     return null;
   }
 
@@ -95,24 +111,11 @@ function DashboardContent() {
     isDemo?: boolean;
   }
 
-  // Friendly level labels shown on each card
-  const levelLabel = (level: PermissionLevel): string => {
-    switch (level) {
-      case PermissionLevel.PUBLIC:      return 'Public';
-      case PermissionLevel.PUBLIC_DATA: return 'Public';
-      case PermissionLevel.USER:        return 'Level 2 — Logged in';
-      case PermissionLevel.AUTHORIZED:  return 'Level 3 — Authorized';
-      case PermissionLevel.OWNER:       return 'Level 4 — Owner';
-      case PermissionLevel.DEVELOPER:   return 'Level 5 — Developer';
-      default:                          return `Level ${level}`;
-    }
-  };
-
   const cards: DashboardCard[] = [
     {
       id: 'bot-overview',
-      title: 'Bot Overview',
-      description: 'Learn what this bot can do — features, commands, and how to get started.',
+      title: t('dashboard.cardBotOverviewTitle'),
+      description: t('dashboard.cardBotOverviewDesc'),
       icon: Globe,
       href: '/welcome?noRedirect=1',
       level: PermissionLevel.PUBLIC,
@@ -123,8 +126,8 @@ function DashboardContent() {
     },
     {
       id: 'command-reference',
-      title: 'Command Reference',
-      description: 'Browse all available bot commands, their usage, parameters, and examples.',
+      title: t('dashboard.cardCommandRefTitle'),
+      description: t('dashboard.cardCommandRefDesc'),
       icon: BookOpen,
       href: '/commands',
       level: PermissionLevel.PUBLIC_DATA,
@@ -136,8 +139,8 @@ function DashboardContent() {
     },
     {
       id: 'bot-settings',
-      title: 'Bot Settings',
-      description: 'Configure general bot behavior, command prefix, and language settings.',
+      title: t('dashboard.cardBotSettingsTitle'),
+      description: t('dashboard.cardBotSettingsDesc'),
       icon: Settings,
       href: `/dashboard/${activeGuildId}/settings`,
       level: PermissionLevel.AUTHORIZED,
@@ -149,8 +152,8 @@ function DashboardContent() {
     },
     {
       id: 'permissions',
-      title: 'Permissions',
-      description: 'Manage access levels, authorize users and roles for this server.',
+      title: t('dashboard.cardPermissionsTitle'),
+      description: t('dashboard.cardPermissionsDesc'),
       icon: Shield,
       href: `/dashboard/${activeGuildId}/permissions`,
       level: PermissionLevel.OWNER,
@@ -161,8 +164,8 @@ function DashboardContent() {
     },
     {
       id: 'bot-health',
-      title: 'Bot Health',
-      description: 'Check if the bot is online — backend, database, and Discord gateway status.',
+      title: t('dashboard.cardBotHealthTitle'),
+      description: t('dashboard.cardBotHealthDesc'),
       icon: Activity,
       href: `/dashboard/bot-health`,
       level: PermissionLevel.AUTHORIZED,
@@ -173,8 +176,8 @@ function DashboardContent() {
     },
     {
       id: 'account-settings',
-      title: 'Account Settings',
-      description: 'Manage your personal preferences, theme, and profile details.',
+      title: t('dashboard.cardAccountSettingsTitle'),
+      description: t('dashboard.cardAccountSettingsDesc'),
       icon: User,
       href: `/dashboard/account`,
       level: PermissionLevel.USER,
@@ -184,9 +187,21 @@ function DashboardContent() {
       isAdminOnly: false
     },
     {
+      id: 'card-visibility',
+      title: t('dashboard.cardCardVisibilityTitle'),
+      description: t('dashboard.cardCardVisibilityDesc'),
+      icon: Settings2,
+      href: `/dashboard/${activeGuildId}/card-visibility`,
+      level: PermissionLevel.OWNER,
+      color: 'text-amber-500',
+      bgColor: 'bg-amber-500/10',
+      borderColor: 'group-hover:border-amber-500/50',
+      isAdminOnly: false
+    },
+    {
       id: 'audit-logs',
-      title: 'Audit Logs',
-      description: 'Track all configuration changes and administrative actions in this server.',
+      title: t('dashboard.cardAuditLogsTitle'),
+      description: t('dashboard.cardAuditLogsDesc'),
       icon: FileText,
       href: `/dashboard/${activeGuildId}/audit-logs`,
       level: PermissionLevel.AUTHORIZED,
@@ -195,11 +210,10 @@ function DashboardContent() {
       borderColor: 'group-hover:border-orange-500/50',
       isAdminOnly: false
     },
-
     {
       id: 'ai-analytics',
-      title: 'AI Analytics',
-      description: 'View LLM usage statistics, token consumption, and cost breakdowns.',
+      title: t('dashboard.cardAiAnalyticsTitle'),
+      description: t('dashboard.cardAiAnalyticsDesc'),
       icon: BarChart2,
       href: `/dashboard/ai-analytics`,
       level: PermissionLevel.DEVELOPER,
@@ -210,8 +224,8 @@ function DashboardContent() {
     },
     {
       id: 'system-config',
-      title: 'System Configuration',
-      description: 'Manage all framework settings. Apply dynamic changes at runtime or configure static parameters.',
+      title: t('dashboard.cardSystemConfigTitle'),
+      description: t('dashboard.cardSystemConfigDesc'),
       icon: Settings2,
       href: `/dashboard/config`,
       level: PermissionLevel.DEVELOPER,
@@ -222,8 +236,8 @@ function DashboardContent() {
     },
     {
       id: 'database',
-      title: 'Database Management',
-      description: 'Monitor connections, apply schema migrations, and validate database integrity.',
+      title: t('dashboard.cardDatabaseTitle'),
+      description: t('dashboard.cardDatabaseDesc'),
       icon: Database,
       href: `/dashboard/database`,
       level: PermissionLevel.DEVELOPER,
@@ -234,8 +248,8 @@ function DashboardContent() {
     },
     {
       id: 'instrumentation',
-      title: 'Instrumentation',
-      description: 'Performance metrics, guild growth, card usage stats, and bot command analytics across all servers.',
+      title: t('dashboard.cardInstrumentationTitle'),
+      description: t('dashboard.cardInstrumentationDesc'),
       icon: Gauge,
       href: `/dashboard/instrumentation`,
       level: PermissionLevel.DEVELOPER,
@@ -246,8 +260,8 @@ function DashboardContent() {
     },
     {
       id: 'gemini-demo',
-      title: 'Gemini Capabilities',
-      description: 'Demo suite for Gemini API: text generation, image generation, vision, TTS, embeddings, and more.',
+      title: t('dashboard.cardGeminiTitle'),
+      description: t('dashboard.cardGeminiDesc'),
       icon: Sparkles,
       href: `/dashboard/${activeGuildId}/gemini-demo`,
       level: PermissionLevel.DEVELOPER,
@@ -259,8 +273,8 @@ function DashboardContent() {
     },
     {
       id: 'llm-configs',
-      title: 'LLM Configs',
-      description: 'Manage output schemas and function sets for Gemini API calls. View call logs with token stats and cost.',
+      title: t('dashboard.cardLlmConfigsTitle'),
+      description: t('dashboard.cardLlmConfigsDesc'),
       icon: BrainCircuit,
       href: `/dashboard/llm-configs`,
       level: PermissionLevel.DEVELOPER,
@@ -269,11 +283,11 @@ function DashboardContent() {
       borderColor: 'group-hover:border-violet-500/50',
       isAdminOnly: true
     },
-    // Plugins
+    // Plugins — titles come from plugin definitions; descriptions are translated
     ...pluginNavItems.map((plugin: any) => ({
       id: `plugin-${plugin.id || plugin.name}`,
       title: plugin.name,
-      description: 'Plugin module',
+      description: t('dashboard.cardPluginDesc'),
       icon: plugin.icon || Terminal,
       href: plugin.href.replace('[guildId]', activeGuildId || ''),
       level: plugin.level || PermissionLevel.USER,
@@ -298,19 +312,21 @@ function DashboardContent() {
       {/* Hero / Welcome Section */}
       <div className="text-center space-y-4 py-8">
         <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 bg-clip-text text-transparent">
-          {activeGuild ? `Manage ${activeGuild.name}` : 'Welcome, ' + user.username}
+          {activeGuild
+            ? t('dashboard.manageServer', { serverName: activeGuild.name })
+            : t('dashboard.welcomeUser', { username: user.username })}
         </h1>
         <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-          Select a tool below to manage your server or view platform status.
+          {t('dashboard.selectTool')}
         </p>
         {activeGuild && (
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-muted/50 border border-border text-sm text-muted-foreground">
-            <span>Current Permission:</span>
+            <span>{t('dashboard.currentPermission')}</span>
             <span className="font-semibold text-foreground">
-              {user.is_admin ? 'Developer' :
-                permissionLevel === PermissionLevel.OWNER ? 'Owner' :
-                  permissionLevel === PermissionLevel.AUTHORIZED ? 'Authorized' :
-                    permissionLevel === PermissionLevel.USER ? 'User' : 'Guest'
+              {user.is_admin ? t('dashboard.permDeveloper') :
+                permissionLevel === PermissionLevel.OWNER ? t('dashboard.permOwner') :
+                  permissionLevel === PermissionLevel.AUTHORIZED ? t('dashboard.permAuthorized') :
+                    permissionLevel === PermissionLevel.USER ? t('dashboard.permUser') : t('dashboard.permGuest')
               }
             </span>
           </div>
@@ -319,13 +335,14 @@ function DashboardContent() {
 
       {/* Grouped Card Sections */}
       {(() => {
-        const levelMeta: Record<number, { label: string; description: string; accentText: string; borderAccent: string; sectionBg: string; badge: string }> = {
-          0: { label: 'Public',      description: 'Available to everyone, no account needed',        accentText: 'text-slate-400',   borderAccent: 'border-slate-500/50',   sectionBg: 'bg-slate-500/5',   badge: 'bg-slate-500/20 text-slate-300' },
-          1: { label: 'Public Data', description: 'Public information — no login required',          accentText: 'text-sky-400',     borderAccent: 'border-sky-500/50',     sectionBg: 'bg-sky-500/5',     badge: 'bg-sky-500/20 text-sky-300' },
-          2: { label: 'User',        description: 'Available to logged-in server members',           accentText: 'text-emerald-400', borderAccent: 'border-emerald-500/50', sectionBg: 'bg-emerald-500/5', badge: 'bg-emerald-500/20 text-emerald-300' },
-          3: { label: 'Authorized',  description: 'Requires explicit server authorization',          accentText: 'text-blue-400',    borderAccent: 'border-blue-500/50',    sectionBg: 'bg-blue-500/5',    badge: 'bg-blue-500/20 text-blue-300' },
-          4: { label: 'Owner',       description: 'Server owner only',                               accentText: 'text-amber-400',   borderAccent: 'border-amber-500/50',   sectionBg: 'bg-amber-500/5',   badge: 'bg-amber-500/20 text-amber-300' },
-          5: { label: 'Developer',   description: 'Platform administrator — full system access',     accentText: 'text-red-400',     borderAccent: 'border-red-500/50',     sectionBg: 'bg-red-500/5',     badge: 'bg-red-500/20 text-red-300' },
+        interface LevelMeta { label: string; description: string; accentText: string; borderAccent: string; sectionBg: string; badge: string }
+        const levelMeta: Record<number, LevelMeta> = {
+          0: { label: t('dashboard.sectionPublicLabel'),     description: t('dashboard.sectionPublicDesc'),     accentText: 'text-slate-400',   borderAccent: 'border-slate-500/50',   sectionBg: 'bg-slate-500/5',   badge: 'bg-slate-500/20 text-slate-300' },
+          1: { label: t('dashboard.sectionPublicDataLabel'), description: t('dashboard.sectionPublicDataDesc'), accentText: 'text-sky-400',     borderAccent: 'border-sky-500/50',     sectionBg: 'bg-sky-500/5',     badge: 'bg-sky-500/20 text-sky-300' },
+          2: { label: t('dashboard.sectionUserLabel'),       description: t('dashboard.sectionUserDesc'),       accentText: 'text-emerald-400', borderAccent: 'border-emerald-500/50', sectionBg: 'bg-emerald-500/5', badge: 'bg-emerald-500/20 text-emerald-300' },
+          3: { label: t('dashboard.sectionAuthorizedLabel'), description: t('dashboard.sectionAuthorizedDesc'), accentText: 'text-blue-400',    borderAccent: 'border-blue-500/50',    sectionBg: 'bg-blue-500/5',    badge: 'bg-blue-500/20 text-blue-300' },
+          4: { label: t('dashboard.sectionOwnerLabel'),      description: t('dashboard.sectionOwnerDesc'),      accentText: 'text-amber-400',   borderAccent: 'border-amber-500/50',   sectionBg: 'bg-amber-500/5',   badge: 'bg-amber-500/20 text-amber-300' },
+          5: { label: t('dashboard.sectionDeveloperLabel'),  description: t('dashboard.sectionDeveloperDesc'),  accentText: 'text-red-400',     borderAccent: 'border-red-500/50',     sectionBg: 'bg-red-500/5',     badge: 'bg-red-500/20 text-red-300' },
         };
 
         const cardsByLevel = visibleCards.reduce((acc, card) => {
@@ -349,7 +366,6 @@ function DashboardContent() {
                       <div>
                         <div className="flex items-center gap-2">
                           <h2 className={`text-base font-semibold tracking-wide uppercase ${meta.accentText}`}>{meta.label}</h2>
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${meta.badge}`}>Level {level}</span>
                         </div>
                         <p className="text-sm text-muted-foreground mt-0.5">{meta.description}</p>
                       </div>
@@ -371,7 +387,7 @@ function DashboardContent() {
 
                         {card.isDemo && (
                           <span className="absolute top-4 left-4 text-[10px] font-semibold uppercase tracking-widest px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25">
-                            Demo
+                            {t('common.demo')}
                           </span>
                         )}
 
@@ -380,8 +396,7 @@ function DashboardContent() {
                           <p className="text-muted-foreground leading-relaxed">{card.description}</p>
                         </div>
 
-                        <div className="mt-8 pt-6 border-t border-border/50 flex items-center justify-between text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors">
-                          <span>{levelLabel(card.level)}</span>
+                        <div className="mt-8 pt-6 border-t border-border/50 flex items-center justify-end text-muted-foreground">
                           <ExternalLink size={16} className="opacity-0 group-hover:opacity-100 transition-opacity" />
                         </div>
                       </div>
@@ -397,10 +412,10 @@ function DashboardContent() {
       {visibleCards.length === 0 && (
         <div className="text-center py-20 bg-muted/20 rounded-xl border border-dashed border-border">
           <Lock className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-          <h3 className="text-xl font-medium mb-2">Access Restricted</h3>
+          <h3 className="text-xl font-medium mb-2">{t('dashboard.accessRestricted')}</h3>
           <p className="text-muted-foreground">
-            You do not have access to any tools for this server.<br />
-            Current Access Level: {permissionLevel}
+            {t('dashboard.noAccessBody')}<br />
+            {t('dashboard.currentAccessLevel', { level: String(permissionLevel) })}
           </p>
         </div>
       )}
@@ -414,7 +429,7 @@ export default function Home() {
       <div className="flex items-center justify-center min-h-[50vh]">
         <div className="flex flex-col items-center gap-4">
           <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
-          <p className="text-muted-foreground animate-pulse">Loading...</p>
+          <p className="text-muted-foreground animate-pulse">{/* loading */}</p>
         </div>
       </div>
     }>

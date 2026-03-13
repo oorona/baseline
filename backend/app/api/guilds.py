@@ -354,8 +354,12 @@ async def update_guild_settings(
     db.add(log)
 
     await db.commit()
-    await db.refresh(settings)
-    
+    # Re-query after commit to avoid SQLAlchemy async refresh issues
+    settings_result = await db.execute(
+        select(GuildSettings).where(GuildSettings.guild_id == guild_id)
+    )
+    settings = settings_result.scalar_one()
+
     return {
         "guild_id": guild_id,
         "settings": settings.settings_json,

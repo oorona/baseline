@@ -12,6 +12,7 @@ If you're an **LLM/AI assistant** helping to extend this framework, start here:
 4. [Backend Endpoints](04-backend-endpoints.md) - Add REST APIs
 5. [Frontend Pages](05-frontend-pages.md) - Add web UI
 6. [Bot Configuration](06-bot-configuration.md) - Load bot-specific config
+7. [Observability](07-observability.md) - Prometheus, Grafana & Loki
 
 ## Architecture
 
@@ -44,6 +45,10 @@ For a complete understanding of the system design, see:
 
 → See [Logging & Environment](03-logging-environment.md)
 
+### I want to set up Prometheus / Grafana / Loki
+
+→ See [Observability](07-observability.md)
+
 ## Extension Points Summary
 
 | Component | Extension Point | Guide |
@@ -55,6 +60,7 @@ For a complete understanding of the system design, see:
 | **Backend** | Add API endpoints | [04-backend-endpoints.md](04-backend-endpoints.md) |
 | **Frontend** | Add pages | [05-frontend-pages.md](05-frontend-pages.md) |
 | **All** | Logging | [03-logging-environment.md](03-logging-environment.md) |
+| **Ops** | Observability | [07-observability.md](07-observability.md) |
 
 ---
 

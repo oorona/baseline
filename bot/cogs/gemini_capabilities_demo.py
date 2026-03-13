@@ -59,14 +59,16 @@ logger = structlog.get_logger()
 class GeminiCapabilitiesDemo(commands.Cog):
     """
     *** DEMO COG ***
-    
+
     This cog demonstrates all Gemini 3 API capabilities available in the
     Baseline Framework. Use these commands to test the integration and
     as reference for your own implementations.
-    
+
     All commands are grouped under /gemini-demo
     """
     
+    __is_demo__ = True
+
     # *** DEMO CODE *** - Configuration
     DEMO_COMMAND_GROUP = "gemini-demo"
     
@@ -83,14 +85,14 @@ class GeminiCapabilitiesDemo(commands.Cog):
     
     gemini_demo = app_commands.Group(
         name="gemini-demo",
-        description="*** DEMO *** Gemini 3 API capability demonstrations"
+        description="Gemini 3 API capability demonstrations"
     )
     
     # =========================================================================
     # *** DEMO CODE *** - 1. Text Generation with Thinking
     # =========================================================================
     
-    @gemini_demo.command(name="thinking")
+    @gemini_demo.command(name="thinking", description="Generate text with adjustable thinking and reasoning depth")
     @app_commands.describe(
         prompt="The question or problem to solve",
         thinking_level="Depth of reasoning (minimal, low, medium, high)",
@@ -176,7 +178,7 @@ class GeminiCapabilitiesDemo(commands.Cog):
     # *** DEMO CODE *** - 2. Image Generation
     # =========================================================================
     
-    @gemini_demo.command(name="generate-image")
+    @gemini_demo.command(name="generate-image", description="Generate images from a text description")
     @app_commands.describe(
         prompt="Description of the image to generate",
         aspect_ratio="Image aspect ratio"
@@ -243,7 +245,7 @@ class GeminiCapabilitiesDemo(commands.Cog):
     # *** DEMO CODE *** - 3. Image Understanding
     # =========================================================================
     
-    @gemini_demo.command(name="analyze-image")
+    @gemini_demo.command(name="analyze-image", description="Analyze and answer questions about an image via URL")
     @app_commands.describe(
         image_url="URL of the image to analyze",
         question="Question about the image",
@@ -307,7 +309,7 @@ class GeminiCapabilitiesDemo(commands.Cog):
     # *** DEMO CODE *** - 4. Text-to-Speech
     # =========================================================================
     
-    @gemini_demo.command(name="speak")
+    @gemini_demo.command(name="speak", description="Convert text to speech audio using Gemini TTS")
     @app_commands.describe(
         text="Text to convert to speech",
         voice="Voice to use for speech"
@@ -362,7 +364,7 @@ class GeminiCapabilitiesDemo(commands.Cog):
     # *** DEMO CODE *** - 5. Structured Output (JSON Schema)
     # =========================================================================
     
-    @gemini_demo.command(name="structured")
+    @gemini_demo.command(name="structured", description="Generate structured JSON output from a prompt")
     @app_commands.describe(
         prompt="What to generate (e.g., 'Create a recipe for chocolate cake')",
         output_type="Type of structured output"
@@ -479,7 +481,7 @@ class GeminiCapabilitiesDemo(commands.Cog):
     # *** DEMO CODE *** - 6. URL Context
     # =========================================================================
     
-    @gemini_demo.command(name="analyze-url")
+    @gemini_demo.command(name="analyze-url", description="Fetch and analyze web page content")
     @app_commands.describe(
         url="URL to analyze",
         question="Question about the URL content"
@@ -536,7 +538,7 @@ class GeminiCapabilitiesDemo(commands.Cog):
     # *** DEMO CODE *** - 7. Token Counting
     # =========================================================================
     
-    @gemini_demo.command(name="count-tokens")
+    @gemini_demo.command(name="count-tokens", description="Count tokens in text and estimate API cost")
     @app_commands.describe(
         text="Text to count tokens for"
     )
@@ -587,7 +589,7 @@ class GeminiCapabilitiesDemo(commands.Cog):
     # *** DEMO CODE *** - 8. Embeddings
     # =========================================================================
     
-    @gemini_demo.command(name="embed")
+    @gemini_demo.command(name="embed", description="Generate vector embeddings for text")
     @app_commands.describe(
         text="Text to generate embeddings for",
         task_type="Type of task for optimized embeddings"
@@ -652,7 +654,7 @@ class GeminiCapabilitiesDemo(commands.Cog):
     # *** DEMO CODE *** - Help/Info Command
     # =========================================================================
     
-    @gemini_demo.command(name="help")
+    @gemini_demo.command(name="help", description="List all available Gemini demo commands")
     async def demo_help(self, interaction: discord.Interaction):
         """
         *** DEMO *** Show all available Gemini demo commands.

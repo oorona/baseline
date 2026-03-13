@@ -8,6 +8,10 @@ interface AuthContextType {
     loading: boolean;
     logout: () => void;
     logoutAll: () => void;
+    /** Re-fetches the current user from the API and updates the in-memory user
+     *  object.  Call this after saving user settings so the rest of the app
+     *  sees the updated preferences without a full page reload. */
+    refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -15,45 +19,9 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const [silentLoginAttempted, setSilentLoginAttempted] = useState(false);
-
     useEffect(() => {
         checkAuth();
-
-        // Listen for silent login messages
-        const handleMessage = async (event: MessageEvent) => {
-            if (event.data.type === 'DISCORD_SILENT_LOGIN_SUCCESS' && event.data.token) {
-                localStorage.setItem('access_token', event.data.token);
-                // Re-check auth with new token
-                await checkAuth();
-            } else if (event.data.type === 'DISCORD_SILENT_LOGIN_REQUIRED') {
-                console.log('Silent login failed, interaction required');
-                setLoading(false);
-            } else if (event.data.type === 'DISCORD_SILENT_LOGIN_FAILED') {
-                console.error('Silent login failed with error:', event.data.error);
-                setLoading(false);
-            }
-        };
-
-        window.addEventListener('message', handleMessage);
-        return () => window.removeEventListener('message', handleMessage);
     }, []);
-
-    const createSilentLoginIframe = () => {
-        const iframe = document.createElement('iframe');
-        iframe.style.display = 'none';
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-        iframe.src = `${apiUrl}/api/v1/auth/discord/login?prompt=none&state=silent`;
-        document.body.appendChild(iframe);
-
-
-        // Cleanup iframe after some time to avoid leaks
-        setTimeout(() => {
-            if (document.body.contains(iframe)) {
-                document.body.removeChild(iframe);
-            }
-        }, 10000); // 10s timeout
-    };
 
     const checkAuth = async () => {
         // Check for token in URL (from OAuth callback)
@@ -76,30 +44,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             return;
         }
 
+        // No token stored — user is definitely not logged in, skip the API call
+        const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
+        if (!token) {
+            setLoading(false);
+            return;
+        }
+
         try {
             const data = await apiClient.getCurrentUser();
             setUser(data);
             setLoading(false);
         } catch (error: any) {
             console.error('Auth check failed:', error);
-
-            // If 401 and haven't tried silent login yet, try it
-            if (error.response?.status === 401 && !silentLoginAttempted) {
-                setSilentLoginAttempted(true);
-                createSilentLoginIframe();
-                // Don't set loading false yet, wait for iframe result or timeout
-                // However, we need a safety fallback if iframe never responds (handled by timeout in createSilentLoginIframe?)
-                // actually the timeout removes iframe, but doesn't update loading state.
-                // Let's add a safety timeout for loading state too.
-                setTimeout(() => {
-                    setLoading((prev) => {
-                        if (prev) return false; // Force stop loading if still loading
-                        return prev;
-                    });
-                }, 11000);
-            } else {
-                setLoading(false);
+            // Token was invalid/expired — clear it and stop loading
+            if (typeof window !== 'undefined') {
+                localStorage.removeItem('access_token');
             }
+            setLoading(false);
         }
     };
 
@@ -110,11 +72,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             console.error('Logout failed:', error);
         } finally {
             setUser(null);
-            setSilentLoginAttempted(true);
             if (typeof window !== 'undefined') {
                 localStorage.removeItem('access_token');
-                window.location.href = '/login';
+                window.location.href = '/welcome';
             }
+        }
+    };
+
+    const refreshUser = async () => {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
+        if (!token) return;
+        try {
+            const data = await apiClient.getCurrentUser();
+            setUser(data);
+        } catch (error) {
+            console.error('Failed to refresh user:', error);
         }
     };
 
@@ -125,16 +97,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             console.error('Logout all failed:', error);
         } finally {
             setUser(null);
-            setSilentLoginAttempted(true);
             if (typeof window !== 'undefined') {
                 localStorage.removeItem('access_token');
-                window.location.href = '/login';
+                window.location.href = '/welcome';
             }
         }
     };
 
     return (
-        <AuthContext.Provider value={{ user, loading, logout, logoutAll }}>
+        <AuthContext.Provider value={{ user, loading, logout, logoutAll, refreshUser }}>
             {children}
         </AuthContext.Provider>
     );

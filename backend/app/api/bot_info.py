@@ -28,10 +28,14 @@ async def get_public_bot_info():
     }
 
 
+SETTINGS_SCHEMA_KEY = "bot:settings_schema"
+
+
 class BotReport(BaseModel):
     commands: List[Dict[str, Any]]
     listeners: List[Dict[str, Any]]
     permissions: Dict[str, Any]
+    settings_schemas: List[Dict[str, Any]] = []
     timestamp: float
 
 @router.post("/report")
@@ -41,12 +45,12 @@ async def report_bot_info(
 ):
     """
     Endpoint for the bot to push its introspection data.
-    Secured ideally by internal network or shared secret, 
-    but for now we assume internal docker network trust or valid API token if we enforce it.
+    Secured by internal Docker network trust.
     """
     try:
-        # Store in Redis with no expiration (or long expiration)
-        await redis.set("bot:introspection", report.json())
+        await redis.set("bot:introspection", report.model_dump_json())
+        if report.settings_schemas:
+            await redis.set(SETTINGS_SCHEMA_KEY, json.dumps(report.settings_schemas))
         logger.info("Received and stored bot introspection report")
         return {"status": "ok"}
     except Exception as e:
@@ -68,7 +72,25 @@ async def get_bot_info(
             "commands": [],
             "listeners": [],
             "permissions": {},
+            "settings_schemas": [],
             "timestamp": 0
         }
-    
+
     return json.loads(data)
+
+
+@router.get("/settings-schema")
+async def get_settings_schema(
+    redis: Redis = Depends(get_redis),
+):
+    """
+    Return the aggregated settings schemas published by all loaded cogs.
+
+    Security: L2 — any authenticated guild member may read schemas so the
+    dashboard can render the settings form.  Actual value reads/writes still
+    require guild-owner-level access via the guilds endpoints.
+    """
+    data = await redis.get(SETTINGS_SCHEMA_KEY)
+    if not data:
+        return {"schemas": []}
+    return {"schemas": json.loads(data)}

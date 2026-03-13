@@ -395,6 +395,7 @@ export default function SetupWizardPage() {
       BOT_INVITE_URL: botId.invite_url,
       API_SECRET_KEY: appCfg.api_secret_key,
       APP_NAME: appCfg.app_name,
+      NEXT_PUBLIC_APP_NAME: appCfg.app_name,
       ...(appCfg.openai_api_key    ? { OPENAI_API_KEY:    appCfg.openai_api_key }    : {}),
       ...(appCfg.google_api_key    ? { GOOGLE_API_KEY:    appCfg.google_api_key }    : {}),
       ...(appCfg.anthropic_api_key ? { ANTHROPIC_API_KEY: appCfg.anthropic_api_key } : {}),

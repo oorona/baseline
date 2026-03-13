@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Suspense } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 import { usePermissions } from '../hooks/use-permissions';
 import { PermissionLevel } from '../permissions';
 import { useAuth } from '@/lib/auth-context';
+import { useTranslation } from '@/lib/i18n';
 
 export function withPermission<P extends object>(
     Component: React.ComponentType<P>,
@@ -20,6 +21,7 @@ export function withPermission<P extends object>(
         // Use hook
         const { hasAccess, loading, error } = usePermissions(guildId);
         const { user, loading: authLoading } = useAuth();
+        const { t } = useTranslation();
 
         useEffect(() => {
             if (!loading && !authLoading) {
@@ -45,7 +47,7 @@ export function withPermission<P extends object>(
         if (loading || authLoading) {
             return (
                 <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">
-                    <div className="animate-pulse">Checking Permissions...</div>
+                    <div className="animate-pulse">{t('common.checkingPermissions')}</div>
                 </div>
             );
         }
@@ -64,10 +66,13 @@ export function withPermission<P extends object>(
                         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors group"
                     >
                         <ChevronLeft size={15} className="group-hover:-translate-x-0.5 transition-transform" />
-                        Dashboard
+                        {t('common.dashboard')}
                     </Link>
                 </div>
-                <Component {...props} />
+                {/* Suspense boundary lets inner pages use useSearchParams safely */}
+                <Suspense fallback={null}>
+                    <Component {...props} />
+                </Suspense>
             </div>
         );
     };

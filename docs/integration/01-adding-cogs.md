@@ -24,10 +24,10 @@ from discord.ext import commands
 
 class Moderation(commands.Cog):
     """Moderation commands for server management."""
-    
+
     def __init__(self, bot):
         self.bot = bot
-        
+
     @app_commands.command(name="kick", description="Kick a user from the server")
     @app_commands.describe(member="The member to kick", reason="Reason for kick")
     async def kick(
@@ -44,7 +44,7 @@ class Moderation(commands.Cog):
                 ephemeral=True
             )
             return
-            
+
         # Perform the kick
         await member.kick(reason=reason)
         await interaction.response.send_message(
@@ -71,16 +71,12 @@ Your cog can access various services through `self.bot.services`:
 class MyCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        
+
     @app_commands.command()
     async def example(self, interaction: discord.Interaction):
         # Access LLM service
         response = await self.bot.services.llm.chat("Hello!")
-        
-        # Access database
-        # (if you add a database service)
-        # data = await self.bot.services.db.query(...)
-        
+
         # Access shard monitor
         status = self.bot.services.shard_monitor.get_status()
 ```
@@ -97,9 +93,6 @@ class MyCog(commands.Cog):
         self.bot = bot
         # Get from environment
         self.api_key = os.getenv("MY_API_KEY", "default_value")
-        
-        # Or from bot config
-        # self.config = self.bot.config
 ```
 
 ## Step 6: Logging
@@ -130,6 +123,182 @@ After creating your cog, restart the bot:
 docker compose restart bot
 ```
 
+After restarting, the bot syncs commands to Discord on `setup_hook`. To update the Command Reference page in the dashboard, a platform admin must then click **Refresh from Cogs** on the Command Reference page.
+
+---
+
+## Command Description Requirements
+
+> **This section is mandatory.** The dashboard's **Command Reference** page (`/commands`) is auto-populated by fetching the bot's registered slash commands from the Discord API. The quality of what users see depends entirely on the descriptions you write here.
+
+### Rules for All Commands
+
+#### Rule 1 — Always provide `description=` explicitly
+
+Discord.py falls back to the **first line of the docstring** if no `description=` is given. Docstrings often start with internal notes (`*** DEMO ***`, `Deprecated`, etc.) that are not suitable for users.
+
+```python
+# WRONG — description comes from docstring first line
+@app_commands.command(name="kick")
+async def kick(self, interaction):
+    """Internal: kick logic v2 — may change."""
+    ...
+
+# CORRECT — explicit description shown in Discord and Command Reference
+@app_commands.command(name="kick", description="Kick a member from the server")
+async def kick(self, interaction):
+    ...
+```
+
+#### Rule 2 — Always provide `description=` on subcommands in a group
+
+```python
+my_group = app_commands.Group(name="mod", description="Moderation commands")
+
+# WRONG — no description on the subcommand
+@my_group.command(name="ban")
+async def ban(self, interaction, member: discord.Member):
+    ...
+
+# CORRECT
+@my_group.command(name="ban", description="Permanently ban a member from the server")
+async def ban(self, interaction, member: discord.Member):
+    ...
+```
+
+#### Rule 3 — Always use `@app_commands.describe()` for parameters
+
+Parameter descriptions show up in Discord's autocomplete and in the Command Reference "Usage" line.
+
+```python
+@app_commands.command(name="warn", description="Warn a member")
+@app_commands.describe(
+    member="The member to warn",
+    reason="Reason for the warning (shown in audit log)"
+)
+async def warn(self, interaction, member: discord.Member, reason: str):
+    ...
+```
+
+#### Rule 4 — Keep descriptions short and user-facing
+
+- **Max 100 characters** (Discord's limit — longer strings will be truncated or raise an error)
+- Write for the end user, not for developers
+- Start with a verb: "Kick", "Show", "Generate", "List"
+- No internal implementation details, no "DEMO" labels, no TODO notes
+
+```python
+# WRONG
+description="*** DEMO *** Generate text with Gemini 3 thinking/reasoning v2 (WIP)"
+
+# CORRECT
+description="Generate text with adjustable thinking and reasoning depth"
+```
+
+### Command Groups
+
+When using `app_commands.Group`, **both** the group and its subcommands need descriptions:
+
+```python
+class Moderation(commands.Cog):
+    mod = app_commands.Group(
+        name="mod",
+        description="Moderation tools for server management"  # ← required
+    )
+
+    @mod.command(name="kick", description="Kick a member from the server")  # ← required
+    @app_commands.describe(member="The member to kick")
+    async def kick(self, interaction, member: discord.Member):
+        ...
+
+    @mod.command(name="ban", description="Permanently ban a member from the server")  # ← required
+    @app_commands.describe(member="The member to ban", reason="Reason for the ban")
+    async def ban(self, interaction, member: discord.Member, reason: str = "No reason"):
+        ...
+```
+
+The group name becomes the **section header** in the Command Reference page (e.g., `mod` → **Mod**).
+
+### How the Command Reference Page Works
+
+1. Bot starts → `setup_hook` syncs commands to Discord (guild + global)
+2. Platform admin clicks **Refresh from Cogs** on the dashboard
+3. Backend calls `GET /applications/{app_id}/guilds/{guild_id}/commands` (Discord API)
+4. Discord returns the registered commands with the descriptions as registered
+5. Backend expands groups into individual entries and caches in Redis
+6. Frontend reads from Redis cache and renders the Command Reference page
+
+**The descriptions must be registered with Discord to appear.** Changing a description in Python requires a bot restart (re-sync) and then a Refresh.
+
+### Complete Cog Example with Proper Documentation
+
+```python
+import discord
+from discord import app_commands
+from discord.ext import commands
+import structlog
+
+logger = structlog.get_logger()
+
+
+class Moderation(commands.Cog):
+    """Server moderation commands."""
+
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+        logger.info("cog_loaded", cog="Moderation")
+
+    mod = app_commands.Group(
+        name="mod",
+        description="Moderation tools for server management"
+    )
+
+    @mod.command(name="kick", description="Kick a member from the server")
+    @app_commands.describe(
+        member="The member to kick",
+        reason="Reason for the kick (shown in audit log)"
+    )
+    async def kick(
+        self,
+        interaction: discord.Interaction,
+        member: discord.Member,
+        reason: str = "No reason provided"
+    ):
+        await interaction.response.defer(ephemeral=True)
+        try:
+            await member.kick(reason=reason)
+            await interaction.followup.send(f"Kicked {member.mention}.")
+            logger.info("member_kicked", target=member.id, by=interaction.user.id)
+        except Exception as e:
+            logger.error("kick_failed", error=str(e))
+            await interaction.followup.send("Failed to kick member.", ephemeral=True)
+
+    @mod.command(name="ban", description="Permanently ban a member from the server")
+    @app_commands.describe(
+        member="The member to ban",
+        reason="Reason for the ban"
+    )
+    async def ban(
+        self,
+        interaction: discord.Interaction,
+        member: discord.Member,
+        reason: str = "No reason provided"
+    ):
+        await interaction.response.defer(ephemeral=True)
+        try:
+            await member.ban(reason=reason)
+            await interaction.followup.send(f"Banned {member.mention}.")
+        except Exception as e:
+            logger.error("ban_failed", error=str(e))
+            await interaction.followup.send("Failed to ban member.", ephemeral=True)
+
+
+async def setup(bot: commands.Bot):
+    await bot.add_cog(Moderation(bot))
+```
+
+---
+
 ## Best Practices
 
 1. **Error Handling**: Always handle errors gracefully
@@ -142,6 +311,7 @@ docker compose restart bot
    ```
 
 2. **Permission Checks**: Verify permissions before sensitive operations
+
 3. **Defer Responses**: For long-running commands, defer the interaction
    ```python
    await interaction.response.defer()
@@ -154,56 +324,16 @@ docker compose restart bot
    await interaction.response.send_message("Error!", ephemeral=True)
    ```
 
-## Example: Complete Working Cog
-
-```python
-import discord
-from discord import app_commands
-from discord.ext import commands
-import structlog
-
-logger = structlog.get_logger()
-
-class Example(commands.Cog):
-    """Example cog with various features."""
-    
-    def __init__(self, bot):
-        self.bot = bot
-        logger.info("cog_loaded", cog="Example")
-        
-    @app_commands.command(name="hello", description="Say hello")
-    async def hello(self, interaction: discord.Interaction):
-        """Simple greeting command."""
-        await interaction.response.send_message(
-            f"Hello, {interaction.user.mention}!"
-        )
-    
-    @app_commands.command(name="info", description="Get server info")
-    async def info(self, interaction: discord.Interaction):
-        """Get information about the server."""
-        guild = interaction.guild
-        
-        embed = discord.Embed(
-            title=f"{guild.name} Info",
-            color=discord.Color.blue()
-        )
-        embed.add_field(name="Members", value=guild.member_count)
-        embed.add_field(name="Channels", value=len(guild.channels))
-        embed.add_field(name="Roles", value=len(guild.roles))
-        
-        await interaction.response.send_message(embed=embed)
-    
-    @commands.Cog.listener()
-    async def on_member_join(self, member: discord.Member):
-        """Event listener for when a member joins."""
-        logger.info("member_joined", user=member.id, guild=member.guild.id)
-
-async def setup(bot):
-    await bot.add_cog(Example(bot))
-```
+5. **Check `interaction.guild`**: Never assume the bot is in a guild
+   ```python
+   if not interaction.guild:
+       await interaction.response.send_message("This command only works in servers.", ephemeral=True)
+       return
+   ```
 
 ## Next Steps
 
 - Review existing cogs in `bot/cogs/` for more examples
 - Read [Discord.py documentation](https://discordpy.readthedocs.io/)
-- See `docs/integration/llm-integration.md` for using AI features
+- See `docs/integration/02-llm-integration.md` for using AI features
+- See `docs/integration/04-backend-endpoints.md` for connecting your cog to the backend API

@@ -30,16 +30,52 @@ logger = structlog.get_logger()
 class LoggingCog(commands.Cog):
     """
     *** DEMO COG ***
-    
+
     Demonstrates guild event logging functionality including:
     - Message delete logging
-    - Message edit logging  
+    - Message edit logging
     - Member join/leave logging
     - Configurable log channel per guild
-    
+
     This cog can be safely removed or modified for production.
     """
-    
+
+    __is_demo__ = True
+
+    SETTINGS_SCHEMA = {
+        "id": "logging",
+        "label": "Event Logging",
+        "description": "Configure which guild events are logged and where.",
+        "fields": [
+            {
+                "key": "logging_enabled",
+                "type": "boolean",
+                "label": "Enable Event Logging",
+                "default": False,
+            },
+            {
+                "key": "logging_channel_id",
+                "type": "channel_select",
+                "label": "Log Channel",
+                "description": "Channel where audit events are posted.",
+                "default": None,
+            },
+            {
+                "key": "logging_ignored_events",
+                "type": "multiselect",
+                "label": "Ignored Events",
+                "description": "Events that will NOT be logged.",
+                "choices": [
+                    {"label": "Message Deleted", "value": "on_message_delete"},
+                    {"label": "Message Edited", "value": "on_message_edit"},
+                    {"label": "Member Joined", "value": "on_member_join"},
+                    {"label": "Member Left", "value": "on_member_remove"},
+                ],
+                "default": [],
+            },
+        ],
+    }
+
     def __init__(self, bot):
         self.bot = bot
         self.backend_url = f"http://backend:8000/api/v1"

@@ -4,6 +4,7 @@ import { useEffect, useState, Suspense } from 'react';
 import { Bot, ExternalLink, LayoutDashboard, LogIn, Users, Loader2, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useTranslation } from '@/lib/i18n';
 
 interface BotInfo {
   name: string;
@@ -22,12 +23,23 @@ async function fetchBotInfo(): Promise<BotInfo> {
 
 function WelcomeContent() {
   const { user, loading: authLoading } = useAuth();
+  const { t, setLanguage } = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
   const noRedirect = searchParams.get('noRedirect') === '1';
   const [botInfo, setBotInfo] = useState<BotInfo | null>(null);
   const [botLoading, setBotLoading] = useState(true);
   const [userGuilds, setUserGuilds] = useState<number | null>(null);
+
+  // Apply ?lang= query param on first render so shareable URLs work.
+  useEffect(() => {
+    const lang = searchParams.get('lang');
+    if (lang === 'en' || lang === 'es') {
+      setLanguage(lang);
+    }
+  // Only run once on mount — intentionally omitting setLanguage / searchParams
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     fetchBotInfo()
@@ -44,7 +56,7 @@ function WelcomeContent() {
       .catch(() => setUserGuilds(0));
   }, [user]);
 
-  // Redirect authenticated users who have guilds to the dashboard (skip if noRedirect param is set)
+  // Redirect authenticated users who have guilds to the dashboard
   useEffect(() => {
     if (!noRedirect && userGuilds !== null && userGuilds > 0) {
       router.push('/');
@@ -128,7 +140,7 @@ function WelcomeContent() {
             ) : (
               <Bot className="w-5 h-5 transition-transform group-hover:scale-110" />
             )}
-            <span>Add {botName} to Your Server</span>
+            <span>{t('welcome.addToServer', { botName })}</span>
             {hasInviteUrl && !botLoading && (
               <ExternalLink className="w-4 h-4 opacity-70" />
             )}
@@ -139,15 +151,15 @@ function WelcomeContent() {
         <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-muted-foreground mb-12">
           <div className="flex items-center gap-2">
             <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
-            Free to use
+            {t('welcome.freeToUse')}
           </div>
           <div className="flex items-center gap-2">
             <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-            Easy setup
+            {t('welcome.easySetup')}
           </div>
           <div className="flex items-center gap-2">
             <div className="w-1.5 h-1.5 rounded-full bg-purple-500" />
-            Powerful features
+            {t('welcome.powerfulFeatures')}
           </div>
         </div>
 
@@ -157,13 +169,13 @@ function WelcomeContent() {
         {/* Auth section — context-aware */}
         {authLoading ? null : !user ? (
           <div className="flex flex-col items-center gap-3">
-            <p className="text-sm text-muted-foreground">Bot operator? Access the dashboard</p>
+            <p className="text-sm text-muted-foreground">{t('welcome.operatorPrompt')}</p>
             <a
               href="/login"
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-border text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
             >
               <LogIn className="w-4 h-4" />
-              Login with Discord
+              {t('welcome.loginWithDiscord')}
             </a>
           </div>
         ) : userGuilds === 0 ? (
@@ -171,8 +183,7 @@ function WelcomeContent() {
             <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-sm text-left">
               <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
               <span>
-                Welcome, <strong>{user.username}</strong>! You don&apos;t have access to any configured servers yet.
-                Add the bot to a server you own, or ask a server owner to authorize you.
+                {t('welcome.noServersMessage', { username: user.username })}
               </span>
             </div>
             <a
@@ -180,7 +191,7 @@ function WelcomeContent() {
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-border text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
             >
               <LayoutDashboard className="w-4 h-4" />
-              Go to Dashboard
+              {t('welcome.goToDashboard')}
             </a>
           </div>
         ) : (
@@ -189,17 +200,35 @@ function WelcomeContent() {
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-medium transition-colors"
           >
             <LayoutDashboard className="w-4 h-4" />
-            Open Dashboard
+            {t('welcome.openDashboard')}
           </a>
         )}
       </main>
 
       {/* Footer */}
       <footer className="py-6 text-center text-xs text-muted-foreground border-t border-border">
-        <p className="flex items-center justify-center gap-2">
+        <p className="flex items-center justify-center gap-2 mb-3">
           <Users className="w-3 h-3" />
-          Powered by the Discord Bot Baseline Framework
+          {botName}
         </p>
+        {/* Shareable language links — share /welcome?lang=en or /welcome?lang=es */}
+        <div className="flex items-center justify-center gap-3">
+          <a
+            href="/welcome?lang=en"
+            onClick={(e) => { e.preventDefault(); setLanguage('en'); router.replace('/welcome?lang=en'); }}
+            className="hover:text-foreground transition-colors underline-offset-2 hover:underline"
+          >
+            EN
+          </a>
+          <span className="opacity-30">|</span>
+          <a
+            href="/welcome?lang=es"
+            onClick={(e) => { e.preventDefault(); setLanguage('es'); router.replace('/welcome?lang=es'); }}
+            className="hover:text-foreground transition-colors underline-offset-2 hover:underline"
+          >
+            ES
+          </a>
+        </div>
       </footer>
     </div>
   );

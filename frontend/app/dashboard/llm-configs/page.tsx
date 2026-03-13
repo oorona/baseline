@@ -159,7 +159,7 @@ function LLMConfigsPage() {
   const TOOL_SCENARIOS = [
     { id: 'weather', label: 'Weather', fns: 'get_current_weather, get_forecast', example: "What's the weather in Tokyo right now?" },
     { id: 'calculator', label: 'Calculator', fns: 'add, multiply, power', example: 'What is 7 raised to the power of 3?' },
-    { id: 'discord_query', label: 'Discord Query', fns: 'get_member_count, get_server_info', example: 'How many members does the Baseline server have?' },
+    { id: 'discord_query', label: 'Discord Query', fns: 'get_member_count, get_server_info', example: 'How many members does this server have?' },
   ];
   const [toolScenario, setToolScenario] = useState(TOOL_SCENARIOS[0].id);
   const [toolPrompt, setToolPrompt] = useState(TOOL_SCENARIOS[0].example);

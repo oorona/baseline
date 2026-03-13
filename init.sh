@@ -56,8 +56,9 @@ echo -e "${BOLD}Frontend demo pages${RESET}"
 remove_path "frontend/app/dashboard/[guildId]/gemini-demo"
 remove_path "frontend/app/dashboard/[guildId]/test-l1"
 remove_path "frontend/app/dashboard/[guildId]/test-l2"
-remove_path "frontend/app/dashboard/[guildId]/settings"
 remove_path "frontend/app/dashboard/[guildId]/logging"
+# Note: frontend/app/dashboard/[guildId]/settings is kept — it is a core
+# schema-driven page that renders whichever SETTINGS_SCHEMA cogs declare.
 
 # ── Backend demo modules ──────────────────────────────────────────────────────
 echo
@@ -69,8 +70,31 @@ remove_path "backend/app/api/gemini"
 echo
 echo -e "${BOLD}Bot demo cogs & services${RESET}"
 
-remove_path "bot/cogs/gemini_demo.py"
-remove_path "bot/cogs/gemini_capabilities_demo.py"
+# Auto-discover and remove any cog file whose class declares __is_demo__ = True.
+# New demo cogs just need the attribute — no manual entry here required.
+if [ -d "bot/cogs" ]; then
+    python3 - "bot/cogs" <<'PYEOF'
+import sys, os, re
+
+cogs_dir = sys.argv[1]
+pattern = re.compile(r'__is_demo__\s*=\s*True')
+
+for fname in sorted(os.listdir(cogs_dir)):
+    if not fname.endswith('.py') or fname.startswith('_'):
+        continue
+    fpath = os.path.join(cogs_dir, fname)
+    try:
+        src = open(fpath).read()
+    except Exception:
+        continue
+    if pattern.search(src):
+        os.remove(fpath)
+        print(f"  \033[0;32m✓\033[0m  removed  {fpath}")
+PYEOF
+else
+    echo -e "  ${YELLOW}!${RESET}  bot/cogs not found — skipped"
+fi
+
 remove_path "bot/services/gemini.py"
 
 # ── Strip demo cards from the dashboard (frontend/app/page.tsx) ───────────────

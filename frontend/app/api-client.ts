@@ -37,6 +37,27 @@ export interface AuthorizedUser {
     created_at: string;
 }
 
+export interface SettingsFieldChoice {
+    label: string;
+    value: string;
+}
+
+export interface SettingsField {
+    key: string;
+    type: 'boolean' | 'channel_select' | 'multiselect' | 'text' | 'number';
+    label: string;
+    description?: string;
+    default: boolean | string | number | string[] | null;
+    choices?: SettingsFieldChoice[];
+}
+
+export interface SettingsSchema {
+    id: string;
+    label: string;
+    description: string;
+    fields: SettingsField[];
+}
+
 export interface LLMRequest {
     prompt: string;
     system_prompt?: string;
@@ -1440,6 +1461,33 @@ class APIClient {
     async llmTools(prompt: string, scenario: string, options: { provider?: string; model?: string; guild_id?: number } = {}) {
         const response = await this.client.post('/llm/tools', { prompt, scenario, ...options });
         return response.data;
+    }
+
+    // ── Commands ───────────────────────────────────────────────────────────
+
+    async getCommands(): Promise<{ commands: any[]; last_updated: string | null; total: number }> {
+        const response = await this.client.get('/commands/');
+        return response.data;
+    }
+
+    async refreshCommands(): Promise<void> {
+        await this.client.post('/commands/refresh');
+    }
+
+    async getSettingsSchema(): Promise<{ schemas: SettingsSchema[] }> {
+        const response = await this.client.get('/bot-info/settings-schema');
+        return response.data;
+    }
+
+    // ── Card Visibility ────────────────────────────────────────────────────
+
+    async getCardVisibility(guildId: string): Promise<Record<string, boolean>> {
+        const response = await this.client.get(`/guilds/${guildId}/card-visibility`);
+        return response.data.visibility ?? {};
+    }
+
+    async updateCardVisibility(guildId: string, visibility: Record<string, boolean>): Promise<void> {
+        await this.client.put(`/guilds/${guildId}/card-visibility`, { visibility });
     }
 
     // ── Generic helpers ────────────────────────────────────────────────────

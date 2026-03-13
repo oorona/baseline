@@ -2,45 +2,172 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { Save, Shield } from 'lucide-react';
-import { apiClient } from '@/app/api-client';
-import { usePlugins } from '@/app/plugins';
+import { Save, Shield, AlertCircle } from 'lucide-react';
+import { apiClient, SettingsField, SettingsSchema } from '@/app/api-client';
 import { withPermission } from '@/lib/components/with-permission';
 import { PermissionLevel } from '@/lib/permissions';
+
+// ─── Field renderers ──────────────────────────────────────────────────────────
+
+interface FieldProps {
+    field: SettingsField;
+    value: any;
+    onChange: (key: string, value: any) => void;
+    disabled: boolean;
+    channels: { id: string; name: string }[];
+}
+
+function BooleanField({ field, value, onChange, disabled }: FieldProps) {
+    return (
+        <div className="flex items-center justify-between">
+            <div>
+                <label htmlFor={field.key} className="text-sm font-medium cursor-pointer">
+                    {field.label}
+                </label>
+                {field.description && (
+                    <p className="text-xs text-muted-foreground mt-0.5">{field.description}</p>
+                )}
+            </div>
+            <input
+                id={field.key}
+                type="checkbox"
+                checked={value ?? field.default ?? false}
+                onChange={(e) => onChange(field.key, e.target.checked)}
+                disabled={disabled}
+                className="w-5 h-5 rounded border-input bg-background checked:bg-primary text-primary focus:ring-ring transition-colors"
+            />
+        </div>
+    );
+}
+
+function ChannelSelectField({ field, value, onChange, disabled, channels }: FieldProps) {
+    return (
+        <div className="space-y-1">
+            <label className="block text-sm font-medium">{field.label}</label>
+            {field.description && (
+                <p className="text-xs text-muted-foreground">{field.description}</p>
+            )}
+            <select
+                value={value ?? ''}
+                onChange={(e) => onChange(field.key, e.target.value || null)}
+                disabled={disabled}
+                className="w-full px-4 py-2 bg-background border border-input rounded-lg focus:ring-2 focus:ring-ring outline-none transition-shadow disabled:opacity-50"
+            >
+                <option value="">Select a channel…</option>
+                {channels.map((ch) => (
+                    <option key={ch.id} value={ch.id}>#{ch.name}</option>
+                ))}
+            </select>
+        </div>
+    );
+}
+
+function MultiselectField({ field, value, onChange, disabled }: FieldProps) {
+    const selected: string[] = value ?? field.default ?? [];
+    const choices = field.choices ?? [];
+
+    const toggle = (choiceValue: string, checked: boolean) => {
+        const next = checked
+            ? [...selected, choiceValue]
+            : selected.filter((v) => v !== choiceValue);
+        onChange(field.key, next);
+    };
+
+    return (
+        <div className="space-y-2">
+            <label className="block text-sm font-medium">{field.label}</label>
+            {field.description && (
+                <p className="text-xs text-muted-foreground">{field.description}</p>
+            )}
+            <div className="space-y-2 bg-muted/50 p-4 rounded-lg border border-border">
+                {choices.map((choice) => (
+                    <div key={choice.value} className="flex items-center gap-3">
+                        <input
+                            id={`${field.key}_${choice.value}`}
+                            type="checkbox"
+                            checked={selected.includes(choice.value)}
+                            onChange={(e) => toggle(choice.value, e.target.checked)}
+                            disabled={disabled}
+                            className="w-4 h-4 rounded border-input bg-background text-primary focus:ring-ring"
+                        />
+                        <label
+                            htmlFor={`${field.key}_${choice.value}`}
+                            className="text-sm cursor-pointer select-none"
+                        >
+                            {choice.label}
+                        </label>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+function TextField({ field, value, onChange, disabled }: FieldProps) {
+    return (
+        <div className="space-y-1">
+            <label className="block text-sm font-medium">{field.label}</label>
+            {field.description && (
+                <p className="text-xs text-muted-foreground">{field.description}</p>
+            )}
+            <input
+                type={field.type === 'number' ? 'number' : 'text'}
+                value={value ?? field.default ?? ''}
+                onChange={(e) => onChange(field.key, e.target.value)}
+                disabled={disabled}
+                className="w-full px-4 py-2 bg-background border border-input rounded-lg focus:ring-2 focus:ring-ring outline-none transition-shadow disabled:opacity-50"
+            />
+        </div>
+    );
+}
+
+function SchemaField(props: FieldProps) {
+    switch (props.field.type) {
+        case 'boolean':       return <BooleanField {...props} />;
+        case 'channel_select': return <ChannelSelectField {...props} />;
+        case 'multiselect':   return <MultiselectField {...props} />;
+        default:              return <TextField {...props} />;
+    }
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 function GuildSettingsPage() {
     const params = useParams();
     const guildId = params.guildId as string;
-    const { plugins } = usePlugins();
 
-    // Unified settings state
-    const [settings, setSettings] = useState<any>(null);
-    const [permissionLevel, setPermissionLevel] = useState<string | null>(null);
-    const [canModifyLevel3, setCanModifyLevel3] = useState(false);
+    const [schemas, setSchemas] = useState<SettingsSchema[]>([]);
+    const [settings, setSettings] = useState<Record<string, any>>({});
+    const [channels, setChannels] = useState<{ id: string; name: string }[]>([]);
+    const [canModify, setCanModify] = useState(false);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
-
-    const [channels, setChannels] = useState<any[]>([]);
+    const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
     useEffect(() => {
         const fetchData = async () => {
             if (!guildId) return;
             try {
-                const [settingsData, guildData, channelsData] = await Promise.all([
+                const [settingsData, guildData, channelsData, schemaData] = await Promise.all([
                     apiClient.getGuildSettings(guildId),
                     apiClient.getGuild(guildId),
-                    apiClient.getGuildChannels(guildId)
+                    apiClient.getGuildChannels(guildId),
+                    apiClient.getSettingsSchema(),
                 ]);
 
-                // Initialize settings with defaults if empty
                 setSettings(settingsData.settings || {});
-                setPermissionLevel(guildData.permission_level || null);
-                setCanModifyLevel3(settingsData.can_modify_level_3 || false);
-                setChannels(channelsData.filter((c: any) => c.type === 0)); // Filter for text channels
+                setCanModify(
+                    guildData.permission_level === 'owner' || settingsData.can_modify_level_3 === true
+                );
+                setChannels(
+                    channelsData
+                        .filter((c: any) => c.type === 0)
+                        .map((c: any) => ({ id: String(c.id), name: c.name }))
+                );
+                setSchemas(schemaData.schemas || []);
             } catch (err) {
                 console.error('Failed to load settings:', err);
-                setMessage({ type: 'error', text: 'Failed to load settings' });
+                setMessage({ type: 'error', text: 'Failed to load settings.' });
             } finally {
                 setLoading(false);
             }
@@ -48,52 +175,72 @@ function GuildSettingsPage() {
         fetchData();
     }, [guildId]);
 
-    const handleSettingChange = (key: string, value: any) => {
-        setSettings((prev: any) => ({
-            ...prev,
-            [key]: value
-        }));
+    const handleChange = (key: string, value: any) => {
+        setSettings((prev) => ({ ...prev, [key]: value }));
     };
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
         setSaving(true);
         setMessage(null);
-
         try {
-            await apiClient.updateGuildSettings(guildId as string, {
-                settings: settings
-            });
-            setMessage({ type: 'success', text: 'Settings saved successfully' });
-        } catch (err) {
-            console.error('Failed to save settings:', err);
-            setMessage({ type: 'error', text: 'Failed to save settings' });
+            await apiClient.updateGuildSettings(guildId, { settings });
+            setMessage({ type: 'success', text: 'Settings saved successfully.' });
+        } catch {
+            setMessage({ type: 'error', text: 'Failed to save settings.' });
         } finally {
             setSaving(false);
         }
     };
 
-    const isRestrictedReadOnly = !canModifyLevel3 && permissionLevel !== 'owner';
-    // const isReadOnly = permissionLevel === 'user'; // Removed to allow Authorized Users (Level 1) to edit
-    const isReadOnly = false;
+    const isReadOnly = !canModify;
 
     if (loading) {
         return (
             <div className="flex h-full items-center justify-center">
-                <div className="text-muted-foreground animate-pulse">Loading settings...</div>
+                <div className="text-muted-foreground animate-pulse">Loading settings…</div>
             </div>
         );
     }
 
-    // Permission block removed (fixed earlier)
+    // If no schemas are published yet (bot hasn't connected), show a placeholder
+    const content =
+        schemas.length === 0 ? (
+            <div className="bg-card border border-border rounded-xl p-8 text-center text-muted-foreground space-y-2">
+                <AlertCircle className="mx-auto w-8 h-8 opacity-40" />
+                <p className="font-medium">No configurable settings available.</p>
+                <p className="text-sm">The bot hasn't reported any settings schemas yet. Make sure the bot is online.</p>
+            </div>
+        ) : (
+            schemas.map((schema) => (
+                <div key={schema.id} className="bg-card border border-border rounded-xl p-6 shadow-sm space-y-5">
+                    <div className="border-b border-border pb-4">
+                        <h2 className="text-xl font-semibold">{schema.label}</h2>
+                        {schema.description && (
+                            <p className="text-sm text-muted-foreground mt-1">{schema.description}</p>
+                        )}
+                    </div>
+                    <div className="space-y-6">
+                        {schema.fields.map((field) => (
+                            <SchemaField
+                                key={field.key}
+                                field={field}
+                                value={settings[field.key]}
+                                onChange={handleChange}
+                                disabled={isReadOnly}
+                                channels={channels}
+                            />
+                        ))}
+                    </div>
+                </div>
+            ))
+        );
 
     return (
         <div className="max-w-4xl mx-auto space-y-8">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Bot Settings</h1>
-                    <p className="text-muted-foreground mt-2">Configure how the bot behaves in your server.</p>
-                </div>
+            <div>
+                <h1 className="text-3xl font-bold tracking-tight">Bot Settings</h1>
+                <p className="text-muted-foreground mt-2">Configure how the bot behaves in your server.</p>
             </div>
 
             {isReadOnly && (
@@ -104,116 +251,43 @@ function GuildSettingsPage() {
             )}
 
             {message && (
-                <div className={`p-4 rounded-lg flex items-center gap-2 text-sm font-medium ${message.type === 'success'
-                    ? 'bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20'
-                    : 'bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20'
-                    }`}>
+                <div className={`p-4 rounded-lg text-sm font-medium ${
+                    message.type === 'success'
+                        ? 'bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20'
+                        : 'bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20'
+                }`}>
                     {message.text}
                 </div>
             )}
 
             <form onSubmit={handleSave} className="space-y-8">
-                <div className="bg-card border border-border rounded-xl p-6 shadow-sm space-y-6">
-                    <div className="flex items-center justify-between border-b border-border pb-4">
-                        <h2 className="text-xl font-semibold">Logging Configuration</h2>
-                        <div className="flex items-center space-x-2">
-                            <input
-                                type="checkbox"
-                                id="loggingEnabled"
-                                checked={settings?.logging_enabled || false}
-                                onChange={(e) => handleSettingChange('logging_enabled', e.target.checked)}
-                                disabled={isRestrictedReadOnly}
-                                className="w-5 h-5 rounded border-input bg-background checked:bg-primary text-primary focus:ring-ring transition-colors"
-                            />
-                            <label htmlFor="loggingEnabled" className="text-sm font-medium cursor-pointer">Enable Logging</label>
-                        </div>
+                {content}
+
+                {schemas.length > 0 && (
+                    <div className="flex justify-end pt-4">
+                        <button
+                            type="submit"
+                            disabled={saving || isReadOnly}
+                            className="bg-primary hover:bg-primary/90 text-primary-foreground font-medium px-8 py-3 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm"
+                        >
+                            {saving ? (
+                                <>
+                                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    Saving…
+                                </>
+                            ) : (
+                                <>
+                                    <Save className="w-5 h-5" />
+                                    Save Settings
+                                </>
+                            )}
+                        </button>
                     </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium mb-2">Log Channel</label>
-                                <select
-                                    value={settings?.logging_channel_id || ''}
-                                    onChange={(e) => handleSettingChange('logging_channel_id', e.target.value)}
-                                    className="w-full px-4 py-2 bg-background border border-input rounded-lg focus:ring-2 focus:ring-ring focus:border-input outline-none transition-shadow disabled:opacity-50"
-                                    disabled={isRestrictedReadOnly || !settings?.logging_enabled}
-                                >
-                                    <option value="">Select a channel...</option>
-                                    {channels.map((channel) => (
-                                        <option key={channel.id} value={channel.id}>
-                                            #{channel.name}
-                                        </option>
-                                    ))}
-                                </select>
-                                <p className="text-xs text-muted-foreground mt-1">Channel where logs will be posted.</p>
-                            </div>
-                        </div>
-
-                        <div className="space-y-4">
-                            <label className="block text-sm font-medium mb-2">Logged Events</label>
-                            <div className="space-y-3 bg-muted/50 p-4 rounded-lg border border-border">
-                                {[
-                                    { key: 'on_message_delete', label: 'Message Deletions' },
-                                    { key: 'on_message_edit', label: 'Message Edits' },
-                                    { key: 'on_member_join', label: 'Member Joins' },
-                                    { key: 'on_member_remove', label: 'Member Leaves' }
-                                ].map((event) => {
-                                    const isIgnored = (settings?.logging_ignored_events || []).includes(event.key);
-                                    return (
-                                        <div key={event.key} className="flex items-center space-x-3">
-                                            <input
-                                                type="checkbox"
-                                                id={`event_${event.key}`}
-                                                checked={!isIgnored}
-                                                onChange={(e) => {
-                                                    const currentIgnored = settings?.logging_ignored_events || [];
-                                                    let newIgnored;
-                                                    if (e.target.checked) {
-                                                        // Remove from ignored
-                                                        newIgnored = currentIgnored.filter((ev: string) => ev !== event.key);
-                                                    } else {
-                                                        // Add to ignored
-                                                        newIgnored = [...currentIgnored, event.key];
-                                                    }
-                                                    handleSettingChange('logging_ignored_events', newIgnored);
-                                                }}
-                                                disabled={isRestrictedReadOnly || !settings?.logging_enabled}
-                                                className="w-4 h-4 rounded border-gray-400 dark:border-gray-600 bg-background text-primary focus:ring-ring"
-                                            />
-                                            <label htmlFor={`event_${event.key}`} className="text-sm cursor-pointer select-none">{event.label}</label>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="flex justify-end pt-4">
-                    <button
-                        type="submit"
-                        disabled={saving || isReadOnly}
-                        className="bg-primary hover:bg-primary/90 text-primary-foreground font-medium px-8 py-3 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-sm"
-                    >
-                        {saving ? (
-                            <>
-                                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                Saving...
-                            </>
-                        ) : (
-                            <>
-                                <Save className="w-5 h-5" />
-                                Save Settings
-                            </>
-                        )}
-                    </button>
-                </div>
+                )}
             </form>
         </div>
     );
 }
 
 // Level 3: Authorized
-// Users must be Authorized Users or have Authorized Roles to access this page
 export default withPermission(GuildSettingsPage, PermissionLevel.AUTHORIZED);

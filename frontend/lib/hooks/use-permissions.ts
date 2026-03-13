@@ -2,6 +2,9 @@ import { useAuth } from '@/lib/auth-context';
 import { apiClient } from '@/app/api-client';
 import { PermissionLevel } from '../permissions';
 import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+
+const PERM_CACHE_KEY = 'lastGuildPermLevel';
 
 export function usePermissions(guildId?: string) {
     const { user, loading: authLoading } = useAuth();
@@ -20,10 +23,20 @@ export function usePermissions(guildId?: string) {
         // Platform Admin Override
         if (user.is_admin) return PermissionLevel.DEVELOPER;
 
-        // Global Context (No Guild ID) -> Logged in User = Level 2
-        if (!guildId) return PermissionLevel.USER;
+        // Global Context (No Guild ID) — fall back to the highest permission
+        // the user had in their last active guild so that global pages
+        // (e.g. /dashboard/bot-health) respect the user's real role.
+        if (!guildId) {
+            if (typeof window !== 'undefined') {
+                const cached = parseInt(sessionStorage.getItem(PERM_CACHE_KEY) ?? '', 10);
+                if (!isNaN(cached) && cached >= PermissionLevel.USER) {
+                    return cached as PermissionLevel;
+                }
+            }
+            return PermissionLevel.USER;
+        }
 
-        // Valid Guild Context but failed to load or User not in guild (should be handled by query error usually)
+        // Valid Guild Context but guild not loaded yet
         if (!guild) return PermissionLevel.PUBLIC;
 
         // Map backend string to Level
@@ -32,19 +45,25 @@ export function usePermissions(guildId?: string) {
 
         if (pLevel === 'owner') return PermissionLevel.OWNER;
         if (pLevel === 'admin' || pLevel === 'ADMIN') return PermissionLevel.AUTHORIZED;
-        // Fix: 'user' should map to USER level (2), not AUTHORIZED (3)
         if (pLevel === 'user' || pLevel === 'USER') return PermissionLevel.USER;
         if (pLevel === 'level_2' || pLevel === 'LEVEL_2') return PermissionLevel.USER;
 
         return PermissionLevel.USER; // Fallback for guild members
     })();
 
+    // Cache the user's permission level whenever we have a guild context.
+    // This allows global pages (no guildId) to use the cached level.
+    useEffect(() => {
+        if (guildId && guild && currentPermissionLevel >= PermissionLevel.USER) {
+            if (typeof window !== 'undefined') {
+                sessionStorage.setItem(PERM_CACHE_KEY, String(currentPermissionLevel));
+            }
+        }
+    }, [guildId, guild, currentPermissionLevel]);
+
     const hasAccess = (requiredLevel: PermissionLevel) => {
         if (requiredLevel <= PermissionLevel.PUBLIC_DATA) return true;
         if (!user) return false;
-
-        // If developer, generally allow? (Not implemented in backend yet, but we can flag it if user.is_developer)
-        // For now, rely on calculated level.
         return currentPermissionLevel >= requiredLevel;
     };
 
