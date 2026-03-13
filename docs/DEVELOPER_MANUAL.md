@@ -49,16 +49,20 @@ This removes:
 | `frontend/app/dashboard/[guildId]/gemini-demo/` | Gemini capabilities demo pages |
 | `frontend/app/dashboard/[guildId]/test-l1/` | Framework access-level test page |
 | `frontend/app/dashboard/[guildId]/test-l2/` | Framework access-level test page |
-| `frontend/app/dashboard/[guildId]/settings/` | Sample bot settings page |
 | `frontend/app/dashboard/[guildId]/logging/` | Sample logging page |
 | `backend/app/api/gemini/` | Gemini demo API router |
-| `bot/cogs/gemini_demo.py` | Sample cog — basic LLM |
-| `bot/cogs/gemini_capabilities_demo.py` | Sample cog — full Gemini 3 demo |
 | `bot/services/gemini.py` | Gemini service (used only by demo cogs) |
+| Any `bot/cogs/*.py` with `__is_demo__ = True` | All cogs marked as demo are auto-discovered and deleted |
 
 It also strips demo navigation cards (`isDemo: true`) from `frontend/app/page.tsx` and removes the Gemini router from `backend/main.py`.
 
-> Demo files are marked with `*** DEMO CODE ***` banners in their file headers so they are easy to spot before running `init.sh`.
+> **What is NOT removed:** `frontend/app/dashboard/[guildId]/settings/` is a **core framework page** — it renders dynamically based on `SETTINGS_SCHEMA` declarations from loaded cogs. You do not need to modify it when adding new settings.
+
+> **How to mark your own demo code:**
+> - Bot cogs: add `__is_demo__ = True` as a class attribute — `init.sh` auto-discovers and deletes these.
+> - Dashboard cards: add `isDemo: true` to the card object in `frontend/app/page.tsx`.
+> - Pages/APIs: add `remove_path "path/to/file"` in `init.sh`.
+> - Demo files also have `*** DEMO CODE ***` banners in their headers so they are easy to spot before running `init.sh`.
 
 ---
 
@@ -200,35 +204,97 @@ To ensure a cohesive look, all plugins **MUST** use the following semantic token
 
 To add a new feature (e.g., "Music Bot"), follow this strict workflow:
 
-### Step 1: Create the Backend Logic (Cog)
-Create `bot/cogs/music.py`.
-*   Inherit from `commands.Cog`.
-*   Use `GuildLogger` for logging.
-*   Store settings in the database via the Settings Service (accessed via API or shared DB).
+### Step 1: Create the Bot Cog
+
+Create `bot/cogs/music.py`. Every cog must:
+
+- Provide an explicit `description=` on every `@app_commands.command()` — never omit it.
+- Declare a `SETTINGS_SCHEMA` class attribute if the cog reads from guild settings — the Bot Settings page renders from this automatically.
+- Set `__is_demo__ = True` if this is demo/example code so `init.sh` removes it on clone.
 
 ```python
 # bot/cogs/music.py
+import discord
+from discord import app_commands
 from discord.ext import commands
+import structlog
 
-class Music(commands.Cog):
-    def __init__(self, bot):
+logger = structlog.get_logger()
+
+class MusicCog(commands.Cog):
+    """Music playback for your server."""
+
+    # Declare the settings fields this cog reads so the Bot Settings page
+    # renders them automatically — no frontend code change needed.
+    SETTINGS_SCHEMA = {
+        "id": "music",
+        "label": "Music",
+        "description": "Configure music playback settings.",
+        "fields": [
+            {"key": "music_enabled",    "type": "boolean",        "label": "Enable Music",         "default": False},
+            {"key": "music_channel_id", "type": "channel_select", "label": "Allowed Voice Channel", "default": None},
+        ],
+    }
+
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
 
+    @app_commands.command(
+        name="play",
+        description="Play a song in the current voice channel"  # REQUIRED — always explicit
+    )
+    @app_commands.describe(query="Song name or URL")
+    async def play(self, interaction: discord.Interaction, query: str):
+        logger.info("play_invoked", command="play",
+                    user_id=interaction.user.id, guild_id=interaction.guild_id)
+        await interaction.response.defer()
+        # fetch settings
+        settings = await self._get_settings(interaction.guild_id)
+        if not settings.get("music_enabled"):
+            await interaction.followup.send("Music is not enabled.", ephemeral=True)
+            return
+        # ... implementation
+
+    async def _get_settings(self, guild_id: int) -> dict:
+        headers = {"Authorization": f"Bot {self.bot.services.config.DISCORD_BOT_TOKEN}"}
+        async with self.bot.session.get(
+            f"http://backend:8000/api/v1/guilds/{guild_id}/settings",
+            headers=headers
+        ) as resp:
+            if resp.status == 200:
+                return (await resp.json()).get("settings", {})
+        return {}
+
 async def setup(bot):
-    await bot.add_cog(Music(bot))
+    await bot.add_cog(MusicCog(bot))
 ```
 
-### Step 2: Create the Frontend Settings Page
-Create `frontend/app/dashboard/[guildId]/music/page.tsx`.
-*   Use `withPermission` to secure the page (usually Level 3 or 2).
-*   Use `apiClient` to fetch/save settings.
+> **Bot Settings page is automatic.** Once `SETTINGS_SCHEMA` is declared and the bot restarts, the settings form appears in the dashboard with no frontend changes needed. The introspection cog sends schemas to the backend on `on_ready`; the backend stores them; the settings page fetches and renders them.
+
+### Step 2: Add a Navigation Card (Optional)
+
+If the feature needs its own dedicated dashboard page (beyond the generic Bot Settings card), add a card to `frontend/app/page.tsx`:
+
+```typescript
+{
+    id: "music",
+    title: "Music",
+    description: "Control music playback.",
+    href: `/dashboard/${guildId}/music`,
+    icon: MusicIcon,
+    level: PermissionLevel.AUTHORIZED,  // must match withPermission level on the page
+    // isDemo: true,                    // uncomment if this is demo code
+},
+```
+
+And create `frontend/app/dashboard/[guildId]/music/page.tsx`:
 
 ```tsx
-// frontend/app/dashboard/[guildId]/music/page.tsx
 'use client';
 import { withPermission } from '@/lib/components/with-permission';
 import { PermissionLevel } from '@/lib/permissions';
 
+// Security: L3 — Authorized users only
 function MusicPage() {
     return <div>Music Settings</div>;
 }
@@ -236,25 +302,20 @@ function MusicPage() {
 export default withPermission(MusicPage, PermissionLevel.AUTHORIZED);
 ```
 
-> **REQUIRED — Back Navigation**
-> Every dashboard page **must** be exported via `withPermission`. This HOC automatically injects a `← Dashboard` breadcrumb link at the top of every page, giving users a consistent way to return to the main card grid. A page that is exported as a plain `export default function` will **not** have this link and will feel broken.
->
-> The pattern is always:
-> ```tsx
-> function MyPage() { /* ... */ }
-> export default withPermission(MyPage, PermissionLevel.AUTHORIZED);
-> ```
-> Never use `export default function MyPage()` for any page inside `frontend/app/dashboard/`.
+> **REQUIRED — `withPermission` on every dashboard page.** This HOC injects the `← Dashboard` breadcrumb, enforces the permission check, and redirects unauthenticated users. A page exported as plain `export default function` will have no navigation link and no permission guard.
 
-### Step 3: Register Navigation
-1.  **Card**: Add a new card entry in `frontend/app/page.tsx` inside the `cards` array.
-2.  **Plugin Registry**: (Optional) Register in `frontend/app/plugins/registry.tsx` if it's a dynamically loaded plugin.
+### Step 3: Register a Backend API (If Needed)
+
+If the feature needs its own endpoints beyond guild settings, create `backend/app/api/music.py` and register it in `main.py`. Follow the security rules in [docs/SECURITY.md](SECURITY.md) — every endpoint must declare its security level.
 
 ### Baseline Expectations
+
 **Every Bot** built on this framework is expected to have **at least:**
-1.  One **Cog** implementing the core bot logic (under `bot/cogs/`).
-2.  One **Frontend page** for any user-facing controls, secured at `PermissionLevel.AUTHORIZED` (Level 3) or higher.
-3.  The page exported via `withPermission` — never as a bare `export default function`.
+
+1. One **Cog** with explicit `description=` on every command and `SETTINGS_SCHEMA` for any configurable settings.
+2. Settings exposed via the generic Bot Settings page (automatic from `SETTINGS_SCHEMA`) — a dedicated page is only needed for complex UIs.
+3. Every frontend page exported via `withPermission` — never as a bare `export default function`.
+4. All mutations write an `AuditLog` entry at the backend.
 
 ---
 
