@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { Bot, ExternalLink, LayoutDashboard, LogIn, Users, Loader2, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 interface BotInfo {
   name: string;
@@ -20,9 +20,11 @@ async function fetchBotInfo(): Promise<BotInfo> {
   return res.json();
 }
 
-export default function WelcomePage() {
+function WelcomeContent() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const noRedirect = searchParams.get('noRedirect') === '1';
   const [botInfo, setBotInfo] = useState<BotInfo | null>(null);
   const [botLoading, setBotLoading] = useState(true);
   const [userGuilds, setUserGuilds] = useState<number | null>(null);
@@ -42,12 +44,12 @@ export default function WelcomePage() {
       .catch(() => setUserGuilds(0));
   }, [user]);
 
-  // Redirect authenticated users who have guilds to the dashboard
+  // Redirect authenticated users who have guilds to the dashboard (skip if noRedirect param is set)
   useEffect(() => {
-    if (userGuilds !== null && userGuilds > 0) {
+    if (!noRedirect && userGuilds !== null && userGuilds > 0) {
       router.push('/');
     }
-  }, [userGuilds, router]);
+  }, [userGuilds, router, noRedirect]);
 
   const handleAddToServer = () => {
     if (botInfo?.invite_url) {
@@ -200,5 +202,17 @@ export default function WelcomePage() {
         </p>
       </footer>
     </div>
+  );
+}
+
+export default function WelcomePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+      </div>
+    }>
+      <WelcomeContent />
+    </Suspense>
   );
 }

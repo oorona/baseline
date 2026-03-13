@@ -2,8 +2,7 @@
 # =============================================================================
 # setup_database.sh — Create the application database user and schema
 #
-# Run this ONCE after `docker compose up -d postgres` and before starting
-# the full stack for the first time.
+# Run this ONCE before starting the full stack for the first time.
 #
 # Schema isolation:
 #   The schema name always equals the database username.
@@ -16,18 +15,16 @@
 #   Their objects never mix, and neither can write to the other's schema.
 #
 # Usage:
-#   ./setup_database.sh                         # interactive — prompts for all values
-#   ./setup_database.sh --user myuser           # prompts for password and db name
-#   ./setup_database.sh --user myuser --db mydb # prompts for password only
+#   ./setup_database.sh                        # interactive — prompts for all values
+#   ./setup_database.sh --container mypostgres # use a specific container name
 #
 # Options:
-#   --user      DB username (and schema name)  (prompted if omitted)
-#   --password  DB password                    (prompted if omitted — avoids shell history)
-#   --db        Database name                  (prompted if omitted; default: same as --user)
-#   --service   Compose service name           (default: postgres)
+#   --container  Docker container name running postgres  (prompted if omitted; default: postgres)
+#   --user       DB username (and schema name)           (prompted if omitted)
+#   --password   DB password                             (prompted if omitted — avoids shell history)
+#   --db         Database name                           (prompted if omitted; default: same as --user)
 #
-# The postgres superuser password is read from secrets/postgres_password.txt
-# (the same Docker secret used by the postgres container).
+# The postgres superuser password is read from secrets/postgres_password.txt.
 #
 # The credentials you choose here are what you enter in the Setup Wizard.
 # The wizard will test the connection and run Alembic migrations to create
@@ -41,18 +38,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SECRETS_FILE="${SCRIPT_DIR}/secrets/postgres_password.txt"
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
-APP_USER=""     # required — set via --user
+PG_CONTAINER=""
+APP_USER=""
 APP_PASSWORD=""
-APP_DB=""       # defaults to APP_USER if not set
-PG_SERVICE="postgres"
+APP_DB=""
 
 # ── Parse arguments ───────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --user)     APP_USER="$2";     shift 2 ;;
-    --password) APP_PASSWORD="$2"; shift 2 ;;
-    --db)       APP_DB="$2";       shift 2 ;;
-    --service)  PG_SERVICE="$2";   shift 2 ;;
+    --container) PG_CONTAINER="$2"; shift 2 ;;
+    --user)      APP_USER="$2";     shift 2 ;;
+    --password)  APP_PASSWORD="$2"; shift 2 ;;
+    --db)        APP_DB="$2";       shift 2 ;;
     *) echo "Unknown option: $1"; exit 1 ;;
   esac
 done
@@ -75,6 +72,12 @@ if [[ -z "$PG_SUPERUSER_PASSWORD" ]]; then
 fi
 
 # ── Prompt for any missing parameters ────────────────────────────────────────
+if [[ -z "$PG_CONTAINER" ]]; then
+  echo ""
+  read -rp "Postgres container name [postgres]: " PG_CONTAINER
+  PG_CONTAINER="${PG_CONTAINER:-postgres}"
+fi
+
 if [[ -z "$APP_USER" ]]; then
   echo ""
   read -rp "Database username: " APP_USER
@@ -112,27 +115,25 @@ if [[ -z "$APP_PASSWORD" ]]; then
   exit 1
 fi
 
-# ── Verify the postgres container is running ──────────────────────────────────
+# ── Verify the container is running ──────────────────────────────────────────
 echo ""
-echo "Checking postgres container ('${PG_SERVICE}')..."
-
-if ! docker compose -f docker-compose.db.yml ps --status running "$PG_SERVICE" 2>/dev/null | grep -q "$PG_SERVICE"; then
+echo "Checking container '${PG_CONTAINER}'..."
+if ! docker inspect --format '{{.State.Running}}' "$PG_CONTAINER" 2>/dev/null | grep -q "true"; then
   echo ""
-  echo "  ERROR: '${PG_SERVICE}' container is not running."
-  echo ""
-  echo "  Start it first:"
-  echo "    docker compose -f docker-compose.db.yml up -d ${PG_SERVICE}"
+  echo "  ERROR: container '${PG_CONTAINER}' is not running."
+  echo "  Check with: docker ps"
   echo ""
   exit 1
 fi
-
 echo "  Container is running."
+
+PSQL="docker exec -i -e PGPASSWORD=${PG_SUPERUSER_PASSWORD} ${PG_CONTAINER} psql -U postgres"
 
 # ── Step 1: Create the role and database ──────────────────────────────────────
 echo ""
 echo "Creating role '${APP_USER}' and database '${APP_DB}'..."
 
-docker compose -f docker-compose.db.yml exec -T -e "PGPASSWORD=${PG_SUPERUSER_PASSWORD}" "$PG_SERVICE" psql -U postgres -v ON_ERROR_STOP=1 <<-EOSQL
+$PSQL -v ON_ERROR_STOP=1 <<-EOSQL
   -- Create the application role (idempotent)
   DO \$\$
   BEGIN
@@ -153,16 +154,14 @@ docker compose -f docker-compose.db.yml exec -T -e "PGPASSWORD=${PG_SUPERUSER_PA
 EOSQL
 
 # ── Step 2: Configure schema isolation ────────────────────────────────────────
-# Schema name == username.  All objects land here, never in public.
 echo "Configuring schema isolation (schema: '${APP_SCHEMA}')..."
 
-docker compose -f docker-compose.db.yml exec -T -e "PGPASSWORD=${PG_SUPERUSER_PASSWORD}" "$PG_SERVICE" psql -U postgres -d "$APP_DB" -v ON_ERROR_STOP=1 <<-EOSQL
+$PSQL -d "$APP_DB" -v ON_ERROR_STOP=1 <<-EOSQL
 
   -- Create the dedicated schema owned by the app user
   CREATE SCHEMA IF NOT EXISTS "${APP_SCHEMA}" AUTHORIZATION "${APP_USER}";
 
   -- search_path = schema only.  The connection never sees public.
-  -- Every table, view, sequence created by this user lands in "${APP_SCHEMA}".
   ALTER ROLE "${APP_USER}" IN DATABASE "${APP_DB}"
     SET search_path = "${APP_SCHEMA}";
 
@@ -183,7 +182,7 @@ echo "  Database ready."
 echo ""
 echo "  Enter these credentials in the Setup Wizard:"
 echo ""
-echo "    Host:     postgres   (Docker service name)"
+echo "    Host:     ${PG_CONTAINER}   (Docker container/service name)"
 echo "    Port:     5432"
 echo "    User:     ${APP_USER}"
 echo "    Password: ${APP_PASSWORD}"

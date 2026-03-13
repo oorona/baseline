@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { apiClient } from '../../../../api-client';
+import { withPermission } from '@/lib/components/with-permission';
+import { PermissionLevel } from '@/lib/permissions';
 
 type TabType = 'create' | 'upload' | 'query' | 'manage' | 'documents';
 
@@ -48,7 +50,7 @@ interface MetadataField {
     value: string;
 }
 
-export default function FileSearchDemoPage() {
+function FileSearchDemoPage() {
     const params = useParams();
     const guildId = params?.guildId as string;
 
@@ -983,3 +985,5 @@ export default function FileSearchDemoPage() {
         </div>
     );
 }
+
+export default withPermission(FileSearchDemoPage, PermissionLevel.DEVELOPER);

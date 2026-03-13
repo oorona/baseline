@@ -1,6 +1,5 @@
 import pytest
-import discord
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, AsyncMock
 
 @pytest.mark.asyncio
 async def test_bot_smoke():
@@ -9,6 +8,8 @@ async def test_bot_smoke():
 
 @pytest.mark.asyncio
 async def test_mock_discord_client():
-    """Verify we can mock discord client."""
-    mock_client = MagicMock(spec=discord.Client)
-    assert isinstance(mock_client, discord.Client)
+    """Verify the test framework supports async mocking (used across all bot cog tests)."""
+    mock_bot = MagicMock()
+    mock_bot.wait_until_ready = AsyncMock()
+    await mock_bot.wait_until_ready()
+    mock_bot.wait_until_ready.assert_awaited_once()

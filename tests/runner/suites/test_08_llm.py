@@ -22,19 +22,20 @@ import pytest
 import os
 
 GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://gateway")
+BACKEND_URL = os.environ.get("BACKEND_URL", "http://backend:8000")
 TEST_API_TOKEN = os.environ.get("TEST_API_TOKEN", "")
 SUITE = "08 LLM Endpoints"
 
 
-def _get(path: str, headers: dict = None):
-    url = GATEWAY_URL + path
+def _get(path: str, headers: dict = None, base: str = None):
+    url = (base or GATEWAY_URL) + path
     start = time.monotonic()
     r = httpx.get(url, timeout=30, follow_redirects=False, headers=headers or {})
     return r, (time.monotonic() - start) * 1000
 
 
-def _post(path: str, json_body: dict = None, headers: dict = None):
-    url = GATEWAY_URL + path
+def _post(path: str, json_body: dict = None, headers: dict = None, base: str = None):
+    url = (base or GATEWAY_URL) + path
     start = time.monotonic()
     r = httpx.post(url, timeout=60, follow_redirects=False,
                    headers=headers or {}, json=json_body or {})
@@ -42,7 +43,11 @@ def _post(path: str, json_body: dict = None, headers: dict = None):
 
 
 def _auth_headers():
-    return {"Authorization": f"Bearer {TEST_API_TOKEN}"}
+    """Auth + gateway-trust header for direct backend calls (bypasses nginx rate limit)."""
+    return {
+        "Authorization": f"Bearer {TEST_API_TOKEN}",
+        "X-Gateway-Request": "true",
+    }
 
 
 # ─── Unauthenticated Rejection ────────────────────────────────────────────────
@@ -92,7 +97,7 @@ class TestLLMInvalidInputRejection:
         """Requesting a schema that does not exist should return 404."""
         r, _ = _post("/api/v1/llm/structured",
                      json_body={"prompt": "test", "schema_name": "nonexistent_schema_xyz"},
-                     headers=_auth_headers())
+                     headers=_auth_headers(), base=BACKEND_URL)
         assert r.status_code == 404, (
             f"Unknown schema should return 404, got {r.status_code}: {r.text[:200]}"
         )
@@ -102,7 +107,7 @@ class TestLLMInvalidInputRejection:
         """Requesting an unknown function-calling scenario should return 400."""
         r, _ = _post("/api/v1/llm/tools",
                      json_body={"prompt": "test", "scenario": "nonexistent_scenario_xyz"},
-                     headers=_auth_headers())
+                     headers=_auth_headers(), base=BACKEND_URL)
         assert r.status_code == 400, (
             f"Unknown scenario should return 400, got {r.status_code}: {r.text[:200]}"
         )
@@ -112,7 +117,7 @@ class TestLLMInvalidInputRejection:
         """An empty prompt string should be rejected (missing required field)."""
         r, _ = _post("/api/v1/llm/generate",
                      json_body={},
-                     headers=_auth_headers())
+                     headers=_auth_headers(), base=BACKEND_URL)
         assert r.status_code == 422, (
             f"Missing required 'prompt' should return 422, got {r.status_code}"
         )
@@ -122,7 +127,7 @@ class TestLLMInvalidInputRejection:
         """Missing schema_name should return 422."""
         r, _ = _post("/api/v1/llm/structured",
                      json_body={"prompt": "test"},
-                     headers=_auth_headers())
+                     headers=_auth_headers(), base=BACKEND_URL)
         assert r.status_code == 422, (
             f"Missing schema_name should return 422, got {r.status_code}"
         )
@@ -139,6 +144,7 @@ class TestLLMGenerateEndpoint:
             "/api/v1/llm/generate",
             json_body={"prompt": "Reply with exactly the word: PONG", "provider": "openai"},
             headers=_auth_headers(),
+            base=BACKEND_URL,
         )
         # 200 = success, 500 = LLM provider error (not configured), 429 = rate limit
         assert r.status_code in (200, 500, 429), (
@@ -150,6 +156,7 @@ class TestLLMGenerateEndpoint:
             "/api/v1/llm/generate",
             json_body={"prompt": "Say hello.", "provider": "openai"},
             headers=_auth_headers(),
+            base=BACKEND_URL,
         )
         if r.status_code == 200:
             data = r.json()
@@ -166,6 +173,7 @@ class TestLLMGenerateEndpoint:
                 "provider": "openai",
             },
             headers=_auth_headers(),
+            base=BACKEND_URL,
         )
         assert r.status_code in (200, 500, 429), (
             f"Generate with system_prompt failed: {r.status_code}"
@@ -185,6 +193,7 @@ class TestLLMStructuredEndpoint:
                 "provider": "openai",
             },
             headers=_auth_headers(),
+            base=BACKEND_URL,
         )
         assert r.status_code in (200, 500, 422, 429), (
             f"POST /llm/structured (user_intent) got {r.status_code}: {r.text[:300]}"
@@ -200,6 +209,7 @@ class TestLLMStructuredEndpoint:
                 "provider": "openai",
             },
             headers=_auth_headers(),
+            base=BACKEND_URL,
         )
         if r.status_code == 200:
             data = r.json()
@@ -219,6 +229,7 @@ class TestLLMStructuredEndpoint:
                 "provider": "openai",
             },
             headers=_auth_headers(),
+            base=BACKEND_URL,
         )
         if r.status_code == 200:
             data = r.json()
@@ -237,6 +248,7 @@ class TestLLMStructuredEndpoint:
                 "provider": "openai",
             },
             headers=_auth_headers(),
+            base=BACKEND_URL,
         )
         assert r.status_code in (200, 500, 422, 429), (
             f"Structured moderation endpoint: {r.status_code}"
@@ -256,6 +268,7 @@ class TestLLMFunctionCallingEndpoint:
                 "provider": "openai",
             },
             headers=_auth_headers(),
+            base=BACKEND_URL,
         )
         assert r.status_code in (200, 500, 422, 429), (
             f"POST /llm/tools (weather) got {r.status_code}: {r.text[:300]}"
@@ -271,6 +284,7 @@ class TestLLMFunctionCallingEndpoint:
                 "provider": "openai",
             },
             headers=_auth_headers(),
+            base=BACKEND_URL,
         )
         if r.status_code == 200:
             data = r.json()
@@ -296,6 +310,7 @@ class TestLLMFunctionCallingEndpoint:
                 "provider": "openai",
             },
             headers=_auth_headers(),
+            base=BACKEND_URL,
         )
         if r.status_code == 200:
             data = r.json()
@@ -313,6 +328,7 @@ class TestLLMFunctionCallingEndpoint:
                 "provider": "openai",
             },
             headers=_auth_headers(),
+            base=BACKEND_URL,
         )
         assert r.status_code in (200, 500, 422, 429), (
             f"Calculator scenario: {r.status_code}"
@@ -330,6 +346,7 @@ class TestLLMRateLimiting:
             "/api/v1/llm/generate",
             json_body={"prompt": "ping", "provider": "openai"},
             headers=_auth_headers(),
+            base=BACKEND_URL,
         )
         # Either 200 (success) or 429 (rate limited) — both prove rate limiting is active
         assert r.status_code in (200, 429, 500), (
@@ -338,7 +355,7 @@ class TestLLMRateLimiting:
 
     def test_llm_stats_requires_admin(self):
         """GET /llm/stats should return 403 for non-admin authenticated users."""
-        r, _ = _get("/api/v1/llm/stats", headers=_auth_headers())
+        r, _ = _get("/api/v1/llm/stats", headers=_auth_headers(), base=BACKEND_URL)
         # Either 403 (regular user) or 200 (admin user) — never 401 with a valid token
         assert r.status_code in (200, 403), (
             f"Authenticated /llm/stats should be 200 (admin) or 403 (user), "

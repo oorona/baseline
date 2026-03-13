@@ -33,17 +33,32 @@ This documentation is the **authoritative source** for developers and AI Agents 
 | **Frontend (Core)** | `frontend/app/layout.tsx`, `frontend/lib/*` | Layouts, Auth Context, UI Components. | **Core** |
 | **Frontend (Pages)** | `frontend/app/dashboard/*` | Dashboard pages. | **User/Sample** |
 
-### Sample Files (Test Artifacts)
-The following files are present **ONLY** for testing the framework. Future bots should likely remove or replace them:
-*   `frontend/app/dashboard/[guildId]/test-l1/` (Tests Public Data Access)
-*   `frontend/app/dashboard/[guildId]/test-l2/` (Tests User Access)
-*   `frontend/app/dashboard/[guildId]/gemini-demo/` (Tests Gemini Capabilities - Demo)
-*   `bot/cogs/status.py` (Sample Cog)
-*   `bot/cogs/logging.py` (Sample Cog)
-*   `bot/cogs/gemini_demo.py` (Sample Cog - Basic LLM)
-*   `bot/cogs/gemini_capabilities_demo.py` (Sample Cog - Full Gemini 3 Demo)
+### Starting a New Bot from this Framework
 
-> **Note**: Demo files are clearly marked with `*** DEMO CODE ***` banners to distinguish them from framework code.
+After cloning the repository, run the initialiser script **once** to strip all demo/example code:
+
+```bash
+chmod +x init.sh
+./init.sh
+```
+
+This removes:
+
+| Path | Why |
+| :--- | :--- |
+| `frontend/app/dashboard/[guildId]/gemini-demo/` | Gemini capabilities demo pages |
+| `frontend/app/dashboard/[guildId]/test-l1/` | Framework access-level test page |
+| `frontend/app/dashboard/[guildId]/test-l2/` | Framework access-level test page |
+| `frontend/app/dashboard/[guildId]/settings/` | Sample bot settings page |
+| `frontend/app/dashboard/[guildId]/logging/` | Sample logging page |
+| `backend/app/api/gemini/` | Gemini demo API router |
+| `bot/cogs/gemini_demo.py` | Sample cog — basic LLM |
+| `bot/cogs/gemini_capabilities_demo.py` | Sample cog — full Gemini 3 demo |
+| `bot/services/gemini.py` | Gemini service (used only by demo cogs) |
+
+It also strips demo navigation cards (`isDemo: true`) from `frontend/app/page.tsx` and removes the Gemini router from `backend/main.py`.
+
+> Demo files are marked with `*** DEMO CODE ***` banners in their file headers so they are easy to spot before running `init.sh`.
 
 ---
 
@@ -83,34 +98,16 @@ secrets/encryption_key   ←  created by ./setup_secrets.sh
 
 ## 2.6 LLM & AI Capabilities
 
-The framework includes comprehensive LLM support with special focus on **Gemini 3**:
+The framework includes a multi-provider LLM service accessible to all bot cogs via `bot.services.llm`.
 
 ### Supported Providers
-| Provider | Models | Special Features |
-|----------|--------|------------------|
-| **Google (Gemini)** | Gemini 3 Pro/Flash, 2.5 Pro/Flash | Full multimodal, thinking levels |
-| **OpenAI** | GPT-4o, GPT-4, GPT-3.5 | Function calling, vision |
-| **Anthropic** | Claude 3 Opus/Sonnet/Haiku | Long context, analysis |
-| **xAI** | Grok | Real-time knowledge |
 
-### Gemini 3 Capabilities (Google)
-The framework supports all 13 Gemini 3 API capabilities:
-
-| Capability | Description | Documentation |
-|------------|-------------|---------------|
-| Text Generation | Standard text with thinking levels | [GEMINI_CAPABILITIES.md](GEMINI_CAPABILITIES.md) |
-| Image Generation | Create images from prompts | [GEMINI_CAPABILITIES.md](GEMINI_CAPABILITIES.md) |
-| Image Understanding | Analyze and describe images | [GEMINI_CAPABILITIES.md](GEMINI_CAPABILITIES.md) |
-| Text-to-Speech | Natural voice synthesis | [GEMINI_CAPABILITIES.md](GEMINI_CAPABILITIES.md) |
-| Audio Understanding | Transcribe and analyze audio | [GEMINI_CAPABILITIES.md](GEMINI_CAPABILITIES.md) |
-| Embeddings | Vector embeddings for search | [GEMINI_CAPABILITIES.md](GEMINI_CAPABILITIES.md) |
-| Thinking Levels | Control reasoning depth | [GEMINI_CAPABILITIES.md](GEMINI_CAPABILITIES.md) |
-| Structured Output | JSON schema responses | [GEMINI_CAPABILITIES.md](GEMINI_CAPABILITIES.md) |
-| Function Calling | Let AI call your functions | [GEMINI_CAPABILITIES.md](GEMINI_CAPABILITIES.md) |
-| File Search | RAG over uploaded files | [GEMINI_CAPABILITIES.md](GEMINI_CAPABILITIES.md) |
-| URL Context | Include web content | [GEMINI_CAPABILITIES.md](GEMINI_CAPABILITIES.md) |
-| Content Caching | Cache for cost savings | [GEMINI_CAPABILITIES.md](GEMINI_CAPABILITIES.md) |
-| Token Counting | Estimate before calling | [GEMINI_CAPABILITIES.md](GEMINI_CAPABILITIES.md) |
+| Provider | Models |
+|----------|--------|
+| **Google Gemini** | Gemini 2.5 Pro/Flash, Gemini 2.0 Flash |
+| **OpenAI** | GPT-4o, GPT-4 |
+| **Anthropic** | Claude 3 Opus/Sonnet/Haiku |
+| **xAI** | Grok |
 
 ### Quick Start with LLM
 
@@ -119,31 +116,26 @@ The framework supports all 13 Gemini 3 API capabilities:
 class MyCog(commands.Cog):
     def __init__(self, bot):
         self.llm = bot.services.llm
-    
+
     @app_commands.command()
     async def ask(self, interaction, question: str):
         await interaction.response.defer()
-        
-        # Simple chat
-        response = await self.llm.chat(
-            message=question,
-            provider_name="google",
-            model="gemini-3-pro-preview"
-        )
-        
+        response = await self.llm.chat(message=question)
         await interaction.followup.send(response)
 ```
 
-### Cost Tracking
+### Usage Tracking
 
-All LLM usage is automatically tracked in the `llm_usage` table with:
+All LLM calls are automatically recorded in the `llm_usage` table:
 - Provider, model, capability type
 - Token counts (prompt, completion, thinking, cached)
 - Cost estimation
 - Latency metrics
 - Guild and user attribution
 
-See [LLM_USAGE_GUIDE.md](LLM_USAGE_GUIDE.md) for general usage and [GEMINI_CAPABILITIES.md](GEMINI_CAPABILITIES.md) for Gemini-specific features.
+This data feeds the **AI Analytics** dashboard page (Level 4 — always present, not a demo).
+
+See [LLM_USAGE_GUIDE.md](LLM_USAGE_GUIDE.md) for the full usage guide.
 
 ---
 
@@ -244,23 +236,36 @@ function MusicPage() {
 export default withPermission(MusicPage, PermissionLevel.AUTHORIZED);
 ```
 
+> **REQUIRED — Back Navigation**
+> Every dashboard page **must** be exported via `withPermission`. This HOC automatically injects a `← Dashboard` breadcrumb link at the top of every page, giving users a consistent way to return to the main card grid. A page that is exported as a plain `export default function` will **not** have this link and will feel broken.
+>
+> The pattern is always:
+> ```tsx
+> function MyPage() { /* ... */ }
+> export default withPermission(MyPage, PermissionLevel.AUTHORIZED);
+> ```
+> Never use `export default function MyPage()` for any page inside `frontend/app/dashboard/`.
+
 ### Step 3: Register Navigation
 1.  **Card**: Add a new card entry in `frontend/app/page.tsx` inside the `cards` array.
 2.  **Plugin Registry**: (Optional) Register in `frontend/app/plugins/registry.tsx` if it's a dynamically loaded plugin.
 
 ### Baseline Expectations
 **Every Bot** built on this framework is expected to have **at least:**
-1.  One **Settings Page** (usually `/settings`).
-2.  One **Cog** implementing the core logic.
-3.  Configuration to secure these pages at `PermissionLevel.AUTHORIZED` (Level 3) or higher.
+1.  One **Cog** implementing the core bot logic (under `bot/cogs/`).
+2.  One **Frontend page** for any user-facing controls, secured at `PermissionLevel.AUTHORIZED` (Level 3) or higher.
+3.  The page exported via `withPermission` — never as a bare `export default function`.
 
 ---
 
-## 5.5 Cleaning Up (Shipping)
-When shipping a real bot:
-1.  Delete `test-l1` and `test-l2` folders.
-2.  Replace `status.py` and `logging.py` with your actual bot logic.
-3.  Keep `guild_sync.py` and `introspection.py` (Core).
+## 5.5 Initialising a New Bot (Removing Demo Code)
+
+Run `./init.sh` once after cloning. It removes all demo pages, cogs, and API routes automatically — see [Section 2 "Starting a New Bot"](#starting-a-new-bot-from-this-framework) for the full list.
+
+After running `init.sh`:
+- Keep `guild_sync.py` and `introspection.py` (core framework cogs — do not delete).
+- Add your own cogs under `bot/cogs/`.
+- Add your own pages under `frontend/app/dashboard/[guildId]/`.
 
 ## 6. Database: Architecture and Extension Guide
 

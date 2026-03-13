@@ -44,9 +44,9 @@ class TestUnauthenticatedRejection:
         )
 
     def test_guilds_requires_auth(self):
-        r, _ = _get("/api/v1/guilds/")
+        r, _ = _get("/api/v1/guilds")
         assert r.status_code == 401, (
-            f"GET /guilds/ should return 401 without auth, got {r.status_code}"
+            f"GET /guilds should return 401 without auth, got {r.status_code}"
         )
 
     def test_logout_requires_auth(self):
@@ -68,9 +68,9 @@ class TestUnauthenticatedRejection:
         )
 
     def test_shards_requires_auth(self):
-        r, _ = _get("/api/v1/shards/")
+        r, _ = _get("/api/v1/shards")
         assert r.status_code == 401, (
-            f"GET /shards/ should require auth, got {r.status_code}"
+            f"GET /shards should require auth, got {r.status_code}"
         )
 
 
@@ -97,8 +97,10 @@ class TestPublicEndpoints:
         )
 
     def test_login_redirect(self):
-        """Login endpoint should redirect to Discord."""
-        r, _ = _get("/api/v1/auth/discord/login")
+        """Login endpoint should redirect to Discord.
+        Tested against the backend directly to avoid nginx auth rate limiting.
+        """
+        r, _ = _get("/api/v1/auth/discord/login", base=BACKEND_URL)
         assert r.status_code in (302, 307), (
             f"Login should redirect (302/307), got {r.status_code}"
         )
@@ -112,15 +114,19 @@ class TestInvalidTokenRejection:
     """Invalid/garbage tokens must be rejected."""
 
     def test_garbage_bearer_token_rejected(self):
+        # Hit backend directly — rapid test execution exhausts nginx auth rate
+        # limit (3r/s burst=5) returning 503 before the backend sees the request.
         r, _ = _get("/api/v1/auth/me",
-                    headers={"Authorization": "Bearer not-a-real-token"})
+                    headers={"Authorization": "Bearer not-a-real-token"},
+                    base=BACKEND_URL)
         assert r.status_code == 401, (
             f"Garbage bearer token should return 401, got {r.status_code}"
         )
 
     def test_wrong_scheme_rejected(self):
         r, _ = _get("/api/v1/auth/me",
-                    headers={"Authorization": "Basic dXNlcjpwYXNz"})
+                    headers={"Authorization": "Basic dXNlcjpwYXNz"},
+                    base=BACKEND_URL)
         assert r.status_code == 401, (
             f"Basic auth scheme should return 401, got {r.status_code}"
         )
@@ -131,8 +137,10 @@ class TestAuthenticatedEndpoints:
     """Tests requiring a valid API token (set TEST_API_TOKEN env var)."""
 
     def test_me_returns_user(self):
+        # Hit backend directly to avoid nginx auth rate limiting (3r/s burst=5).
         r, _ = _get("/api/v1/auth/me",
-                    headers={"Authorization": f"Bearer {TEST_API_TOKEN}"})
+                    headers={"Authorization": f"Bearer {TEST_API_TOKEN}"},
+                    base=BACKEND_URL)
         assert r.status_code == 200, f"GET /auth/me failed: {r.status_code} {r.text}"
         data = r.json()
         assert "user_id" in data, f"Missing user_id in /auth/me response: {data}"
@@ -140,15 +148,16 @@ class TestAuthenticatedEndpoints:
     def test_me_response_shape(self):
         """Backwards compat: /auth/me response must include required fields."""
         r, _ = _get("/api/v1/auth/me",
-                    headers={"Authorization": f"Bearer {TEST_API_TOKEN}"})
+                    headers={"Authorization": f"Bearer {TEST_API_TOKEN}"},
+                    base=BACKEND_URL)
         data = r.json()
         required = ["user_id", "username"]
         for field in required:
             assert field in data, f"Missing required field '{field}' in /auth/me: {data}"
 
     def test_authenticated_guilds_accessible(self):
-        r, _ = _get("/api/v1/guilds/",
+        r, _ = _get("/api/v1/guilds",
                     headers={"Authorization": f"Bearer {TEST_API_TOKEN}"})
         assert r.status_code == 200, (
-            f"GET /guilds/ with valid token failed: {r.status_code} {r.text}"
+            f"GET /guilds with valid token failed: {r.status_code} {r.text}"
         )

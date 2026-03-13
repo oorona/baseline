@@ -1,6 +1,6 @@
 import pytest
 import asyncio
-from httpx import AsyncClient
+from httpx import AsyncClient, ASGITransport
 from main import app
 
 @pytest.fixture(scope="session")
@@ -15,5 +15,5 @@ def anyio_backend():
 
 @pytest.fixture(scope="module")
 async def client():
-    async with AsyncClient(app=app, base_url="http://test") as c:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c

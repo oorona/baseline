@@ -1,5 +1,5 @@
 from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from datetime import datetime
 
 class UserBase(BaseModel):
@@ -12,12 +12,11 @@ class UserCreate(UserBase):
     pass
 
 class User(UserBase):
+    model_config = ConfigDict(from_attributes=True)
+
     created_at: datetime
     updated_at: Optional[datetime] = None
     preferences: Dict[str, Any] = {}
-
-    class Config:
-        from_attributes = True
 
 class GuildBase(BaseModel):
     id: str
@@ -34,34 +33,31 @@ class GuildCreate(GuildBase):
     pass
 
 class Guild(GuildBase):
+    model_config = ConfigDict(from_attributes=True)
+
     joined_at: datetime
     is_active: bool
     permission_level: Optional[str] = None
 
-    class Config:
-        from_attributes = True
-
 class AuthorizedUser(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     user_id: int
     permission_level: str
     created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 class AddUserRequest(BaseModel):
     user_id: int
 
 class AuthorizedRole(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     role_id: str
     guild_id: int
     permission_level: str
     created_at: datetime
     created_by: Optional[int] = None
-
-    class Config:
-        from_attributes = True
 
 class AddRoleRequest(BaseModel):
     role_id: str
@@ -89,11 +85,10 @@ class AuditLogCreate(AuditLogBase):
     pass
 
 class AuditLog(AuditLogBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 class DiscordChannel(BaseModel):
     id: str

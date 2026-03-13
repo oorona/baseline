@@ -103,7 +103,7 @@ function AccountPage() {
                         )}
                         <div>
                             <div className="text-foreground font-medium text-lg">{user?.username}</div>
-                            <div className="text-muted-foreground">ID: {user?.id}</div>
+                            <div className="text-muted-foreground text-sm">ID: {user?.user_id}</div>
                         </div>
                     </div>
                 </div>

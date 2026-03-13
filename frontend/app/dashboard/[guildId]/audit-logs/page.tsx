@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { apiClient } from '@/app/api-client';
 import { Clock, User, Activity } from 'lucide-react';
+import { withPermission } from '@/lib/components/with-permission';
+import { PermissionLevel } from '@/lib/permissions';
 
 interface AuditLog {
     id: number;
@@ -14,7 +16,7 @@ interface AuditLog {
     created_at: string;
 }
 
-export default function AuditLogsPage() {
+function AuditLogsPage() {
     const params = useParams();
     const guildId = params.guildId as string;
 
@@ -116,3 +118,5 @@ export default function AuditLogsPage() {
         </div>
     );
 }
+
+export default withPermission(AuditLogsPage, PermissionLevel.AUTHORIZED);

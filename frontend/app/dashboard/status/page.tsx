@@ -15,52 +15,21 @@ function SystemStatusPage() {
     const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
     const [refreshing, setRefreshing] = useState(false);
 
-    const isAdmin = user?.is_admin;
-
     const fetchData = async () => {
         setRefreshing(true);
         try {
-            // Fetch detailed data for admins, or derive simple status for users
-            // Ideally we have a public status endpoint for regular users, but the req says derive it.
-            // Using existing client methods.
+            const [shards, db, frontend, backend] = await Promise.all([
+                apiClient.getShards().catch(() => []),
+                apiClient.getDbStatus().catch(() => null),
+                apiClient.getFrontendStatus().catch(() => []),
+                apiClient.getBackendStatus().catch(() => []),
+            ]);
+            setAdminData({ shards, db, frontend, backend });
 
-            // Parallel fetch to speed up
-            const promises: Promise<any>[] = [];
-
-            // Admin Data
-            if (isAdmin) {
-                promises.push(apiClient.getShards().catch(e => []));
-                promises.push(apiClient.getDbStatus().catch(e => null));
-                promises.push(apiClient.getFrontendStatus().catch(e => []));
-                promises.push(apiClient.getBackendStatus().catch(e => []));
-            } else {
-                // For regular users, we might just check "health" endpoint or infer status
-                // But let's check basic health for everyone to update the "user view"
-                promises.push(apiClient.healthCheck().catch(e => null));
-            }
-
-            const results = await Promise.all(promises);
-
-            if (isAdmin) {
-                const [shards, db, frontend, backend] = results;
-                setAdminData({ shards, db, frontend, backend });
-
-                // Infer overall status from detailed data for the top cards
-                const backendStatus = backend && backend.length > 0 ? 'healthy' : 'degraded';
-                const dbStatus = db && db.postgres?.status === 'connected' && db.redis?.status === 'connected' ? 'healthy' : 'issues';
-                // If any shard is not ready (assuming we want all ready), or if list empty
-                const discordStatus = shards && shards.length > 0 && shards.every((s: any) => s.status === 'READY') ? 'healthy' : 'degraded';
-
-                setStatus({ backend: backendStatus, database: dbStatus, discord: discordStatus });
-            } else {
-                // Regular user view - simple health check
-                const health = results[0];
-                if (health && health.status === 'ok') {
-                    setStatus({ backend: 'healthy', database: 'healthy', discord: 'healthy' });
-                } else {
-                    setStatus({ backend: 'degraded', database: 'unknown', discord: 'unknown' });
-                }
-            }
+            const backendStatus = backend && backend.length > 0 ? 'healthy' : 'degraded';
+            const dbStatus = db && db.postgres?.status === 'connected' && db.redis?.status === 'connected' ? 'healthy' : 'issues';
+            const discordStatus = shards && shards.length > 0 && shards.every((s: any) => s.status === 'READY') ? 'healthy' : 'degraded';
+            setStatus({ backend: backendStatus, database: dbStatus, discord: discordStatus });
 
             setLastUpdated(new Date());
         } catch (e) {
@@ -109,9 +78,7 @@ function SystemStatusPage() {
                             <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
                         </span>
                     </h1>
-                    <p className="text-muted-foreground mt-1">
-                        {isAdmin ? "Real-time infrastructure telemetry & diagnostics" : "Current service availability and performance"}
-                    </p>
+                    <p className="text-muted-foreground mt-1">Real-time infrastructure telemetry &amp; diagnostics</p>
                 </div>
 
                 <div className="flex items-center gap-4 text-sm text-muted-foreground bg-card p-2 rounded-lg border border-border shadow-sm">
@@ -154,8 +121,8 @@ function SystemStatusPage() {
                 />
             </div>
 
-            {/* Admin Detailed Views */}
-            {isAdmin && adminData && (
+            {/* Detailed Infrastructure Views */}
+            {adminData && (
                 <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
 
                     {/* Shards Section */}
@@ -383,4 +350,4 @@ function formatUptime(seconds: number): string {
     return parts.join(' ');
 }
 
-export default withPermission(SystemStatusPage, PermissionLevel.USER);
+export default withPermission(SystemStatusPage, PermissionLevel.DEVELOPER);

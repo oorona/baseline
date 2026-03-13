@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { GuildSwitcher } from './GuildSwitcher';
 import { ThemeToggle } from './ThemeToggle';
@@ -10,13 +10,21 @@ import Link from 'next/link';
 
 export function Header() {
     const { user, logout } = useAuth();
+    const [botName, setBotName] = useState<string>(siteConfig.name);
+
+    useEffect(() => {
+        fetch('/api/v1/bot-info/public')
+            .then(r => r.ok ? r.json() : null)
+            .then(data => { if (data?.name) setBotName(data.name); })
+            .catch(() => {});
+    }, []);
 
     return (
         <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
             <div className="container mx-auto px-4 h-16 flex items-center justify-between">
                 <div className="flex items-center gap-6">
                     <Link href="/" className="text-xl font-bold bg-gradient-to-r from-indigo-500 to-purple-500 bg-clip-text text-transparent hover:opacity-80 transition-opacity">
-                        {siteConfig.name}
+                        {botName}
                     </Link>
 
                     {/* Guild Switcher - Only shows if user is logged in (handled inside, but we can wrap) */}

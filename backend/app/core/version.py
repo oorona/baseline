@@ -35,7 +35,7 @@ from typing import Optional
 
 # ── Current framework version ─────────────────────────────────────────────────
 
-FRAMEWORK_VERSION: str = "1.3.0"
+FRAMEWORK_VERSION: str = "1.4.0"
 
 # ── Version → Alembic HEAD revision map ──────────────────────────────────────
 #
@@ -48,6 +48,7 @@ VERSION_REVISIONS: dict[str, str] = {
     "1.1.0": "d2e3f4a5b6c7",
     "1.2.0": "e3f4a5b6c7d8",
     "1.3.0": "a1b2c3d4e5f6",
+    "1.4.0": "b2c3d4e5f6a7",
 }
 
 # Derived: the Alembic revision required by the CURRENT framework version.
@@ -88,6 +89,12 @@ MIGRATION_CHANGELOG: list[dict] = [
         "description":   "Instrumentation — card_usage, guild_events, request_metrics, bot_command_metrics tables; app_config table for dynamic runtime configuration",
         "revisions":     ["f1a2b3c4d5e6", "e1f2a3b4c5d6", "a1b2c3d4e5f6"],
         "head_revision": "a1b2c3d4e5f6",
+    },
+    {
+        "version":       "1.4.0",
+        "description":   "Fix RLS policies — guard NULLIF empty-string cast to bigint, bypass check first",
+        "revisions":     ["b2c3d4e5f6a7"],
+        "head_revision": "b2c3d4e5f6a7",
     },
 ]
 

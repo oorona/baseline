@@ -1,6 +1,6 @@
 # Baseline Discord Bot Platform
 
-A comprehensive Discord bot platform with authentication, settings management, audit logging, granular permissions, and **full Gemini 3 AI capabilities**.
+A production-ready Discord bot framework with authentication, settings management, audit logging, granular permissions, multi-provider LLM integration, and a full admin dashboard.
 
 ## Documentation
 
@@ -8,16 +8,18 @@ A comprehensive Discord bot platform with authentication, settings management, a
 - **[Security Reference](docs/SECURITY.md)**: **Read before deploying.** All 6 permission levels with code examples, security checklist, and production hardening guide.
 - **[Architecture](docs/ARCHITECTURE.md)**: High-level system design.
 - **[LLM Guide](docs/LLM_USAGE_GUIDE.md)**: How to use the shared LLM service.
-- **[Gemini Capabilities](docs/GEMINI_CAPABILITIES.md)**: Complete Gemini 3 API guide (13 capabilities).
 - **[Integration Guides](docs/integration/README.md)**: Step-by-step feature development guides.
 
-## Using as a Template
+## Using as a Framework
 
-To use this framework as a starting point for a **new project**, please follow the **[New Project Bootstrap Guide](docs/BOOTSTRAP_GUIDE.md)**.
-This guide covers:
-1.  Forking and detaching from the baseline history.
-2.  Renaming the project (Database, Containers, etc.).
-3.  Setting up the isolated environment.
+Clone this repo to start a new bot, then run the initialiser **once** to remove demo/example code:
+
+```bash
+chmod +x init.sh
+./init.sh
+```
+
+This strips all demo pages, cogs, and API routes while leaving the core framework intact. See the [Developer Manual](docs/DEVELOPER_MANUAL.md) for what gets removed and how to build on top of the framework.
 
 ## Architecture
 
@@ -31,7 +33,7 @@ This guide covers:
 
 - Docker and Docker Compose
 - Discord application (for bot token and OAuth credentials)
-  - *Need to create one? Follow the [Discord App Setup Guide](DISCORD_APP_SETUP.md).*
+  - *Need to create one? Follow the [Discord App Setup Guide](docs/DISCORD_APP_SETUP.md).*
 
 ### Setup
 
@@ -41,26 +43,26 @@ This guide covers:
    cd baseline
    ```
 
-2. **Configure secrets**
+2. **Generate the encryption key**
    ```bash
-   # Copy example secrets
-   cp secrets/discord_bot_token.example secrets/discord_bot_token
-   cp secrets/discord_client_secret.example secrets/discord_client_secret
-   
-   # Edit the files with your actual values
+   ./setup_secrets.sh
    ```
 
-3. **Start the development environment**
+3. **Create the database user and schema**
+   ```bash
+   ./setup_database.sh --user mybot
+   ```
+
+4. **Start the stack**
    ```bash
    docker compose up -d
    ```
 
-4. **Run database migrations**
-   ```bash
-   docker compose exec backend alembic upgrade head
-   ```
+5. **Complete the Setup Wizard**
 
-5. **Access the application**
+   Open `http://localhost:3000` — you will be redirected to `/setup`. Enter your Discord credentials, database password, and API keys. All secrets are encrypted with AES-256-GCM and stored in a Docker volume. The wizard only runs once.
+
+6. **Access the application**
    - Frontend: http://localhost:3000
    - Backend API: http://localhost:8000
    - API Docs: http://localhost:8000/docs
@@ -68,15 +70,16 @@ This guide covers:
 ## Common Commands
 
 ```bash
-docker compose up -d                                        # Start dev environment
-docker compose down                                         # Stop all services
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d  # Production
-docker compose logs -f                                      # View logs
-docker compose exec backend alembic upgrade head            # Run DB migrations
-docker compose restart backend                              # Restart backend
-docker compose restart bot                                  # Restart bot
-docker compose restart frontend                             # Restart frontend
-docker compose down -v                                      # Stop + remove volumes
+docker compose up -d                                                        # Start dev environment
+docker compose down                                                         # Stop all services
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d      # Production
+docker compose logs -f                                                      # View all logs
+docker compose logs -f backend                                              # View backend logs
+docker compose exec backend alembic upgrade head                            # Run DB migrations
+docker compose restart backend                                              # Restart backend
+docker compose restart bot                                                  # Restart bot
+docker compose restart frontend                                             # Restart frontend
+docker compose down -v                                                      # Stop + remove volumes
 ```
 
 ## Production Deployment
@@ -102,17 +105,23 @@ docker compose exec backend alembic upgrade head
 
 ## Testing
 
-The framework includes a live integration test suite that runs against the real Docker stack. Tests validate health, security headers, all 6 permission levels, rate limiting, and API contract backwards compatibility.
+The framework includes a live integration test suite that runs against the real Docker stack. Tests validate health, security headers, authentication, all 6 permission levels, rate limiting, database isolation, and LLM usage tracking.
 
 ```bash
 # 1. Start the stack
 docker compose up -d
 
-# 2. Run all tests (one-shot)
+# 2. Run all tests using the interactive test runner
+./test.sh
+
+# 3. Or run directly via Docker Compose (one-shot, all suites)
 docker compose -f docker-compose.yml -f docker-compose.test.yml run --rm test-runner
 
-# 3. Run with authenticated tests (L2+ endpoints)
+# 4. Run with authenticated tests (requires TEST_API_TOKEN — see below)
 TEST_API_TOKEN=your_token docker compose -f docker-compose.yml -f docker-compose.test.yml run --rm test-runner
+
+# 5. Run specific suites only
+TEST_SUITES=01,03,07 docker compose -f docker-compose.yml -f docker-compose.test.yml run --rm test-runner
 ```
 
 **Output**: Each test shows `[PASS/FAIL/SKIP]  test name  response_time_ms` in real time, followed by a summary table with per-suite stats (pass counts, avg/max response times).
@@ -124,8 +133,18 @@ TEST_API_TOKEN=your_token docker compose -f docker-compose.yml -f docker-compose
 - `04 Security Levels` — L0–L5 access control enforced on every endpoint
 - `05 Rate Limiting` — nginx burst protection verified
 - `06 Backwards Compatibility` — API response shape contract tests
+- `07 Database` — RLS isolation, schema separation, migration state
+- `08 LLM` — usage tracking, provider routing, cost attribution
 
-See [`tests/runner/`](tests/runner/) for source and [`docker-compose.test.yml`](docker-compose.test.yml) for configuration.
+**Authenticated tests (`TEST_API_TOKEN`)**: Suites 03, 06, and 08 include tests that require a valid user JWT. Without the token these tests are **skipped** (not failed). To obtain a token:
+1. Log in to the frontend dashboard in your browser
+2. Open DevTools → Application → Local Storage → select your site's origin
+3. Copy the value of the `access_token` key
+4. Pass it as `TEST_API_TOKEN=<value>` when running tests
+
+Tokens expire after 7 days. If you see `401 Session expired or invalid`, get a fresh token by logging in again.
+
+Use `./test.sh` for an interactive menu to run individual suites or groups. See [`tests/runner/`](tests/runner/) for source and [`docker-compose.test.yml`](docker-compose.test.yml) for configuration.
 
 ## Development
 
@@ -149,17 +168,18 @@ baseline/
 ├── docs/             # Documentation
 │   └── integration/  # Feature development guides
 ├── secrets/          # Secret files (not in git)
+├── init.sh           # New-bot initialiser (run once after clone)
 └── docker-compose.yml
 ```
 
-### AI/LLM Capabilities
+### LLM / AI Integration
 
-The framework includes comprehensive LLM support with **full Gemini 3 integration**:
+The framework includes a multi-provider LLM service available to all bot cogs via `bot.services.llm`:
 
-| Provider | Features |
-|----------|----------|
-| **Google Gemini 3** | Text, images, TTS, embeddings, thinking levels, structured output |
-| **OpenAI** | GPT-4o, function calling, vision |
+| Provider | Models |
+|----------|--------|
+| **Google Gemini** | Gemini 2.5 Pro/Flash, Gemini 2.0 Flash |
+| **OpenAI** | GPT-4o, GPT-4 |
 | **Anthropic** | Claude 3 Opus/Sonnet/Haiku |
 | **xAI** | Grok |
 
@@ -168,7 +188,7 @@ The framework includes comprehensive LLM support with **full Gemini 3 integratio
 class MyCog(commands.Cog):
     def __init__(self, bot):
         self.llm = bot.services.llm
-    
+
     @app_commands.command()
     async def ask(self, interaction, question: str):
         await interaction.response.defer()
@@ -176,7 +196,7 @@ class MyCog(commands.Cog):
         await interaction.followup.send(response)
 ```
 
-See [GEMINI_CAPABILITIES.md](docs/GEMINI_CAPABILITIES.md) for the complete guide.
+All LLM calls are automatically tracked in the `llm_usage` table (tokens, cost, latency, guild/user attribution) and visible in the AI Analytics dashboard. See [docs/LLM_USAGE_GUIDE.md](docs/LLM_USAGE_GUIDE.md) for full usage.
 
 ### Adding a Database Migration
 
@@ -185,22 +205,27 @@ See [GEMINI_CAPABILITIES.md](docs/GEMINI_CAPABILITIES.md) for the complete guide
 docker compose exec backend alembic revision --autogenerate -m "description"
 
 # Apply migration
-make migrate
+docker compose exec backend alembic upgrade head
 ```
 
 ### Viewing Logs
 
 ```bash
 # All services
-make logs
+docker compose logs -f
 
 # Specific service
 docker compose logs -f backend
 ```
 
-## Environment Variables
+## Configuration
 
-See `.env.example` for available configuration options. Sensitive values should be stored in the `secrets/` directory.
+There is no `.env` file. Secrets are managed through two mechanisms:
+
+1. **`secrets/encryption_key`** — generated by `./setup_secrets.sh`, delivered to containers as a Docker secret (never on disk inside the container).
+2. **Setup Wizard** — all other secrets (Discord token, DB password, API keys) are entered once through the browser and stored AES-256-GCM encrypted in a Docker volume.
+
+See `.env.example` for the small number of non-secret environment variables that can be set (e.g. `NEXT_PUBLIC_APP_NAME`, port overrides).
 
 ## License
 

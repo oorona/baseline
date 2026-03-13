@@ -2,6 +2,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { ChevronLeft } from 'lucide-react';
 import { usePermissions } from '../hooks/use-permissions';
 import { PermissionLevel } from '../permissions';
 import { useAuth } from '@/lib/auth-context';
@@ -54,6 +56,19 @@ export function withPermission<P extends object>(
         if (requiredLevel > PermissionLevel.PUBLIC_DATA && !user) return null;
         if (requiredLevel > PermissionLevel.PUBLIC_DATA && !hasAccess(requiredLevel)) return null;
 
-        return <Component {...props} />;
+        return (
+            <div>
+                <div className="max-w-7xl mx-auto px-4 md:px-8 pt-4 pb-0">
+                    <Link
+                        href="/"
+                        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors group"
+                    >
+                        <ChevronLeft size={15} className="group-hover:-translate-x-0.5 transition-transform" />
+                        Dashboard
+                    </Link>
+                </div>
+                <Component {...props} />
+            </div>
+        );
     };
 }

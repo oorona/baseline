@@ -8,6 +8,8 @@ Endpoints:
   POST /api/v1/config/settings/refresh  — push dynamic overrides to Redis so they take
                                           effect without a restart
   DELETE /api/v1/config/settings/{key}  — remove a DB override (revert to env-var default)
+  GET  /api/v1/config/api-keys          — read LLM provider API key status from encrypted file
+  PUT  /api/v1/config/api-keys          — update LLM provider API keys in encrypted file
 """
 
 import os
@@ -15,12 +17,17 @@ import json
 from typing import Any, Dict, List, Optional
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import verify_platform_admin
+from app.core.encrypted_settings import (
+    load_encrypted_settings,
+    save_encrypted_settings,
+    verify_key,
+)
 from app.core.settings_definitions import (
     APP_SETTINGS,
     DATABASE_SETTINGS,
@@ -272,3 +279,113 @@ async def delete_setting_override(
 
     logger.info("config_override_deleted", key=key, admin_id=admin["user_id"])
     return {"deleted": key, "reverted_to": "environment_default"}
+
+
+# ---------------------------------------------------------------------------
+# API Keys (stored in encrypted settings file)
+# ---------------------------------------------------------------------------
+
+# The LLM provider API keys managed via the encrypted settings file.
+# These cannot be stored in the database as they are needed at boot time.
+_API_KEY_DEFS: Dict[str, dict] = {
+    "OPENAI_API_KEY": {
+        "friendly_name": "OpenAI API Key",
+        "description": "API key for OpenAI services (GPT models, DALL-E, Whisper). Required when using OpenAI as the LLM provider.",
+    },
+    "ANTHROPIC_API_KEY": {
+        "friendly_name": "Anthropic API Key",
+        "description": "API key for Anthropic Claude models. Required when using Anthropic as the LLM provider.",
+    },
+    "GOOGLE_API_KEY": {
+        "friendly_name": "Google API Key",
+        "description": "API key for Google Gemini and related AI services. Required when using Google as the LLM provider.",
+    },
+    "XAI_API_KEY": {
+        "friendly_name": "xAI API Key",
+        "description": "API key for xAI Grok models. Required when using xAI as the LLM provider.",
+    },
+}
+
+
+class ApiKeysUpdate(BaseModel):
+    settings: Dict[str, str]
+
+
+@router.get("/api-keys")
+async def get_api_keys(
+    _admin: dict = Depends(verify_platform_admin),
+):
+    """
+    Return the status of each LLM provider API key.
+    Values are masked — only whether each key is set is exposed, plus a masked preview.
+    Keys are read from the encrypted settings file and the running environment.
+    """
+    encrypted = load_encrypted_settings() or {}
+    result = {}
+    for key, meta in _API_KEY_DEFS.items():
+        value = encrypted.get(key) or os.environ.get(key)
+        result[key] = {
+            **meta,
+            "is_set": bool(value),
+            "masked_value": _mask(value) if value else None,
+        }
+    return result
+
+
+@router.put("/api-keys")
+async def update_api_keys(
+    body: ApiKeysUpdate,
+    admin: dict = Depends(verify_platform_admin),
+    x_setup_key: Optional[str] = Header(None),
+):
+    """
+    Update one or more LLM provider API keys in the encrypted settings file.
+
+    The caller must supply the X-Setup-Key header containing the encryption key.
+    The server verifies it matches but uses only the caller-supplied value to
+    re-encrypt — the server's own copy of the key is never used for this write.
+    This ensures that compromising the platform-admin session alone is not
+    sufficient to modify the encrypted settings file.
+
+    Pass an empty string for a key to clear it; omit a key to leave it unchanged.
+    A server restart is recommended after updating.
+    """
+    if not x_setup_key or not verify_key(x_setup_key):
+        raise HTTPException(
+            status_code=401,
+            detail="X-Setup-Key header is required and must match the configured encryption key.",
+        )
+
+    unknown = [k for k in body.settings if k not in _API_KEY_DEFS]
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"Unknown API key(s): {', '.join(unknown)}")
+
+    current = load_encrypted_settings() or {}
+    merged = {**current}
+
+    updated: List[str] = []
+    cleared: List[str] = []
+    for key, value in body.settings.items():
+        stripped = value.strip()
+        if stripped:
+            merged[key] = stripped
+            os.environ[key] = stripped
+            updated.append(key)
+        elif key in merged:
+            del merged[key]
+            os.environ.pop(key, None)
+            cleared.append(key)
+
+    # Use the caller-supplied key — the server's key is not accessed here.
+    save_encrypted_settings(merged, x_setup_key)
+    logger.info("api_keys_updated", updated=updated, cleared=cleared, admin_id=admin["user_id"])
+
+    return {
+        "updated": updated,
+        "cleared": cleared,
+        "restart_recommended": True,
+        "message": (
+            "API keys saved to encrypted settings. "
+            "A server restart is recommended so all services pick up the new keys."
+        ),
+    }

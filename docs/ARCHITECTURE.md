@@ -308,11 +308,16 @@ async def setup(bot):
 
 ```typescript
 // frontend/app/dashboard/[guildId]/warnings/page.tsx
-export default function WarningsPage() {
+import { withPermission } from '@/lib/components/with-permission';
+import { PermissionLevel } from '@/lib/permissions';
+
+function WarningsPage() {
     // Fetch warnings from API
     // Display in table
     // Allow filtering/search
 }
+
+export default withPermission(WarningsPage, PermissionLevel.AUTHORIZED);
 ```
 
 ## Extension Points

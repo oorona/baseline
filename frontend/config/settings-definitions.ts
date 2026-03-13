@@ -45,13 +45,14 @@ export interface SettingDef {
 // ---------------------------------------------------------------------------
 
 export const APP_CATEGORIES: Record<string, string> = {
-  general:    'General',
-  discord:    'Discord',
-  api:        'API & Security',
-  llm:        'LLM / AI',
-  rate_limit: 'Rate Limits',
-  features:   'Feature Flags',
-  frontend:   'Frontend (display only)',
+  general:      'General',
+  bot_identity: 'Bot Identity',
+  discord:      'Discord',
+  api:          'API & Security',
+  llm:          'LLM / AI',
+  rate_limit:   'Rate Limits',
+  features:     'Feature Flags',
+  frontend:     'Frontend (display only)',
 };
 
 export const DB_CATEGORIES: Record<string, string> = {

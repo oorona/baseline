@@ -49,6 +49,12 @@ services:
       backend:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   # Discord Bot
   bot:
@@ -62,6 +68,7 @@ services:
       ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
       SETTINGS_FILE_PATH: /data/settings.enc
     volumes:
+      - ./bot:/app            # Live-mount source for dev/test (matches backend pattern)
       - platform_data:/data   # Same encrypted settings as backend
     networks:
       - bot       # First → gets the default route → outbound internet for Discord API

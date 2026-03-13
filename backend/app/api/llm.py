@@ -33,7 +33,8 @@ from app.services.llm import LLMService
 router = APIRouter()
 
 # Path to the JSON schema files bundled with the backend
-_SCHEMAS_DIR = Path(__file__).parent.parent.parent.parent / "schemas"
+# __file__ = /app/app/api/llm.py → 3 parents up = /app → /app/schemas
+_SCHEMAS_DIR = Path(__file__).parent.parent.parent / "schemas"
 
 # ─── Predefined function definitions for the function-calling demo ────────────
 

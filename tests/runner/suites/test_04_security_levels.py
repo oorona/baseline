@@ -79,7 +79,7 @@ class TestLevel2User:
     """L2 — User endpoints require authentication."""
 
     def test_guilds_list_requires_auth(self):
-        r, _ = _get("/api/v1/guilds/")
+        r, _ = _get("/api/v1/guilds")
         assert r.status_code == 401
 
     def test_auth_me_requires_auth(self):
@@ -135,7 +135,7 @@ class TestLevel5Developer:
         assert r.status_code == 401
 
     def test_shards_requires_auth(self):
-        r, _ = _get("/api/v1/shards/")
+        r, _ = _get("/api/v1/shards")
         assert r.status_code == 401
 
     @pytest.mark.skipif(not TEST_API_TOKEN, reason="TEST_API_TOKEN not set")

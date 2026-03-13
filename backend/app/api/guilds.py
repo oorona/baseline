@@ -197,7 +197,11 @@ async def get_guild_settings(
         settings = GuildSettings(guild_id=guild_id, settings_json={})
         db.add(settings)
         await db.commit()
-        await db.refresh(settings)
+        # Re-query after commit to avoid SQLAlchemy async refresh issues
+        settings_result = await db.execute(
+            select(GuildSettings).where(GuildSettings.guild_id == guild_id)
+        )
+        settings = settings_result.scalar_one()
     
     # Determine Level 3 access (Developer Only)
     can_modify_level_3 = False

@@ -127,9 +127,14 @@ async def create_poll(guild_id: int, poll: PollCreate):
 
 ```typescript
 // frontend/app/dashboard/[guildId]/polls/page.tsx
-export default function PollsPage() {
+import { withPermission } from '@/lib/components/with-permission';
+import { PermissionLevel } from '@/lib/permissions';
+
+function PollsPage() {
     // Display poll results
 }
+
+export default withPermission(PollsPage, PermissionLevel.AUTHORIZED);
 ```
 
 → Full guide: [05-frontend-pages.md](05-frontend-pages.md)
@@ -197,20 +202,20 @@ async def my_endpoint(db: AsyncSession = Depends(get_db)):
 
 import { useState, useEffect } from 'react';
 import { apiClient } from '@/app/api-client';
+import { withPermission } from '@/lib/components/with-permission';
+import { PermissionLevel } from '@/lib/permissions';
 
-export default function MyPage() {
+function MyPage() {
     const [data, setData] = useState(null);
-    
+
     useEffect(() => {
-        const fetchData = async () => {
-            const result = await apiClient.getMyData();
-            setData(result);
-        };
-        fetchData();
+        apiClient.getMyData().then(setData).catch(console.error);
     }, []);
-    
+
     return <div>{/* Your UI */}</div>;
 }
+
+export default withPermission(MyPage, PermissionLevel.AUTHORIZED);
 ```
 
 ## Contributing

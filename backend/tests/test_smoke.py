@@ -6,4 +6,9 @@ from app.core.config import settings
 async def test_health_check(client: AsyncClient):
     response = await client.get(f"{settings.API_V1_STR}/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "service": "backend"}
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["service"] == "backend"
+    assert "instance_id" in body
+    assert "setup_mode" in body
+    assert "configured" in body

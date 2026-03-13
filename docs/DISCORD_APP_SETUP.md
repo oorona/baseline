@@ -56,4 +56,4 @@ To verify the bot is working, you need to invite it to a server where you have "
 ---
 
 **Next Steps:**
-Return to the [Bootstrap Guide](BOOTSTRAP_GUIDE.md) or [Secrets Setup](../specs/SECRETS_SETUP.md) to save your credentials.
+Return to the [README](../README.md) and continue with **Step 2 — Generate the encryption key** to complete setup.

@@ -1298,6 +1298,18 @@ class APIClient {
         return response.data;
     }
 
+    /** Get LLM provider API key status from the encrypted settings file. */
+    async getApiKeys() {
+        const response = await this.client.get('/config/api-keys');
+        return response.data as Record<string, { friendly_name: string; description: string; is_set: boolean; masked_value: string | null }>;
+    }
+
+    /** Update one or more LLM provider API keys in the encrypted settings file. */
+    async updateApiKeys(settings: Record<string, string>, encryptionKey: string) {
+        const response = await this.client.put('/config/api-keys', { settings }, { headers: { 'X-Setup-Key': encryptionKey } });
+        return response.data as { updated: string[]; cleared: string[]; restart_recommended: boolean; message: string };
+    }
+
     // ── Database Management (Level 5) ────────────────────────────────────────
 
     /** Get framework version, DB schema version, and connection status. */

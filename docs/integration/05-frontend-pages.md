@@ -1,81 +1,107 @@
 # Adding Frontend Pages
 
-This guide explains how to add new pages and components to the Next.js frontend.
+This guide explains how to add new dashboard pages to the Next.js frontend.
 
 ## Overview
 
 The frontend uses:
 - **Next.js 14** with App Router
 - **TypeScript** for type safety
-- **Tailwind CSS** for styling
+- **Tailwind CSS** for styling (semantic tokens only — see Design System below)
 - **React Hooks** for state management
 
-## Step 1: Create a New Page
+## The Golden Rule — `withPermission`
 
-Pages are created in the `frontend/app/` directory using the App Router structure.
+**Every page inside `frontend/app/dashboard/` MUST be exported via `withPermission`.**
 
-### Simple Page
+This HOC:
+1. Enforces the correct permission level (redirects if the user lacks access)
+2. Automatically injects the `← Dashboard` breadcrumb link at the top of every page
 
-```typescript
-// frontend/app/custom/page.tsx
-'use client';
+```tsx
+// ✅ CORRECT — always do this
+function MyFeaturePage() {
+    return <div>...</div>;
+}
+export default withPermission(MyFeaturePage, PermissionLevel.AUTHORIZED);
 
-export default function CustomPage() {
-    return (
-        <div className="p-8">
-            <h1 className="text-3xl font-bold">Custom Feature</h1>
-            <p className="text-gray-400">Your custom content here</p>
-        </div>
-    );
+// ❌ WRONG — never do this inside /dashboard/
+export default function MyFeaturePage() {
+    return <div>...</div>;
 }
 ```
 
-Access at: `http://localhost:3000/custom`
+## Step 1: Create a New Page
 
-### Page with Data Fetching
+Pages for guild-specific features go in `frontend/app/dashboard/[guildId]/your-feature/page.tsx`.
 
-```typescript
+### Basic Page
+
+```tsx
+// frontend/app/dashboard/[guildId]/music/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
-import { apiClient } from '@/app/api-client';
+import { useParams } from 'next/navigation';
+import { withPermission } from '@/lib/components/with-permission';
+import { PermissionLevel } from '@/lib/permissions';
 
-export default function FeaturesPage() {
-    const [features, setFeatures] = useState([]);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        const fetchFeatures = async () => {
-            try {
-                const data = await apiClient.getCustomFeatures();
-                setFeatures(data);
-            } catch (error) {
-                console.error('Failed to load features:', error);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchFeatures();
-    }, []);
-
-    if (loading) {
-        return <div className="p-8">Loading...</div>;
-    }
+function MusicPage() {
+    const params = useParams();
+    const guildId = params.guildId as string;
 
     return (
-        <div className="p-8">
-            <h1 className="text-3xl font-bold mb-4">Features</h1>
-            <ul>
-                {features.map((feature) => (
-                    <li key={feature.id} className="mb-2">
-                        {feature.name}
-                    </li>
-                ))}
-            </ul>
+        <div className="max-w-4xl mx-auto p-8 space-y-6">
+            <h1 className="text-3xl font-bold text-foreground">Music Settings</h1>
+            <p className="text-muted-foreground">Configure music features for this server.</p>
         </div>
     );
 }
+
+export default withPermission(MusicPage, PermissionLevel.AUTHORIZED);
+```
+
+### Page with Data Fetching
+
+```tsx
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useParams } from 'next/navigation';
+import { apiClient } from '@/app/api-client';
+import { withPermission } from '@/lib/components/with-permission';
+import { PermissionLevel } from '@/lib/permissions';
+
+function MusicPage() {
+    const params = useParams();
+    const guildId = params.guildId as string;
+    const [settings, setSettings] = useState<any>(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        if (!guildId) return;
+        apiClient.getMusicSettings(guildId)
+            .then(setSettings)
+            .catch(console.error)
+            .finally(() => setLoading(false));
+    }, [guildId]);
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center p-12">
+                <span className="text-muted-foreground">Loading...</span>
+            </div>
+        );
+    }
+
+    return (
+        <div className="max-w-4xl mx-auto p-8 space-y-6">
+            <h1 className="text-3xl font-bold text-foreground">Music Settings</h1>
+            {/* your content */}
+        </div>
+    );
+}
+
+export default withPermission(MusicPage, PermissionLevel.AUTHORIZED);
 ```
 
 ## Step 2: Add API Client Methods
@@ -85,146 +111,79 @@ Update `frontend/app/api-client.ts`:
 ```typescript
 class APIClient {
     // ... existing methods ...
-    
-    async getCustomFeatures(guildId: string) {
-        const response = await this.client.get(`/guilds/${guildId}/features`);
+
+    async getMusicSettings(guildId: string) {
+        const response = await this.client.get(`/guilds/${guildId}/music`);
         return response.data;
     }
-    
-    async createCustomFeature(guildId: string, data: any) {
-        const response = await this.client.post(`/guilds/${guildId}/features`, data);
-        return response.data;
-    }
-    
-    async deleteCustomFeature(guildId: string, featureId: string) {
-        const response = await this.client.delete(`/guilds/${guildId}/features/${featureId}`);
+
+    async saveMusicSettings(guildId: string, data: any) {
+        const response = await this.client.post(`/guilds/${guildId}/music`, data);
         return response.data;
     }
 }
 ```
 
-## Step 3: Create Reusable Components
+## Step 3: Register the Navigation Card
 
-Create components in `frontend/components/` (you may need to create this directory):
+Add an entry to the `cards` array in `frontend/app/page.tsx`:
 
-```typescript
-// frontend/components/FeatureCard.tsx
-interface FeatureCardProps {
-    name: string;
+```tsx
+{
+    id: 'music',
+    title: 'Music',
+    description: 'Configure music playback and queuing for your server.',
+    icon: Music2,           // from lucide-react
+    href: `/dashboard/${activeGuildId}/music`,
+    level: PermissionLevel.AUTHORIZED,
+    color: 'text-emerald-500',
+    bgColor: 'bg-emerald-500/10',
+    borderColor: 'group-hover:border-emerald-500/50',
+    isAdminOnly: false,
+},
+```
+
+Cards are grouped by `level` and displayed highest-level first (so developer/admin tools appear at the top for users who can see them).
+
+## Step 4: Create Reusable Components (Optional)
+
+Put shared components in `frontend/lib/components/` or inline them in the page:
+
+```tsx
+// frontend/lib/components/SettingsCard.tsx
+interface SettingsCardProps {
+    title: string;
     description: string;
-    onDelete: () => void;
+    children: React.ReactNode;
 }
 
-export default function FeatureCard({ name, description, onDelete }: FeatureCardProps) {
+export function SettingsCard({ title, description, children }: SettingsCardProps) {
     return (
-        <div className="bg-card rounded-lg p-4 border border-border">
-            <h3 className="text-xl font-semibold mb-2 text-foreground">{name}</h3>
-            <p className="text-muted-foreground mb-4">{description}</p>
-            <button
-                onClick={onDelete}
-                className="bg-destructive hover:bg-destructive/90 text-destructive-foreground px-4 py-2 rounded"
-            >
-                Delete
-            </button>
+        <div className="bg-card rounded-xl border border-border p-6">
+            <h2 className="text-lg font-semibold text-foreground mb-1">{title}</h2>
+            <p className="text-sm text-muted-foreground mb-4">{description}</p>
+            {children}
         </div>
     );
 }
 ```
 
-Use in your page:
+## Form Handling Pattern
 
-```typescript
-import FeatureCard from '@/components/FeatureCard';
-
-export default function FeaturesPage() {
-    const handleDelete = async (id: string) => {
-        await apiClient.deleteCustomFeature(guildId, id);
-        // Refresh features list
-    };
-
-    return (
-        <div className="p-8">
-            {features.map((feature) => (
-                <FeatureCard
-                    key={feature.id}
-                    name={feature.name}
-                    description={feature.description}
-                    onDelete={() => handleDelete(feature.id)}
-                />
-            ))}
-        </div>
-    );
-}
-```
-
-## Step 4: Add to Dashboard Navigation
-
-Update `frontend/app/dashboard/layout.tsx` to add a link:
-
-```typescript
-{selectedGuild && (
-    <div className="mt-4 pt-4 border-t border-gray-700">
-        <Link
-            href={`/dashboard/${selectedGuild}/custom-feature`}
-            className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-700"
-        >
-            <Star className="w-5 h-5" />
-            <span>Custom Feature</span>
-        </Link>
-    </div>
-)}
-```
-
-## Step 5: Dynamic Routes
-
-For guild-specific pages, use dynamic routes:
-
-```typescript
-// frontend/app/dashboard/[guildId]/custom/page.tsx
-'use client';
-
-import { useParams } from 'next/navigation';
-import { useState, useEffect } from 'react';
-
-export default function GuildCustomPage() {
-    const params = useParams();
-    const guildId = params.guildId as string;
-    
-    const [data, setData] = useState(null);
-
-    useEffect(() => {
-        const fetchData = async () => {
-            const result = await apiClient.getCustomFeatures(guildId);
-            setData(result);
-        };
-        
-        if (guildId) {
-            fetchData();
-        }
-    }, [guildId]);
-
-    return (
-        <div className="p-8">
-            <h1>Custom Page for Guild {guildId}</h1>
-            {/* Your content */}
-        </div>
-    );
-}
-```
-
-## Advanced Patterns
-
-### Form Handling
-
-```typescript
+```tsx
 'use client';
 
 import { useState } from 'react';
 import { Save } from 'lucide-react';
+import { useParams } from 'next/navigation';
+import { apiClient } from '@/app/api-client';
+import { withPermission } from '@/lib/components/with-permission';
+import { PermissionLevel } from '@/lib/permissions';
 
-export default function CreateFeaturePage() {
-    const [name, setName] = useState('');
-    const [description, setDescription] = useState('');
+function MusicSettingsPage() {
+    const params = useParams();
+    const guildId = params.guildId as string;
+    const [volume, setVolume] = useState(100);
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState<string | null>(null);
 
@@ -232,56 +191,35 @@ export default function CreateFeaturePage() {
         e.preventDefault();
         setSaving(true);
         setMessage(null);
-
         try {
-            await apiClient.createCustomFeature(guildId, {
-                name,
-                description
-            });
-            
-            setMessage('Feature created successfully!');
-            setName('');
-            setDescription('');
-        } catch (error) {
-            setMessage('Failed to create feature');
+            await apiClient.saveMusicSettings(guildId, { volume });
+            setMessage('Settings saved!');
+        } catch {
+            setMessage('Failed to save settings.');
         } finally {
             setSaving(false);
         }
     };
 
     return (
-        <div className="p-8 max-w-2xl mx-auto">
-            <h1 className="text-3xl font-bold mb-6">Create Feature</h1>
-            
+        <div className="max-w-2xl mx-auto p-8">
+            <h1 className="text-3xl font-bold mb-6 text-foreground">Music Settings</h1>
+
             {message && (
-                <div className="p-4 rounded-lg mb-6 bg-primary/10 text-primary">
-                    {message}
-                </div>
+                <div className="p-4 rounded-lg mb-6 bg-primary/10 text-primary">{message}</div>
             )}
 
             <form onSubmit={handleSubmit} className="space-y-6">
                 <div>
                     <label className="block text-sm font-medium mb-2 text-foreground">
-                        Feature Name
+                        Default Volume
                     </label>
                     <input
-                        type="text"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
+                        type="number"
+                        value={volume}
+                        onChange={(e) => setVolume(Number(e.target.value))}
                         className="w-full bg-background border border-input rounded-lg p-3 text-foreground focus:ring-2 focus:ring-ring"
-                        required
-                    />
-                </div>
-
-                <div>
-                    <label className="block text-sm font-medium mb-2 text-foreground">
-                        Description
-                    </label>
-                    <textarea
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value)}
-                        rows={4}
-                        className="w-full bg-background border border-input rounded-lg p-3 text-foreground focus:ring-2 focus:ring-ring"
+                        min={0} max={200}
                     />
                 </div>
 
@@ -291,133 +229,72 @@ export default function CreateFeaturePage() {
                     className="w-full bg-primary hover:bg-primary/90 text-primary-foreground py-3 rounded-lg disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                     {saving ? (
-                        <>
-                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                            Saving...
-                        </>
+                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                     ) : (
-                        <>
-                            <Save className="w-5 h-5" />
-                            Create Feature
-                        </>
+                        <Save className="w-5 h-5" />
                     )}
+                    {saving ? 'Saving…' : 'Save Settings'}
                 </button>
             </form>
         </div>
     );
 }
+
+export default withPermission(MusicSettingsPage, PermissionLevel.AUTHORIZED);
 ```
 
-### Protected Routes
+## Real-time / Polling Pattern
 
-```typescript
-'use client';
-
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '@/lib/auth-context';
-
-export default function ProtectedPage() {
-    const { user, loading } = useAuth();
-    const router = useRouter();
-
-    useEffect(() => {
-        if (!loading && !user) {
-            router.push('/login');
-        }
-    }, [user, loading, router]);
-
-    if (loading || !user) {
-        return <div>Loading...</div>;
-    }
-
-    return <div>Protected content</div>;
-}
+```tsx
+useEffect(() => {
+    if (!guildId) return;
+    const id = setInterval(() => {
+        apiClient.getMusicSettings(guildId).then(setSettings).catch(() => {});
+    }, 30000);
+    return () => clearInterval(id);
+}, [guildId]);
 ```
 
-### Real-time Updates
+## Design System — Semantic Tokens
 
-```typescript
-'use client';
+**Never use hardcoded colors.** Always use these tokens so pages work in both light and dark themes:
 
-import { useState, useEffect } from 'react';
+```tsx
+// ✅ Correct
+<div className="bg-card border border-border text-foreground">
+<p className="text-muted-foreground">
+<button className="bg-primary text-primary-foreground">
+<span className="text-destructive">
 
-export default function RealtimePage() {
-    const [data, setData] = useState([]);
-
-    useEffect(() => {
-        // Poll for updates every 5 seconds
-        const interval = setInterval(async () => {
-            const updated = await apiClient.getCustomFeatures(guildId);
-            setData(updated);
-        }, 5000);
-
-        return () => clearInterval(interval);
-    }, [guildId]);
-
-    return (
-        <div className="p-8">
-            {/* Your data display */}
-        </div>
-    );
-}
+// ❌ Wrong
+<div className="bg-white text-black border-gray-200">
+<p className="text-gray-500">
+<button className="bg-blue-600 text-white">
 ```
 
-## Styling with Tailwind
-
-Common utility classes:
-
-```typescript
-// Layout
-<div className="p-8">                    {/* Padding */}
-<div className="max-w-2xl mx-auto">      {/* Centered container */}
-<div className="space-y-6">              {/* Vertical spacing */}
-<div className="grid grid-cols-2 gap-4"> {/* Grid layout */}
-
-// Colors — always use semantic tokens, NEVER hardcode colors
-<div className="bg-card">               {/* Card/panel background */}
-<div className="bg-background">         {/* Page background */}
-<div className="text-foreground">       {/* Primary text */}
-<div className="text-muted-foreground"> {/* Secondary text */}
-<div className="border border-border">  {/* Border */}
-
-// Buttons
-<button className="bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-lg">
-<button className="bg-destructive hover:bg-destructive/90 text-destructive-foreground px-4 py-2 rounded-lg">
-
-// Forms
-<input className="w-full bg-background border border-input rounded-lg p-3 focus:ring-2 focus:ring-ring">
+Common layout patterns:
+```tsx
+<div className="max-w-4xl mx-auto p-8 space-y-6">   {/* Page container */}
+<div className="bg-card rounded-xl border border-border p-6">  {/* Card/panel */}
+<div className="grid grid-cols-1 md:grid-cols-2 gap-4">  {/* Responsive grid */}
+<input className="w-full bg-background border border-input rounded-lg p-3 text-foreground focus:ring-2 focus:ring-ring">
 ```
 
-## Best Practices
+## Permission Levels Quick Reference
 
-1. **Use TypeScript**: Define interfaces for your data
-   ```typescript
-   interface Feature {
-       id: string;
-       name: string;
-       description: string;
-       created_at: string;
-   }
-   ```
+| Level | Name | Use for |
+| :---- | :--- | :------ |
+| 0 | PUBLIC | Unauthenticated pages (landing, login) |
+| 1 | PUBLIC_DATA | Read-only public data, no login needed |
+| 2 | USER | Any logged-in member |
+| 3 | AUTHORIZED | Write actions, moderation (default choice) |
+| 4 | OWNER | Guild owner only |
+| 5 | DEVELOPER | Platform admin — full access |
 
-2. **Handle Loading States**: Show loading indicators
-3. **Handle Errors**: Display error messages to users
-4. **Use Client Components**: Add `'use client'` for interactive features
-5. **Optimize Images**: Use Next.js `Image` component
-6. **Keep Components Small**: Break down into reusable pieces
-7. **Use Semantic Styling**: DO NOT use hardcoded colors (e.g., `bg-gray-800`, `text-white`). Use the design system's semantic tokens to ensure theme compatibility and consistency.
-    - **Backgrounds**: `bg-background`, `bg-card`, `bg-muted`
-    - **Text**: `text-foreground`, `text-muted-foreground`
-    - **Borders**: `border-border`
-    - **Primary**: `bg-primary`, `text-primary-foreground`
-    - **Destructive**: `text-destructive`, `bg-destructive/10`
-    
-    > [!TIP]
-    > For detailed styling rules and examples, refer to [PLUGIN_STYLE_GUIDE.md](../PLUGIN_STYLE_GUIDE.md).
+**Default to Level 3 (AUTHORIZED) when in doubt.**
 
 ## Next Steps
 
-- See `docs/integration/04-backend-endpoints.md` to create APIs
-- Review existing pages in `frontend/app/dashboard/`
+- See `docs/integration/04-backend-endpoints.md` to create the API endpoints your page calls
+- Review existing pages in `frontend/app/dashboard/` for real examples
 - Read [Next.js documentation](https://nextjs.org/docs)

@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { apiClient } from '@/app/api-client';
 import { Terminal, Radio, Shield, Clock } from 'lucide-react';
+import { withPermission } from '@/lib/components/with-permission';
+import { PermissionLevel } from '@/lib/permissions';
 
 interface BotReport {
     commands: Array<{
@@ -21,7 +23,7 @@ interface BotReport {
     timestamp: number;
 }
 
-export default function BotReportPage() {
+function BotReportPage() {
     const [report, setReport] = useState<BotReport | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -144,3 +146,5 @@ export default function BotReportPage() {
         </div>
     );
 }
+
+export default withPermission(BotReportPage, PermissionLevel.DEVELOPER);

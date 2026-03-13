@@ -13,14 +13,15 @@ import pytest
 import os
 
 GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://gateway")
+BACKEND_URL = os.environ.get("BACKEND_URL", "http://backend:8000")
 TEST_API_TOKEN = os.environ.get("TEST_API_TOKEN", "")
 SUITE = "06 Backwards Compatibility"
 
 
-def _get(path: str, headers: dict = None):
+def _get(path: str, headers: dict = None, base: str = None):
     start = time.monotonic()
     r = httpx.get(
-        f"{GATEWAY_URL}{path}",
+        f"{base or GATEWAY_URL}{path}",
         timeout=10,
         follow_redirects=False,
         headers=headers or {},
@@ -92,8 +93,8 @@ class TestUnauthorized401ContractV1:
 
     PROTECTED_PATHS = [
         "/api/v1/auth/me",
-        "/api/v1/guilds/",
-        "/api/v1/shards/",
+        "/api/v1/guilds",
+        "/api/v1/shards",
         "/api/v1/platform/settings",
     ]
 
@@ -121,20 +122,24 @@ class TestAuthMeContractV1:
     REQUIRED_FIELDS = ["user_id", "username"]
 
     def test_returns_200_with_valid_token(self):
+        # Backend direct — rapid test execution exhausts nginx auth rate limit.
         r, _ = _get("/api/v1/auth/me",
-                    headers={"Authorization": f"Bearer {TEST_API_TOKEN}"})
+                    headers={"Authorization": f"Bearer {TEST_API_TOKEN}"},
+                    base=BACKEND_URL)
         assert r.status_code == 200, f"/auth/me failed: {r.status_code} {r.text}"
 
     @pytest.mark.parametrize("field", REQUIRED_FIELDS)
     def test_has_required_field(self, field):
         r, _ = _get("/api/v1/auth/me",
-                    headers={"Authorization": f"Bearer {TEST_API_TOKEN}"})
+                    headers={"Authorization": f"Bearer {TEST_API_TOKEN}"},
+                    base=BACKEND_URL)
         data = r.json()
         assert field in data, f"Missing required field '{field}' in /auth/me: {data}"
 
     def test_response_time_under_2s(self):
         _, ms = _get("/api/v1/auth/me",
-                     headers={"Authorization": f"Bearer {TEST_API_TOKEN}"})
+                     headers={"Authorization": f"Bearer {TEST_API_TOKEN}"},
+                     base=BACKEND_URL)
         assert ms < 2000, f"/auth/me took {ms:.0f}ms (limit: 2000ms)"
 
 
@@ -143,17 +148,17 @@ class TestGuildsContractV1:
     """GET /api/v1/guilds/ — L2 Authenticated"""
 
     def test_returns_200_or_empty_list(self):
-        r, _ = _get("/api/v1/guilds/",
+        r, _ = _get("/api/v1/guilds",
                     headers={"Authorization": f"Bearer {TEST_API_TOKEN}"})
         assert r.status_code == 200, f"GET /guilds/ failed: {r.status_code}"
 
     def test_returns_list(self):
-        r, _ = _get("/api/v1/guilds/",
+        r, _ = _get("/api/v1/guilds",
                     headers={"Authorization": f"Bearer {TEST_API_TOKEN}"})
         data = r.json()
         assert isinstance(data, list), f"Expected list from /guilds/, got {type(data)}"
 
     def test_response_time_under_3s(self):
-        _, ms = _get("/api/v1/guilds/",
+        _, ms = _get("/api/v1/guilds",
                      headers={"Authorization": f"Bearer {TEST_API_TOKEN}"})
         assert ms < 3000, f"GET /guilds/ took {ms:.0f}ms (limit: 3000ms)"

@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { apiClient } from '../../../../api-client';
+import { withPermission } from '@/lib/components/with-permission';
+import { PermissionLevel } from '@/lib/permissions';
 
 type TabType = 'info' | 'create' | 'query' | 'manage';
 
@@ -55,7 +57,7 @@ interface QueryResultType {
     usage?: Record<string, unknown>;
 }
 
-export default function CachingDemoPage() {
+function CachingDemoPage() {
     const params = useParams();
     const guildId = params?.guildId as string;
 
@@ -1015,3 +1017,5 @@ This concludes our technical reference guide. The field of AI continues to evolv
         </div>
     );
 }
+
+export default withPermission(CachingDemoPage, PermissionLevel.DEVELOPER);

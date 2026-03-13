@@ -26,6 +26,8 @@ import { useState, useRef, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { apiClient } from '../../../../api-client';
+import { withPermission } from '@/lib/components/with-permission';
+import { PermissionLevel } from '@/lib/permissions';
 
 interface TranscriptionSegment {
     start_time: number;
@@ -86,7 +88,7 @@ function getSupportedMimeType(): string {
     return 'audio/webm'; // fallback
 }
 
-export default function AudioTranscribeDemoPage() {
+function AudioTranscribeDemoPage() {
     const params = useParams();
     const guildId = params?.guildId as string;
 
@@ -895,3 +897,5 @@ export default function AudioTranscribeDemoPage() {
         </div>
     );
 }
+
+export default withPermission(AudioTranscribeDemoPage, PermissionLevel.DEVELOPER);

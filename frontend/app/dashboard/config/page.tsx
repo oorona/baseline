@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   Settings2, RefreshCw, Save, Trash2, AlertTriangle, CheckCircle2,
-  ChevronDown, ChevronRight, Eye, EyeOff, Zap, Lock, Info
+  Eye, EyeOff, Zap, Lock, Info, Key, Database
 } from 'lucide-react';
 import { apiClient } from '@/app/api-client';
 import { withPermission } from '@/lib/components/with-permission';
@@ -34,6 +34,31 @@ interface SettingsResponse {
   categories: Record<string, string>;
   settings: Record<string, SettingEntry[]>;
 }
+
+interface ApiKeyEntry {
+  friendly_name: string;
+  description: string;
+  is_set: boolean;
+  masked_value: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Tab definitions
+// ---------------------------------------------------------------------------
+const TABS = [
+  { key: 'general',      label: 'General' },
+  { key: 'bot_identity', label: 'Bot Identity' },
+  { key: 'discord',      label: 'Discord' },
+  { key: 'api',          label: 'API & Security' },
+  { key: 'llm',          label: 'LLM / AI' },
+  { key: 'rate_limit',   label: 'Rate Limits' },
+  { key: 'features',     label: 'Feature Flags' },
+  { key: 'frontend',     label: 'Frontend' },
+  { key: 'database',     label: 'Database' },
+  { key: 'api_keys',     label: 'API Keys', icon: Key },
+] as const;
+
+type TabKey = typeof TABS[number]['key'];
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -130,6 +155,395 @@ function SettingInput({
   );
 }
 
+function SettingRow({
+  s,
+  catKey,
+  edits,
+  showSecrets,
+  onEdit,
+  onToggleSecret,
+  onRevert,
+}: {
+  s: SettingEntry;
+  catKey: string;
+  edits: Record<string, string>;
+  showSecrets: Record<string, boolean>;
+  onEdit: (key: string, value: string) => void;
+  onToggleSecret: (key: string) => void;
+  onRevert: (key: string) => void;
+}) {
+  const currentVal = edits[s.key] ?? s.effective_value ?? s.default ?? '';
+  const isEdited   = edits[s.key] !== undefined;
+  const hasOverride = s.source === 'database';
+
+  return (
+    <div className={`px-6 py-5 ${isEdited ? 'bg-primary/5' : ''}`}>
+      <div className="flex flex-col md:flex-row md:items-start gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <span className="font-medium text-foreground text-sm">{s.friendly_name}</span>
+            <code className="text-xs text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded font-mono">{s.key}</code>
+            {s.is_dynamic
+              ? <Badge label="Dynamic" variant="dynamic" />
+              : <Badge label="Requires restart" variant="static" />
+            }
+            {s.is_secret && <Badge label="Secret" variant="secret" />}
+            {hasOverride && <Badge label={`Override (${s.source})`} variant="source" />}
+          </div>
+          <p className="text-xs text-muted-foreground leading-relaxed mb-3">{s.description}</p>
+          {catKey !== 'frontend' ? (
+            <SettingInput
+              setting={s}
+              value={currentVal}
+              onChange={v => onEdit(s.key, v)}
+              showSecret={showSecrets[s.key] ?? false}
+              onToggleSecret={() => onToggleSecret(s.key)}
+            />
+          ) : (
+            <div className="flex items-center gap-2 p-2 bg-muted/30 rounded-lg border border-border/50">
+              <Info size={12} className="text-muted-foreground shrink-0" />
+              <span className="text-xs text-muted-foreground">
+                Frontend build-time variable. Current value:{' '}
+                <code className="font-mono">{s.effective_value ?? s.default ?? '(not set)'}</code>
+              </span>
+            </div>
+          )}
+          {s.source && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Source: <span className="font-medium capitalize">{s.source}</span>
+              {s.default && ` · Default: ${s.is_secret ? '****' : s.default}`}
+            </p>
+          )}
+          {!s.is_dynamic && s.requires_restart_note && (
+            <p className="text-xs text-amber-400/80 mt-1 flex items-center gap-1">
+              <Lock size={10} />
+              {s.requires_restart_note}
+            </p>
+          )}
+        </div>
+        {hasOverride && (
+          <button
+            type="button"
+            onClick={() => onRevert(s.key)}
+            className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border text-xs text-muted-foreground hover:text-destructive hover:border-destructive/50 transition-colors"
+            title="Revert to environment default"
+          >
+            <Trash2 size={12} />
+            Revert
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// API Keys tab
+// ---------------------------------------------------------------------------
+
+function ApiKeysTab() {
+  const [keys, setKeys]           = useState<Record<string, ApiKeyEntry> | null>(null);
+  const [edits, setEdits]         = useState<Record<string, string>>({});
+  const [showKey, setShowKey]     = useState<Record<string, boolean>>({});
+  const [encKey, setEncKey]       = useState('');
+  const [showEncKey, setShowEncKey] = useState(false);
+  const [saving, setSaving]       = useState(false);
+  const [message, setMessage]     = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const data = await apiClient.getApiKeys();
+      setKeys(data);
+    } catch {
+      setMessage({ type: 'error', text: 'Failed to load API keys.' });
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleSave = async () => {
+    if (Object.keys(edits).length === 0) {
+      setMessage({ type: 'warning', text: 'No changes to save.' });
+      return;
+    }
+    if (!encKey.trim()) {
+      setMessage({ type: 'error', text: 'Encryption key is required to save changes.' });
+      return;
+    }
+    setSaving(true);
+    setMessage(null);
+    try {
+      const res = await apiClient.updateApiKeys(edits, encKey.trim());
+      setMessage({ type: 'success', text: res.message });
+      setEdits({});
+      setEncKey('');
+      await load();
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      setMessage({
+        type: 'error',
+        text: status === 401
+          ? 'Encryption key is incorrect.'
+          : 'Failed to update API keys.',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const base = 'w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors pr-10';
+
+  if (!keys) {
+    return <div className="flex justify-center py-12"><div className="w-6 h-6 border-4 border-primary/30 border-t-primary rounded-full animate-spin" /></div>;
+  }
+
+  const hasEdits = Object.keys(edits).length > 0;
+  const canSave  = hasEdits && encKey.trim().length > 0;
+
+  return (
+    <div className="space-y-6">
+      {/* Encryption key gate */}
+      <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-5 space-y-3">
+        <div className="flex items-center gap-2">
+          <Lock size={14} className="text-amber-400 shrink-0" />
+          <p className="text-sm font-medium text-amber-300">Encryption Key Required</p>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          API keys are stored in an encrypted file. To write changes you must supply the encryption
+          key — it is sent directly to the server and used only for this operation.
+          The server never uses its own copy of the key for writes.
+        </p>
+        <div className="relative">
+          <input
+            type={showEncKey ? 'text' : 'password'}
+            value={encKey}
+            onChange={e => setEncKey(e.target.value)}
+            placeholder="Enter encryption key…"
+            className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500/50 transition-colors pr-10"
+          />
+          <button
+            type="button"
+            onClick={() => setShowEncKey(v => !v)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+          >
+            {showEncKey ? <EyeOff size={14} /> : <Eye size={14} />}
+          </button>
+        </div>
+      </div>
+
+      <div className="flex items-start justify-between gap-4">
+        <p className="text-sm text-muted-foreground">
+          Leave a key field blank to keep its current value unchanged. Changes take effect after a server restart.
+        </p>
+        <button
+          onClick={handleSave}
+          disabled={saving || !canSave}
+          className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-medium transition-colors disabled:opacity-50"
+        >
+          <Save size={14} />
+          {saving ? 'Saving…' : `Save${hasEdits ? ` (${Object.keys(edits).length})` : ''}`}
+        </button>
+      </div>
+
+      {message && (
+        <div className={`flex items-start gap-3 p-4 rounded-lg border text-sm ${
+          message.type === 'success' ? 'bg-green-500/10 border-green-500/30 text-green-400' :
+          message.type === 'warning' ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' :
+          'bg-destructive/10 border-destructive/30 text-destructive'
+        }`}>
+          {message.type === 'success' ? <CheckCircle2 size={16} className="mt-0.5 shrink-0" /> :
+           <AlertTriangle size={16} className="mt-0.5 shrink-0" />}
+          <span>{message.text}</span>
+        </div>
+      )}
+
+      <div className="bg-card border border-border rounded-xl divide-y divide-border/50">
+        {Object.entries(keys).map(([key, entry]) => {
+          const editValue  = edits[key] ?? '';
+          const isEdited   = edits[key] !== undefined;
+          const isVisible  = showKey[key] ?? false;
+
+          return (
+            <div key={key} className={`px-6 py-5 ${isEdited ? 'bg-primary/5' : ''}`}>
+              <div className="flex items-center gap-2 flex-wrap mb-1">
+                <span className="font-medium text-foreground text-sm">{entry.friendly_name}</span>
+                <code className="text-xs text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded font-mono">{key}</code>
+                <Badge label="Secret" variant="secret" />
+                <Badge label="Requires restart" variant="static" />
+                {entry.is_set && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border bg-green-500/10 text-green-400 border-green-500/30">
+                    Set
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed mb-3">{entry.description}</p>
+              <div className="relative">
+                <input
+                  type={isVisible ? 'text' : 'password'}
+                  value={editValue}
+                  onChange={e => setEdits(prev => ({ ...prev, [key]: e.target.value }))}
+                  className={base}
+                  placeholder={entry.masked_value ?? 'Enter new value…'}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowKey(prev => ({ ...prev, [key]: !prev[key] }))}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {isVisible ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Current: {entry.is_set ? (entry.masked_value ?? '****') : <span className="text-amber-400/80">Not set</span>}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+
+      {hasEdits && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-card border border-border rounded-xl shadow-xl px-5 py-3">
+          <span className="text-sm text-muted-foreground">
+            {encKey.trim() ? '' : <Lock size={12} className="inline mr-1 text-amber-400" />}
+            {Object.keys(edits).length} unsaved change{Object.keys(edits).length !== 1 ? 's' : ''}
+            {!encKey.trim() && <span className="text-amber-400/80 ml-1">— enter key above</span>}
+          </span>
+          <button
+            onClick={handleSave}
+            disabled={saving || !canSave}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-medium transition-colors disabled:opacity-50"
+          >
+            <Save size={14} />
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Database settings tab
+// ---------------------------------------------------------------------------
+
+function DatabaseTab() {
+  const [data, setData]       = useState<SettingsResponse | null>(null);
+  const [edits, setEdits]     = useState<Record<string, string>>({});
+  const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
+  const [saving, setSaving]   = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await apiClient.getDatabaseSettings();
+      setData(res);
+    } catch {
+      setMessage({ type: 'error', text: 'Failed to load database settings.' });
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleSave = async () => {
+    const updates = Object.entries(edits).map(([key, value]) => ({ key, value }));
+    if (updates.length === 0) { setMessage({ type: 'warning', text: 'No changes to save.' }); return; }
+    setSaving(true);
+    setMessage(null);
+    try {
+      const res = await apiClient.updateConfigSettings(updates);
+      setMessage({ type: res.restart_required ? 'warning' : 'success', text: res.message || 'Settings saved.' });
+      setEdits({});
+      await load();
+    } catch {
+      setMessage({ type: 'error', text: 'Failed to save settings.' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRevert = async (key: string) => {
+    try {
+      await apiClient.deleteConfigOverride(key);
+      setMessage({ type: 'success', text: `${key} reverted to environment default.` });
+      await load();
+    } catch {
+      setMessage({ type: 'error', text: `Failed to revert ${key}.` });
+    }
+  };
+
+  if (!data) return <div className="flex justify-center py-12"><div className="w-6 h-6 border-4 border-primary/30 border-t-primary rounded-full animate-spin" /></div>;
+
+  const hasEdits = Object.keys(edits).length > 0;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-start justify-between gap-4">
+        <p className="text-sm text-muted-foreground">
+          Database connection settings. All require a server restart to take effect.
+        </p>
+        <button
+          onClick={handleSave}
+          disabled={saving || !hasEdits}
+          className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-medium transition-colors disabled:opacity-50"
+        >
+          <Save size={14} />
+          {saving ? 'Saving…' : `Save${hasEdits ? ` (${Object.keys(edits).length})` : ''}`}
+        </button>
+      </div>
+
+      {message && (
+        <div className={`flex items-start gap-3 p-4 rounded-lg border text-sm ${
+          message.type === 'success' ? 'bg-green-500/10 border-green-500/30 text-green-400' :
+          message.type === 'warning' ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' :
+          'bg-destructive/10 border-destructive/30 text-destructive'
+        }`}>
+          {message.type === 'success' ? <CheckCircle2 size={16} className="mt-0.5 shrink-0" /> :
+           <AlertTriangle size={16} className="mt-0.5 shrink-0" />}
+          <span>{message.text}</span>
+        </div>
+      )}
+
+      {Object.entries(data.categories).map(([catKey, catLabel]) => {
+        const catSettings = data.settings[catKey] ?? [];
+        if (catSettings.length === 0) return null;
+        return (
+          <div key={catKey} className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="flex items-center gap-2 px-6 py-4 border-b border-border">
+              <Database size={16} className="text-muted-foreground" />
+              <h3 className="text-base font-semibold text-foreground">{catLabel}</h3>
+              <span className="text-xs text-muted-foreground ml-auto">{catSettings.length} setting{catSettings.length !== 1 ? 's' : ''}</span>
+            </div>
+            <div className="divide-y divide-border/50">
+              {catSettings.map((s: SettingEntry) => (
+                <SettingRow
+                  key={s.key}
+                  s={s}
+                  catKey={catKey}
+                  edits={edits}
+                  showSecrets={showSecrets}
+                  onEdit={(key, value) => setEdits(prev => ({ ...prev, [key]: value }))}
+                  onToggleSecret={key => setShowSecrets(prev => ({ ...prev, [key]: !prev[key] }))}
+                  onRevert={handleRevert}
+                />
+              ))}
+            </div>
+          </div>
+        );
+      })}
+
+      {hasEdits && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-card border border-border rounded-xl shadow-xl px-5 py-3">
+          <span className="text-sm text-muted-foreground">{Object.keys(edits).length} unsaved change{Object.keys(edits).length !== 1 ? 's' : ''}</span>
+          <button onClick={handleSave} disabled={saving} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-medium transition-colors disabled:opacity-50">
+            <Save size={14} />
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
@@ -142,8 +556,7 @@ function SystemConfigPage() {
   const [message, setMessage]       = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
   const [edits, setEdits]           = useState<Record<string, string>>({});
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
-  const [collapsed, setCollapsed]   = useState<Record<string, boolean>>({});
-  const [activeTab]                 = useState<'settings'>('settings');
+  const [activeTab, setActiveTab]   = useState<TabKey>('general');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -220,12 +633,16 @@ function SystemConfigPage() {
     );
   }
 
-  const categoriesInOrder = Object.keys(APP_CATEGORIES);
   const settingsByCategory = data?.settings ?? {};
   const hasEdits = Object.keys(edits).length > 0;
 
+  // Settings for the currently active non-special tab
+  const activeSettings: SettingEntry[] = activeTab !== 'database' && activeTab !== 'api_keys'
+    ? (settingsByCategory[activeTab] ?? [])
+    : [];
+
   return (
-    <div className="max-w-5xl mx-auto space-y-8 p-6 md:p-8">
+    <div className="max-w-5xl mx-auto space-y-6 p-6 md:p-8">
 
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -240,34 +657,38 @@ function SystemConfigPage() {
             Manage all framework settings. Dynamic settings apply immediately; static settings require a server restart.
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border bg-background hover:bg-muted/40 text-sm font-medium transition-colors disabled:opacity-50"
-          >
-            <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
-            Refresh Dynamic
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving || !hasEdits}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-medium transition-colors disabled:opacity-50"
-          >
-            <Save size={14} />
-            {saving ? 'Saving…' : `Save Changes${hasEdits ? ` (${Object.keys(edits).length})` : ''}`}
-          </button>
+        {activeTab !== 'database' && activeTab !== 'api_keys' && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border bg-background hover:bg-muted/40 text-sm font-medium transition-colors disabled:opacity-50"
+            >
+              <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+              Refresh Dynamic
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving || !hasEdits}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-medium transition-colors disabled:opacity-50"
+            >
+              <Save size={14} />
+              {saving ? 'Saving…' : `Save Changes${hasEdits ? ` (${Object.keys(edits).length})` : ''}`}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Legend (only for app settings tabs) */}
+      {activeTab !== 'database' && activeTab !== 'api_keys' && (
+        <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+          <span className="flex items-center gap-1"><Zap size={12} className="text-green-400" /> Dynamic — applied at runtime without restart</span>
+          <span className="flex items-center gap-1"><Lock size={12} className="text-amber-400" /> Static — requires server restart</span>
         </div>
-      </div>
+      )}
 
-      {/* Legend */}
-      <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
-        <span className="flex items-center gap-1"><Zap size={12} className="text-green-400" /> Dynamic — applied at runtime without restart</span>
-        <span className="flex items-center gap-1"><Lock size={12} className="text-amber-400" /> Static — requires server restart</span>
-      </div>
-
-      {/* Message */}
-      {message && (
+      {/* Global message (for app settings tabs) */}
+      {message && activeTab !== 'database' && activeTab !== 'api_keys' && (
         <div className={`flex items-start gap-3 p-4 rounded-lg border text-sm ${
           message.type === 'success' ? 'bg-green-500/10 border-green-500/30 text-green-400' :
           message.type === 'warning' ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' :
@@ -279,114 +700,59 @@ function SystemConfigPage() {
         </div>
       )}
 
-      {/* Settings categories */}
-      {categoriesInOrder.map(catKey => {
-        const catLabel    = APP_CATEGORIES[catKey];
-        const catSettings = settingsByCategory[catKey] ?? [];
-        if (catSettings.length === 0) return null;
-        const isCollapsed = collapsed[catKey] ?? false;
-
-        return (
-          <div key={catKey} className="bg-card border border-border rounded-xl overflow-hidden">
-            {/* Category header */}
+      {/* Tab bar */}
+      <div className="border-b border-border overflow-x-auto">
+        <nav className="flex gap-1 -mb-px min-w-max">
+          {TABS.map(tab => (
             <button
+              key={tab.key}
               type="button"
-              className="w-full flex items-center justify-between px-6 py-4 hover:bg-muted/20 transition-colors"
-              onClick={() => setCollapsed(prev => ({ ...prev, [catKey]: !prev[catKey] }))}
+              onClick={() => { setActiveTab(tab.key); setMessage(null); }}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex items-center gap-1.5 ${
+                activeTab === tab.key
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+              }`}
             >
-              <h2 className="text-lg font-semibold text-foreground">{catLabel}</h2>
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-muted-foreground">{catSettings.length} setting{catSettings.length !== 1 ? 's' : ''}</span>
-                {isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
-              </div>
+              {'icon' in tab && tab.icon && <tab.icon size={14} />}
+              {tab.label}
             </button>
+          ))}
+        </nav>
+      </div>
 
-            {!isCollapsed && (
-              <div className="border-t border-border divide-y divide-border/50">
-                {catSettings.map((s: SettingEntry) => {
-                  const currentVal = edits[s.key] ?? s.effective_value ?? s.default ?? '';
-                  const isEdited   = edits[s.key] !== undefined;
-                  const hasOverride = s.source === 'database';
+      {/* Tab content */}
+      {activeTab === 'api_keys' ? (
+        <ApiKeysTab />
+      ) : activeTab === 'database' ? (
+        <DatabaseTab />
+      ) : (
+        <div className="space-y-0 bg-card border border-border rounded-xl overflow-hidden">
+          {activeSettings.length === 0 ? (
+            <div className="px-6 py-12 text-center text-muted-foreground text-sm">
+              No settings in this category.
+            </div>
+          ) : (
+            <div className="divide-y divide-border/50">
+              {activeSettings.map((s: SettingEntry) => (
+                <SettingRow
+                  key={s.key}
+                  s={s}
+                  catKey={activeTab}
+                  edits={edits}
+                  showSecrets={showSecrets}
+                  onEdit={handleEdit}
+                  onToggleSecret={key => setShowSecrets(prev => ({ ...prev, [key]: !prev[key] }))}
+                  onRevert={handleRevert}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
-                  return (
-                    <div key={s.key} className={`px-6 py-5 ${isEdited ? 'bg-primary/5' : ''}`}>
-                      <div className="flex flex-col md:flex-row md:items-start gap-4">
-                        <div className="flex-1 min-w-0">
-                          {/* Title row */}
-                          <div className="flex items-center gap-2 flex-wrap mb-1">
-                            <span className="font-medium text-foreground text-sm">{s.friendly_name}</span>
-                            <code className="text-xs text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded font-mono">{s.key}</code>
-                            {s.is_dynamic
-                              ? <Badge label="Dynamic" variant="dynamic" />
-                              : <Badge label="Requires restart" variant="static" />
-                            }
-                            {s.is_secret && <Badge label="Secret" variant="secret" />}
-                            {hasOverride && <Badge label={`Override (${s.source})`} variant="source" />}
-                          </div>
-
-                          {/* Description */}
-                          <p className="text-xs text-muted-foreground leading-relaxed mb-3">{s.description}</p>
-
-                          {/* Input */}
-                          {catKey !== 'frontend' ? (
-                            <SettingInput
-                              setting={s}
-                              value={currentVal}
-                              onChange={v => handleEdit(s.key, v)}
-                              showSecret={showSecrets[s.key] ?? false}
-                              onToggleSecret={() => setShowSecrets(prev => ({ ...prev, [s.key]: !prev[s.key] }))}
-                            />
-                          ) : (
-                            <div className="flex items-center gap-2 p-2 bg-muted/30 rounded-lg border border-border/50">
-                              <Info size={12} className="text-muted-foreground shrink-0" />
-                              <span className="text-xs text-muted-foreground">
-                                This is a frontend build-time variable. Current value:{' '}
-                                <code className="font-mono">{s.effective_value ?? s.default ?? '(not set)'}</code>
-                              </span>
-                            </div>
-                          )}
-
-                          {/* Source info */}
-                          {s.source && (
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Source: <span className="font-medium capitalize">{s.source}</span>
-                              {s.default && ` · Default: ${s.is_secret ? '****' : s.default}`}
-                            </p>
-                          )}
-
-                          {/* Restart note */}
-                          {!s.is_dynamic && s.requires_restart_note && (
-                            <p className="text-xs text-amber-400/80 mt-1 flex items-center gap-1">
-                              <Lock size={10} />
-                              {s.requires_restart_note}
-                            </p>
-                          )}
-                        </div>
-
-                        {/* Revert button */}
-                        {hasOverride && (
-                          <button
-                            type="button"
-                            onClick={() => handleRevert(s.key)}
-                            className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border text-xs text-muted-foreground hover:text-destructive hover:border-destructive/50 transition-colors"
-                            title="Revert to environment default"
-                          >
-                            <Trash2 size={12} />
-                            Revert
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        );
-      })}
-
-      {/* Sticky save bar when there are pending edits */}
-      {hasEdits && (
+      {/* Sticky save bar for app settings tabs */}
+      {hasEdits && activeTab !== 'database' && activeTab !== 'api_keys' && (
         <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-card border border-border rounded-xl shadow-xl px-5 py-3">
           <span className="text-sm text-muted-foreground">{Object.keys(edits).length} unsaved change{Object.keys(edits).length !== 1 ? 's' : ''}</span>
           <button

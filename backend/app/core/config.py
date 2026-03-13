@@ -16,7 +16,7 @@ import os
 from typing import Optional
 
 from pydantic import Field
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # ── Inject encrypted settings BEFORE the Settings class is instantiated ───────
 # This must happen first so that POSTGRES_HOST etc. are available when
@@ -85,6 +85,12 @@ class Settings(BaseSettings):
     DISCORD_GUILD_ID:      Optional[str] = None
     DEVELOPER_ROLE_ID:     Optional[str] = None
 
+    # ── LLM Providers ──────────────────────────────────────────────────────
+    OPENAI_API_KEY:    Optional[str] = None
+    ANTHROPIC_API_KEY: Optional[str] = None
+    GOOGLE_API_KEY:    Optional[str] = None
+    XAI_API_KEY:       Optional[str] = None
+
     # ── Auth ───────────────────────────────────────────────────────────────
     SECRET_KEY: str = "development_secret_key_change_in_production"
     ALGORITHM:  str = "HS256"
@@ -123,10 +129,11 @@ class Settings(BaseSettings):
         pw = f":{self.REDIS_PASSWORD}@" if self.REDIS_PASSWORD else ""
         return f"redis://{pw}{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
 
-    class Config:
-        case_sensitive = True
-        env_file       = ".env"
-        extra          = "ignore"
+    model_config = SettingsConfigDict(
+        case_sensitive=True,
+        env_file=".env",
+        extra="ignore",
+    )
 
 
 try:
@@ -145,6 +152,8 @@ except Exception as e:
         DISCORD_BOT_TOKEN=None, DISCORD_REDIRECT_URI=None,
         FRONTEND_URL="http://localhost:3000", ADMIN_USER_IDS=None,
         DISCORD_GUILD_ID=None, DEVELOPER_ROLE_ID=None,
+        OPENAI_API_KEY=None, ANTHROPIC_API_KEY=None,
+        GOOGLE_API_KEY=None, XAI_API_KEY=None,
         SECRET_KEY="development_secret_key_change_in_production",
         ALGORITHM="HS256", ACCESS_TOKEN_EXPIRE_MINUTES=10080,
     )

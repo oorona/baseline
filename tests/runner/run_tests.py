@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Baseline Framework — Live Test Runner
 ======================================
@@ -15,8 +16,25 @@ Usage:
     GATEWAY_URL=http://localhost:8000 python run_tests.py
 """
 import sys
-import time
 import os
+
+# Guard: this script must run inside the Docker test container.
+# Outside Docker, pytest and the other dependencies are not installed.
+if not os.path.exists("/.dockerenv"):
+    print()
+    print("  \033[1;31mError:\033[0m run_tests.py must be executed inside the Docker test container.")
+    print()
+    print("  Use the test runner script instead:")
+    print()
+    print("    \033[1;36m./test.sh\033[0m")
+    print()
+    print("  Or run the container directly:")
+    print()
+    print("    \033[1;36mdocker compose -f docker-compose.yml -f docker-compose.test.yml run --rm test-runner\033[0m")
+    print()
+    sys.exit(1)
+
+import time
 
 import pytest
 from rich.console import Console
@@ -217,6 +235,22 @@ def main():
         console.print(f"  [yellow]All tests will be skipped until the setup wizard is run.[/yellow]")
         console.print(f"  [dim]Open the web UI and complete setup at /setup, then re-run.[/dim]")
 
+    # ── Suite filter (TEST_SUITES=01,03,07 runs only those suites) ────────────
+    suites_env = os.environ.get("TEST_SUITES", "").strip()
+    if suites_env:
+        import glob as _glob
+        nums = [s.strip().zfill(2) for s in suites_env.split(",") if s.strip()]
+        pytest_targets = []
+        for num in nums:
+            pytest_targets.extend(sorted(_glob.glob(f"suites/test_{num}_*.py")))
+        if not pytest_targets:
+            console.print(f"  [bold red]No suites matched TEST_SUITES={suites_env!r}[/bold red]")
+            sys.exit(1)
+        console.print(f"  Suites:   [cyan]{', '.join(nums)}[/cyan]  ({len(pytest_targets)} file(s))")
+    else:
+        pytest_targets = ["suites/"]
+        console.print(f"  Suites:   [cyan]all[/cyan]")
+
     console.print()
 
     start = time.monotonic()
@@ -224,7 +258,7 @@ def main():
 
     exit_code = pytest.main(
         [
-            "suites/",
+            *pytest_targets,
             "-v",
             "--tb=no",          # We handle failure output ourselves
             "--no-header",

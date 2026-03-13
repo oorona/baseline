@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { apiClient } from '@/app/api-client';
 import { usePlugins } from '@/app/plugins';
-import { Bot, Settings, Activity, Terminal, Shield, Lock, ExternalLink, User, FileText, ScrollText, Database, BarChart2, Settings2, Wrench, Gauge, Sparkles, BrainCircuit } from 'lucide-react';
+import { Bot, Settings, Activity, Terminal, Shield, Lock, ExternalLink, User, FileText, Database, BarChart2, Settings2, Wrench, Gauge, Sparkles, BrainCircuit, Globe, BookOpen } from 'lucide-react';
 import { usePermissions } from '@/lib/hooks/use-permissions';
 import { PermissionLevel } from '@/lib/permissions';
 
@@ -92,6 +92,7 @@ function DashboardContent() {
     bgColor: string;
     borderColor: string;
     isAdminOnly?: boolean;
+    isDemo?: boolean;
   }
 
   // Friendly level labels shown on each card
@@ -109,6 +110,31 @@ function DashboardContent() {
 
   const cards: DashboardCard[] = [
     {
+      id: 'bot-overview',
+      title: 'Bot Overview',
+      description: 'Learn what this bot can do — features, commands, and how to get started.',
+      icon: Globe,
+      href: '/welcome?noRedirect=1',
+      level: PermissionLevel.PUBLIC,
+      color: 'text-slate-400',
+      bgColor: 'bg-slate-500/10',
+      borderColor: 'group-hover:border-slate-500/50',
+      isAdminOnly: false
+    },
+    {
+      id: 'command-reference',
+      title: 'Command Reference',
+      description: 'Browse all available bot commands, their usage, parameters, and examples.',
+      icon: BookOpen,
+      href: '/commands',
+      level: PermissionLevel.PUBLIC_DATA,
+      color: 'text-sky-400',
+      bgColor: 'bg-sky-500/10',
+      borderColor: 'group-hover:border-sky-500/50',
+      isAdminOnly: false,
+      isDemo: true
+    },
+    {
       id: 'bot-settings',
       title: 'Bot Settings',
       description: 'Configure general bot behavior, command prefix, and language settings.',
@@ -118,7 +144,8 @@ function DashboardContent() {
       color: 'text-blue-500',
       bgColor: 'bg-blue-500/10',
       borderColor: 'group-hover:border-blue-500/50',
-      isAdminOnly: false
+      isAdminOnly: false,
+      isDemo: true
     },
     {
       id: 'permissions',
@@ -133,12 +160,12 @@ function DashboardContent() {
       isAdminOnly: false
     },
     {
-      id: 'system-status',
-      title: 'System Status',
-      description: 'View shard health, uptime, and live database metrics.',
+      id: 'bot-health',
+      title: 'Bot Health',
+      description: 'Check if the bot is online — backend, database, and Discord gateway status.',
       icon: Activity,
-      href: `/dashboard/status`,
-      level: PermissionLevel.USER,
+      href: `/dashboard/bot-health`,
+      level: PermissionLevel.AUTHORIZED,
       color: 'text-green-500',
       bgColor: 'bg-green-500/10',
       borderColor: 'group-hover:border-green-500/50',
@@ -168,18 +195,7 @@ function DashboardContent() {
       borderColor: 'group-hover:border-orange-500/50',
       isAdminOnly: false
     },
-    {
-      id: 'logging-control',
-      title: 'Logging Control',
-      description: 'Configure channel-level and event-level logging for this server.',
-      icon: ScrollText,
-      href: `/dashboard/${activeGuildId}/logging`,
-      level: PermissionLevel.AUTHORIZED,
-      color: 'text-pink-500',
-      bgColor: 'bg-pink-500/10',
-      borderColor: 'group-hover:border-pink-500/50',
-      isAdminOnly: false
-    },
+
     {
       id: 'ai-analytics',
       title: 'AI Analytics',
@@ -238,7 +254,8 @@ function DashboardContent() {
       color: 'text-sky-500',
       bgColor: 'bg-sky-500/10',
       borderColor: 'group-hover:border-sky-500/50',
-      isAdminOnly: true
+      isAdminOnly: true,
+      isDemo: true
     },
     {
       id: 'llm-configs',
@@ -300,44 +317,82 @@ function DashboardContent() {
         )}
       </div>
 
-      {/* Card Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {visibleCards.map((card, index) => {
-          const levelBg: Record<number, string> = {
-            0: 'bg-card',
-            1: 'bg-sky-950/40',
-            2: 'bg-emerald-950/40',
-            3: 'bg-blue-950/50',
-            4: 'bg-amber-950/40',
-            5: 'bg-red-950/50',
-          };
-          const cardBg = levelBg[card.level] ?? 'bg-card';
-          return (
-          <div
-            key={index}
-            onClick={() => {
-              apiClient.trackCardClick(card.id, activeGuildId);
-              router.push(card.href);
-            }}
-            className={`group relative ${cardBg} border border-border ${card.borderColor} rounded-xl p-8 cursor-pointer transition-all duration-300 hover:shadow-lg hover:-translate-y-1 flex flex-col h-full`}
-          >
-            <div className={`absolute top-6 right-6 p-3 rounded-xl ${card.bgColor} ${card.color} transition-colors group-hover:scale-110 duration-300`}>
-              <card.icon size={28} />
-            </div>
+      {/* Grouped Card Sections */}
+      {(() => {
+        const levelMeta: Record<number, { label: string; description: string; accentText: string; borderAccent: string; sectionBg: string; badge: string }> = {
+          0: { label: 'Public',      description: 'Available to everyone, no account needed',        accentText: 'text-slate-400',   borderAccent: 'border-slate-500/50',   sectionBg: 'bg-slate-500/5',   badge: 'bg-slate-500/20 text-slate-300' },
+          1: { label: 'Public Data', description: 'Public information — no login required',          accentText: 'text-sky-400',     borderAccent: 'border-sky-500/50',     sectionBg: 'bg-sky-500/5',     badge: 'bg-sky-500/20 text-sky-300' },
+          2: { label: 'User',        description: 'Available to logged-in server members',           accentText: 'text-emerald-400', borderAccent: 'border-emerald-500/50', sectionBg: 'bg-emerald-500/5', badge: 'bg-emerald-500/20 text-emerald-300' },
+          3: { label: 'Authorized',  description: 'Requires explicit server authorization',          accentText: 'text-blue-400',    borderAccent: 'border-blue-500/50',    sectionBg: 'bg-blue-500/5',    badge: 'bg-blue-500/20 text-blue-300' },
+          4: { label: 'Owner',       description: 'Server owner only',                               accentText: 'text-amber-400',   borderAccent: 'border-amber-500/50',   sectionBg: 'bg-amber-500/5',   badge: 'bg-amber-500/20 text-amber-300' },
+          5: { label: 'Developer',   description: 'Platform administrator — full system access',     accentText: 'text-red-400',     borderAccent: 'border-red-500/50',     sectionBg: 'bg-red-500/5',     badge: 'bg-red-500/20 text-red-300' },
+        };
 
-            <div className="mt-4 mb-auto">
-              <h3 className="text-2xl font-bold mb-3 group-hover:text-primary transition-colors">{card.title}</h3>
-              <p className="text-muted-foreground leading-relaxed">{card.description}</p>
-            </div>
+        const cardsByLevel = visibleCards.reduce((acc, card) => {
+          if (!acc[card.level]) acc[card.level] = [];
+          acc[card.level].push(card);
+          return acc;
+        }, {} as Record<number, typeof visibleCards>);
 
-            <div className="mt-8 pt-6 border-t border-border/50 flex items-center justify-between text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors">
-              <span>{levelLabel(card.level)}</span>
-              <ExternalLink size={16} className="opacity-0 group-hover:opacity-100 transition-opacity" />
-            </div>
+        const sortedLevels = Object.keys(cardsByLevel).map(Number).sort((a, b) => b - a);
+        const showSectionHeaders = sortedLevels.length > 1;
+
+        return (
+          <div className="space-y-10">
+            {sortedLevels.map(level => {
+              const meta = levelMeta[level] ?? { label: `Level ${level}`, description: '', accentText: 'text-muted-foreground', borderAccent: 'border-border', sectionBg: 'bg-muted/5', badge: 'bg-muted text-muted-foreground' };
+              const levelCards = cardsByLevel[level];
+              return (
+                <div key={level} className="space-y-4">
+                  {showSectionHeaders && (
+                    <div className={`flex items-center gap-4 pl-4 border-l-4 ${meta.borderAccent}`}>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h2 className={`text-base font-semibold tracking-wide uppercase ${meta.accentText}`}>{meta.label}</h2>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${meta.badge}`}>Level {level}</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground mt-0.5">{meta.description}</p>
+                      </div>
+                    </div>
+                  )}
+                  <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-5 rounded-2xl ${showSectionHeaders ? meta.sectionBg : ''}`}>
+                    {levelCards.map((card, index) => (
+                      <div
+                        key={index}
+                        onClick={() => {
+                          apiClient.trackCardClick(card.id, activeGuildId);
+                          router.push(card.href);
+                        }}
+                        className={`group relative bg-card border border-border ${card.borderColor} rounded-xl p-8 cursor-pointer transition-all duration-300 hover:shadow-lg hover:-translate-y-1 flex flex-col h-full`}
+                      >
+                        <div className={`absolute top-6 right-6 p-3 rounded-xl ${card.bgColor} ${card.color} transition-colors group-hover:scale-110 duration-300`}>
+                          <card.icon size={28} />
+                        </div>
+
+                        {card.isDemo && (
+                          <span className="absolute top-4 left-4 text-[10px] font-semibold uppercase tracking-widest px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25">
+                            Demo
+                          </span>
+                        )}
+
+                        <div className="mt-4 mb-auto">
+                          <h3 className="text-2xl font-bold mb-3 group-hover:text-primary transition-colors">{card.title}</h3>
+                          <p className="text-muted-foreground leading-relaxed">{card.description}</p>
+                        </div>
+
+                        <div className="mt-8 pt-6 border-t border-border/50 flex items-center justify-between text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors">
+                          <span>{levelLabel(card.level)}</span>
+                          <ExternalLink size={16} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-          );
-        })}
-      </div>
+        );
+      })()}
 
       {visibleCards.length === 0 && (
         <div className="text-center py-20 bg-muted/20 rounded-xl border border-dashed border-border">
