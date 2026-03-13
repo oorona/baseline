@@ -175,7 +175,7 @@ The system uses a custom persistent session mechanism backed by Discord OAuth2.
 
 ## Component Deep Dive
 
-### Frontend (Next.js 14 + TypeScript)
+### Frontend (Next.js 16 + TypeScript)
 
 **Location**: `frontend/`
 
@@ -194,8 +194,9 @@ The system uses a custom persistent session mechanism backed by Discord OAuth2.
 
 **Extension Points**:
 - Add new pages in `app/dashboard/[guildId]/`
-- Add new components in `components/`
-- Extend API client with new methods
+- Add new components in `app/components/`
+- Extend API client with new methods in `app/api-client.ts`
+- Add translation strings to `lib/i18n/translations/en.ts` and `es.ts`
 
 ### Backend (FastAPI + PostgreSQL + Redis)
 
@@ -234,9 +235,9 @@ The system uses a custom persistent session mechanism backed by Discord OAuth2.
 
 **Key Files**:
 - `core/bot.py`: Main bot class with auto-sharding
-- `cogs/chat.py`: LLM chat commands
-- `cogs/guild_sync.py`: Synchronize guilds with backend
-- `services/llm.py`: LLM service abstraction
+- `cogs/guild_sync.py`: Synchronize guilds with backend (core — do not modify)
+- `cogs/introspection.py`: Sends `SETTINGS_SCHEMA` from all cogs to backend on startup (core)
+- `services/llm.py`: Multi-provider LLM service abstraction
 - `services/shard_monitor.py`: Shard health monitoring
 
 **Extension Points**:
@@ -276,15 +277,26 @@ class Warning(Base):
 
 ```python
 # backend/app/api/warnings.py
+from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.db.guild_session import get_guild_db  # NOT get_db — RLS must be active for guild data
+
 router = APIRouter()
 
 @router.get("/{guild_id}/warnings")
-async def list_warnings(guild_id: int, db: AsyncSession = Depends(get_db)):
-    # Implementation
+async def list_warnings(
+    guild_id: int,
+    db: AsyncSession = Depends(get_guild_db),  # RLS active — only this guild's rows visible
+):
+    # No WHERE clause needed — RLS enforces isolation automatically
     pass
 
 @router.post("/{guild_id}/warnings")
-async def create_warning(guild_id: int, warning: WarningCreate, db: AsyncSession = Depends(get_db)):
+async def create_warning(
+    guild_id: int,
+    warning: WarningCreate,
+    db: AsyncSession = Depends(get_guild_db),  # RLS active
+):
     # Implementation
     pass
 ```
@@ -334,18 +346,20 @@ export default withPermission(WarningsPage, PermissionLevel.AUTHORIZED);
 
 | Extension Point | Location | Purpose |
 |----------------|----------|---------|
-| **Routers** | `backend/app/api/*.py` | Add API endpoints |
-| **Models** | `backend/app/models.py` | Add database tables |
-| **Schemas** | `backend/app/schemas.py` | Add validation |
-| **Dependencies** | `backend/app/api/deps.py` | Add dependency injection |
+| **Routers** | `backend/app/api/*.py` | Add API endpoints (then register in `main.py`) |
+| **Models** | `backend/app/models.py` | Add database models |
+| **Schemas** | `backend/app/schemas.py` | Add Pydantic validation schemas |
+| **Migrations** | `backend/alembic/versions/` | Add DB migrations (auto-generate with alembic) |
+| **Version tracking** | `backend/app/core/version.py` | Bump `FRAMEWORK_VERSION`, update `MIGRATION_CHANGELOG` |
 
 ### Frontend Extensions
 
 | Extension Point | Location | Purpose |
 |----------------|----------|---------|
-| **Pages** | `frontend/app/**/*.tsx` | Add UI pages |
-| **Components** | `frontend/components/*.tsx` | Add reusable components |
+| **Pages** | `frontend/app/dashboard/[guildId]/*.tsx` | Add dashboard UI pages |
+| **Components** | `frontend/app/components/*.tsx` | Add reusable components |
 | **API Client** | `frontend/app/api-client.ts` | Add API methods |
+| **i18n strings** | `frontend/lib/i18n/translations/en.ts` + `es.ts` | Add translated strings |
 
 ## Data Flow
 
@@ -474,10 +488,10 @@ baseline/
 │   │   └── schemas.py   # Pydantic schemas
 │   └── main.py          # FastAPI app
 ├── bot/                  # Discord bot
-│   ├── cogs/            # Command modules
-│   │   ├── chat.py
-│   │   └── guild_sync.py
-│   ├── core/            # Bot core
+│   ├── cogs/            # Command modules (add your cogs here)
+│   │   ├── guild_sync.py      # core — syncs guilds with backend
+│   │   └── introspection.py   # core — sends SETTINGS_SCHEMA to backend
+│   ├── core/            # Bot core (do not modify)
 │   │   └── bot.py
 │   ├── services/        # Shared services
 │   │   ├── llm.py

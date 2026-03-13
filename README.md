@@ -24,7 +24,7 @@ This strips all demo pages, cogs, and API routes while leaving the core framewor
 ## Architecture
 
 - **Backend**: FastAPI with PostgreSQL and Redis
-- **Frontend**: Next.js 14 with TypeScript
+- **Frontend**: Next.js 16 with TypeScript
 - **Bot**: discord.py with auto-sharding support
 
 ## Quick Start

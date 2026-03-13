@@ -215,6 +215,20 @@ Document every internal endpoint clearly. If an endpoint uses Docker network tru
 
 ---
 
+## 1.5 Database Session Selection (Critical for Guild Data)
+
+Before implementing any backend endpoint, choose the correct session dependency. This is a **security decision**, not just an API choice.
+
+| Use | When |
+|---|---|
+| `Depends(get_guild_db)` | **Any endpoint under `/{guild_id}/`** — enables RLS; only that guild's rows are visible |
+| `Depends(get_admin_db)` | L5 cross-guild endpoints — RLS bypassed, platform admin auth enforced |
+| `Depends(get_db)` | Global tables only (`users`, `shards`, `app_config`) — never for guild data |
+
+> **The code examples in the sections below use `get_db` for brevity to focus on the permission pattern.** In real endpoints that access guild-scoped tables (`guilds`, `guild_settings`, `authorized_users`, `audit_logs`, `llm_usage`, etc.), you must use `get_guild_db` instead. See [DEVELOPER_MANUAL.md §6.3](DEVELOPER_MANUAL.md#63-guild-isolation--row-level-security-rls) for the complete reference.
+
+---
+
 ## 2. Implementing Security on Every Layer
 
 Security is enforced at **three independent layers** for every feature. All three must be implemented — backend enforcement is mandatory, frontend is defense-in-depth for UX.

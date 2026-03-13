@@ -5,7 +5,7 @@ This guide explains how to add new dashboard pages to the Next.js frontend.
 ## Overview
 
 The frontend uses:
-- **Next.js 14** with App Router
+- **Next.js 16** with App Router
 - **TypeScript** for type safety
 - **Tailwind CSS** for styling (semantic tokens only — see Design System below)
 - **React Hooks** for state management

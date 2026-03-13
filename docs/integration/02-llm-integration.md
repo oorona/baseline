@@ -12,62 +12,73 @@ The baseline framework includes an LLM service that supports multiple providers:
 
 ## Accessing the LLM Service
 
-The LLM service is available via `self.bot.services.llm` in any cog:
+The LLM service is available via `self.bot.services.llm` in any cog.
+
+> **Always pass `guild_id` and `user_id`** so usage is attributed correctly in the AI Analytics dashboard and cost tracking works per-guild.
 
 ```python
 class MyCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        
-    @app_commands.command()
+        self.llm = bot.services.llm  # store reference for convenience
+
+    @app_commands.command(name="ask", description="Ask the AI a question")
+    @app_commands.describe(question="Your question")
     async def ask(self, interaction: discord.Interaction, question: str):
         # Defer response for long-running LLM calls
         await interaction.response.defer()
-        
-        # Use the LLM service
-        response = await self.bot.services.llm.chat(
+
+        response = await self.llm.chat(
             message=question,
-            model="openai"  # optional, uses guild settings by default
+            guild_id=interaction.guild_id,   # required for usage attribution
+            user_id=interaction.user.id,     # required for usage attribution
         )
-        
+
         await interaction.followup.send(response)
 ```
 
-##  Basic Usage
+## Basic Usage
 
 ### Simple Chat
 
 ```python
-@app_commands.command()
+@app_commands.command(name="chat", description="Chat with the AI")
+@app_commands.describe(prompt="Your message")
 async def chat(self, interaction: discord.Interaction, prompt: str):
     await interaction.response.defer()
-    
-    # Simple chat call
-    response = await self.bot.services.llm.chat(prompt)
-    
+
+    response = await self.llm.chat(
+        message=prompt,
+        guild_id=interaction.guild_id,
+        user_id=interaction.user.id,
+    )
+
     await interaction.followup.send(response)
 ```
 
 ### With System Prompt
 
 ```python
-@app_commands.command()
+@app_commands.command(name="translate", description="Translate text to Spanish")
+@app_commands.describe(text="Text to translate")
 async def translate(self, interaction: discord.Interaction, text: str):
     await interaction.response.defer()
-    
-    # Use a custom system prompt
-    response = await self.bot.services.llm.chat(
+
+    response = await self.llm.chat(
         message=f"Translate to Spanish: {text}",
-        system_prompt="You are a professional translator."
+        system_prompt="You are a professional translator.",
+        guild_id=interaction.guild_id,
+        user_id=interaction.user.id,
     )
-    
+
     await interaction.followup.send(response)
 ```
 
 ### Choose Provider
 
 ```python
-@app_commands.command()
+@app_commands.command(name="analyze", description="Analyze text with a specific AI provider")
+@app_commands.describe(text="Text to analyze", provider="AI provider to use")
 async def analyze(
     self,
     interaction: discord.Interaction,
@@ -75,12 +86,14 @@ async def analyze(
     provider: str = "anthropic"
 ):
     await interaction.response.defer()
-    
-    response = await self.bot.services.llm.chat(
+
+    response = await self.llm.chat(
         message=f"Analyze this text: {text}",
-        model=provider
+        model=provider,
+        guild_id=interaction.guild_id,
+        user_id=interaction.user.id,
     )
-    
+
     await interaction.followup.send(response)
 ```
 
@@ -199,20 +212,18 @@ async def long_answer(self, interaction: discord.Interaction, topic: str):
 
 ### API Keys
 
-Set API keys in the `secrets/` directory:
-- `secrets/openai_api_key`
-- `secrets/anthropic_api_key`
-- `secrets/google_api_key`
-- `secrets/xai_api_key`
+API keys are **not** stored as files or `.env` variables. They are entered once through the browser **Setup Wizard** (`http://localhost:3000/setup`) and stored AES-256-GCM encrypted in a Docker volume. On subsequent starts they are decrypted automatically.
 
-### Environment Variables
+To add a new API key for a third-party service your feature needs:
+1. Add a field to the Setup Wizard form (`backend/app/api/setup.py` and the frontend wizard page).
+2. Save it via the existing wizard endpoint — it will be encrypted alongside the other secrets.
+3. Read it in your code via `settings.*` (the Pydantic `Settings` object populated from the encrypted file).
 
-Configure defaults in `.env`:
-```bash
-DEFAULT_LLM_PROVIDER=openai
-LLM_TEMPERATURE=0.7
-LLM_MAX_TOKENS=2000
-```
+Never add secrets to `.env`, committed files, or any file under `secrets/` except `encryption_key`.
+
+### Non-Secret Defaults
+
+Non-secret configuration (e.g. `DEFAULT_LLM_PROVIDER`, `LLM_TEMPERATURE`) can be placed in `.env` — see `.env.example` for the supported variables.
 
 ## Best Practices
 

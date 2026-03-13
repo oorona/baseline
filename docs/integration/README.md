@@ -105,42 +105,91 @@ async def smart_ask(self, interaction, question: str):
 
 Let's say you want to add a "Polls" feature:
 
-### 1. Bot Cog (Discord Commands)
+### 1. Database Model + Migration (if you need persistence)
+
+```python
+# backend/app/models.py — add your model
+from app.db.mixins import GuildScopedMixin
+from app.db.base import Base
+
+class Poll(GuildScopedMixin, Base):  # GuildScopedMixin adds guild_id + RLS marker
+    __tablename__ = "polls"
+    id        = Column(BigInteger, primary_key=True, autoincrement=True)
+    question  = Column(String(500), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+```
+
+Then generate and apply the migration:
+```bash
+docker compose exec backend alembic revision --autogenerate -m "add_polls_table"
+# Edit the generated file to add RLS (see DEVELOPER_MANUAL.md §6.4)
+docker compose exec backend alembic upgrade head
+```
+
+Bump `FRAMEWORK_VERSION` and add to `MIGRATION_CHANGELOG` in `backend/app/core/version.py`.
+
+→ Full guide: [DEVELOPER_MANUAL.md §6](../DEVELOPER_MANUAL.md#6-database-architecture-and-extension-guide)
+
+### 2. Bot Cog (Discord Commands)
 
 ```python
 # bot/cogs/polls.py
-@app_commands.command()
-async def create_poll(self, interaction, question: str, options: str):
-    # Create poll
+@app_commands.command(name="create-poll", description="Create a new poll")
+@app_commands.describe(question="Poll question", options="Comma-separated options")
+async def create_poll(self, interaction: discord.Interaction, question: str, options: str):
+    await interaction.response.defer()
+    # Call backend to store poll
     pass
 ```
 
 → Full guide: [01-adding-cogs.md](01-adding-cogs.md)
 
-### 2. Backend API (Store Poll Data)
+### 3. Backend API (Store Poll Data)
 
 ```python
 # backend/app/api/polls.py
+from app.db.guild_session import get_guild_db  # RLS required for guild data
+
 @router.post("/{guild_id}/polls")
-async def create_poll(guild_id: int, poll: PollCreate):
-    # Store in database
+async def create_poll(
+    guild_id: int,
+    poll: PollCreate,
+    db: AsyncSession = Depends(get_guild_db),
+):
+    # Store in database — RLS ensures this only affects the correct guild
     pass
+```
+
+Register the router in `backend/main.py`:
+```python
+from app.api.polls import router as polls_router
+app.include_router(polls_router, prefix=f"{settings.API_V1_STR}/guilds", tags=["polls"])
 ```
 
 → Full guide: [04-backend-endpoints.md](04-backend-endpoints.md)
 
-### 3. Frontend Page (View Results)
+### 4. Frontend Page (View Results)
 
 ```typescript
 // frontend/app/dashboard/[guildId]/polls/page.tsx
+'use client';
 import { withPermission } from '@/lib/components/with-permission';
 import { PermissionLevel } from '@/lib/permissions';
+import { useTranslation } from '@/lib/i18n';
 
 function PollsPage() {
-    // Display poll results
+    const { t } = useTranslation();
+    // Display poll results — use t() for all user-visible strings
+    return <h1>{t('polls.title')}</h1>;
 }
 
 export default withPermission(PollsPage, PermissionLevel.AUTHORIZED);
+```
+
+Add translation strings to **both** `frontend/lib/i18n/translations/en.ts` and `es.ts`:
+```typescript
+polls: { title: 'Polls' }  // en.ts
+polls: { title: 'Encuestas' }  // es.ts
 ```
 
 → Full guide: [05-frontend-pages.md](05-frontend-pages.md)
@@ -193,12 +242,19 @@ async def setup(bot):
 # Import FastAPI dependencies
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
+# Use get_guild_db for any endpoint under /{guild_id}/ — enables Row-Level Security
+from app.db.guild_session import get_guild_db
+# Use get_db only for global tables (users, shards, app_config — no guild isolation needed)
+from app.db.session import get_db
 
 router = APIRouter()
 
-@router.get("/myendpoint")
-async def my_endpoint(db: AsyncSession = Depends(get_db)):
-    return {"message": "Hello"}
+@router.get("/{guild_id}/myendpoint")
+async def my_guild_endpoint(
+    guild_id: int,
+    db: AsyncSession = Depends(get_guild_db),  # RLS active
+):
+    return {"message": "Hello from this guild"}
 ```
 
 ### Frontend Development

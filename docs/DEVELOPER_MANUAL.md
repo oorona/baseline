@@ -177,6 +177,75 @@ Be aware that the API implements rate limiting. If your bot or frontend receives
 ---
 
 
+## 3.5 Internationalisation (i18n) — Required for All Frontend Code
+
+Every user-visible string in the dashboard must go through the i18n system. **Never hardcode text in JSX.** The framework defaults to English; both `en.ts` and `es.ts` must always be kept in sync.
+
+### Adding Strings for a New Feature
+
+**Step 1** — Add keys to `frontend/lib/i18n/translations/en.ts` (source of truth):
+
+```typescript
+// frontend/lib/i18n/translations/en.ts
+export const en = {
+  // ... existing keys ...
+
+  // Add your feature namespace at the end
+  polls: {
+    title: 'Polls',
+    createPoll: 'Create Poll',
+    noPollsFound: 'No polls found.',
+    question: 'Question',
+    createdBy: 'Created by {username}',   // {variable} interpolation
+  },
+};
+```
+
+**Step 2** — Mirror the structure in `frontend/lib/i18n/translations/es.ts`:
+
+```typescript
+// frontend/lib/i18n/translations/es.ts
+polls: {
+  title: 'Encuestas',
+  createPoll: 'Crear Encuesta',
+  noPollsFound: 'No se encontraron encuestas.',
+  question: 'Pregunta',
+  createdBy: 'Creado por {username}',
+},
+```
+
+> TypeScript will fail to compile if `es.ts` is missing a key that exists in `en.ts` — this is intentional.
+
+**Step 3** — Use in your component:
+
+```tsx
+'use client';
+import { useTranslation } from '@/lib/i18n';
+
+function PollsPage() {
+    const { t } = useTranslation();
+
+    return (
+        <div>
+            <h1>{t('polls.title')}</h1>
+            <p>{t('polls.createdBy', { username: poll.author })}</p>
+        </div>
+    );
+}
+```
+
+### Rules
+
+| Rule | Detail |
+|---|---|
+| **No hardcoded text** | All user-visible strings use `t('key')` |
+| **Both files always** | Add to `en.ts` AND `es.ts` in the same commit |
+| **Namespace by feature** | Top-level key = feature name (`polls`, `music`, `moderation`) |
+| **Interpolation** | Use `{variableName}` placeholders, never string concatenation |
+| **Navigation cards** | `title` and `description` on cards in `page.tsx` should also use `t()` |
+
+---
+
 ## 4. Frontend Style Guide (Design System)
 
 To ensure a cohesive look, all plugins **MUST** use the following semantic tokens. **NEVER** use hardcoded colors (e.g., `bg-white`).
@@ -235,9 +304,22 @@ class MusicCog(commands.Cog):
             {"key": "music_channel_id", "type": "channel_select", "label": "Allowed Voice Channel", "default": None},
         ],
     }
+```
 
-    def __init__(self, bot: commands.Bot):
-        self.bot = bot
+#### SETTINGS_SCHEMA Field Types Reference
+
+| `type` | Rendered as | `default` |
+|---|---|---|
+| `"boolean"` | Toggle switch | `False` |
+| `"string"` | Single-line text input | `""` or `None` |
+| `"text"` | Multi-line textarea | `""` or `None` |
+| `"integer"` | Number input | `0` or `None` |
+| `"channel_select"` | Discord channel dropdown | `None` |
+| `"role_select"` | Discord role dropdown | `None` |
+| `"select"` | Dropdown from fixed options — add `"options": [{"value": "x", "label": "X"}]` | first option or `None` |
+
+```python
+    SETTINGS_SCHEMA = {
 
     @app_commands.command(
         name="play",
@@ -268,6 +350,8 @@ class MusicCog(commands.Cog):
 async def setup(bot):
     await bot.add_cog(MusicCog(bot))
 ```
+
+> **`bot.session`** is a shared `aiohttp.ClientSession` created once in `setup_hook` and available on every cog via `self.bot.session`. Always use this shared session for HTTP calls to the backend — never create a new `aiohttp.ClientSession()` per request, as that leaks connections.
 
 > **Bot Settings page is automatic.** Once `SETTINGS_SCHEMA` is declared and the bot restarts, the settings form appears in the dashboard with no frontend changes needed. The introspection cog sends schemas to the backend on `on_ready`; the backend stores them; the settings page fetches and renders them.
 
@@ -306,7 +390,34 @@ export default withPermission(MusicPage, PermissionLevel.AUTHORIZED);
 
 ### Step 3: Register a Backend API (If Needed)
 
-If the feature needs its own endpoints beyond guild settings, create `backend/app/api/music.py` and register it in `main.py`. Follow the security rules in [docs/SECURITY.md](SECURITY.md) — every endpoint must declare its security level.
+If the feature needs its own endpoints beyond guild settings, create `backend/app/api/music.py`:
+
+```python
+# backend/app/api/music.py
+from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.db.guild_session import get_guild_db
+
+router = APIRouter()
+
+@router.get("/{guild_id}/music/queue")
+async def get_queue(
+    guild_id: int,
+    db: AsyncSession = Depends(get_guild_db),  # RLS active
+):
+    # Implementation
+    return {"queue": []}
+```
+
+Then register it in `backend/main.py` — add these two lines at the end of the router registration block:
+
+```python
+# backend/main.py
+from app.api.music import router as music_router
+app.include_router(music_router, prefix=f"{settings.API_V1_STR}/guilds", tags=["music"])
+```
+
+Follow the security rules in [docs/SECURITY.md](SECURITY.md) — every endpoint must declare its security level.
 
 ### Baseline Expectations
 
@@ -714,3 +825,51 @@ Use the following prompt with an LLM to automatically scan your bot project and 
 2. **Use `strict_mode: false` in development**: Allows testing with partial permissions.
 3. **Use `strict_mode: true` in production**: Ensures the bot fails fast if misconfigured.
 4. **Document each permission**: Add comments explaining why each permission is needed.
+
+---
+
+## 8. LLM Prompts for Code Generation
+
+Use the following prompts with an AI assistant to generate correct framework-compliant code.
+
+### Prompt: Generate a Complete Cog
+
+> You are working inside the **Baseline Discord Bot Framework**. Read `CLAUDE.md` for the rules before writing any code.
+>
+> Generate a complete, production-ready Discord cog for the following feature:
+>
+> **Feature description:** [describe your feature here]
+>
+> **Requirements:**
+> - Use `@app_commands.command()` with an explicit `description=` on every command
+> - Use `@app_commands.describe()` for every parameter
+> - Use `bot.services.llm` for any LLM calls, always passing `guild_id` and `user_id`
+> - Use `self.bot.session` (shared `aiohttp.ClientSession`) for HTTP calls to the backend
+> - Declare `SETTINGS_SCHEMA` if the cog has configurable settings
+> - Use `structlog.get_logger()` for logging
+> - Wrap all command bodies in try/except; send ephemeral error messages on failure
+> - Set `__is_demo__ = True` if this is example code
+>
+> Output: a single `bot/cogs/<feature>.py` file with the `async def setup(bot)` function at the bottom.
+
+### Prompt: Generate a Complete Feature (Cog + API + Page)
+
+> You are working inside the **Baseline Discord Bot Framework**. Read `CLAUDE.md` for the rules before writing any code. Also read `docs/DEVELOPER_MANUAL.md` Section 5.
+>
+> Generate all files for the following feature:
+>
+> **Feature:** [describe your feature here]
+> **Permission level:** [L2 User / L3 Authorized / L4 Owner]
+> **Needs persistent storage:** [yes/no — if yes, describe the data]
+>
+> Output the following files, in order:
+> 1. `bot/cogs/<feature>.py` — Discord cog
+> 2. `backend/app/api/<feature>.py` — FastAPI router (use `get_guild_db`, not `get_db`)
+> 3. The two lines to add to `backend/main.py` to register the router
+> 4. `frontend/app/dashboard/[guildId]/<feature>/page.tsx` — dashboard page (use `withPermission`, use `t()` for all strings)
+> 5. The translation keys to add to `en.ts` and `es.ts`
+> 6. If adding DB tables: the model addition for `backend/app/models.py` and the RLS migration snippet
+
+### Prompt: Generate Permission Discovery (existing prompt — see Section 7)
+
+See Section 7 for the `required_permissions.yaml` generation prompt.
