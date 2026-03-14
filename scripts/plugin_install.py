@@ -1,0 +1,285 @@
+#!/usr/bin/env python3
+"""
+plugin_install.py — Installs a validated plugin into the Baseline project.
+
+Runs the validator first. Aborts on any ERROR.
+
+Usage:
+    python scripts/plugin_install.py plugins/<plugin_name>
+    python scripts/plugin_install.py plugins/<plugin_name> --dry-run
+    python scripts/plugin_install.py plugins/<plugin_name> --force   # skip validator
+"""
+
+import json
+import re
+import shutil
+import subprocess
+import sys
+from datetime import datetime
+from pathlib import Path
+
+DRY_RUN = "--dry-run" in sys.argv
+FORCE = "--force" in sys.argv
+ROOT = Path(__file__).resolve().parent.parent
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def log(msg: str):
+    prefix = "[DRY-RUN] " if DRY_RUN else ""
+    print(f"  {prefix}{msg}")
+
+
+def copy_file(src: Path, dst: Path):
+    log(f"COPY   {_rel(src)} → {_rel(dst)}")
+    if not DRY_RUN:
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
+
+
+def patch_file(path: Path, old: str, new: str, description: str) -> bool:
+    log(f"PATCH  {_rel(path)} — {description}")
+    if DRY_RUN:
+        return True
+    src = path.read_text()
+    if old not in src:
+        print(f"  [WARN] Patch anchor not found in {path.name} — manual step required")
+        return False
+    path.write_text(src.replace(old, new, 1))
+    return True
+
+
+def append_to_file(path: Path, content: str, description: str):
+    log(f"APPEND {_rel(path)} — {description}")
+    if not DRY_RUN:
+        with path.open("a") as f:
+            f.write(content)
+
+
+def _rel(path: Path) -> str:
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
+# ── Validation step ───────────────────────────────────────────────────────────
+
+def run_validator(plugin_dir: Path) -> bool:
+    if FORCE:
+        print("[!] --force: skipping validator\n")
+        return True
+    print("Running validator...\n")
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/plugin_validate.py"), str(plugin_dir)],
+    )
+    return result.returncode == 0
+
+
+# ── Install steps ─────────────────────────────────────────────────────────────
+
+def install_cog(plugin_dir: Path, plugin_name: str):
+    src = plugin_dir / "cog.py"
+    dst = ROOT / f"bot/cogs/{plugin_name}.py"
+    copy_file(src, dst)
+
+
+def install_api(plugin_dir: Path, plugin_name: str, router_prefix: str, router_tag: str):
+    src = plugin_dir / "api.py"
+    dst = ROOT / f"backend/app/api/{plugin_name}.py"
+    copy_file(src, dst)
+    _patch_main_py(plugin_name, router_prefix, router_tag)
+
+
+def _patch_main_py(plugin_name: str, prefix: str, tag: str):
+    main_py = ROOT / "backend/main.py"
+    import_line = f"from app.api.{plugin_name} import router as {plugin_name}_router"
+    include_line = (
+        f'app.include_router({plugin_name}_router, '
+        f'prefix=f"{{settings.API_V1_STR}}{prefix}", tags=["{tag}"])'
+    )
+    new_block = (
+        f"\n# Plugin: {plugin_name}\n"
+        f"{import_line}\n"
+        f"{include_line}\n\n"
+        f"# Setup wizard"  # this is the anchor we're replacing
+    )
+    patch_file(
+        main_py,
+        "# Setup wizard",
+        new_block,
+        f"register {plugin_name} router in main.py",
+    )
+
+
+def install_models(plugin_dir: Path, plugin_name: str):
+    src = plugin_dir / "models.py"
+    target = ROOT / "backend/app/models.py"
+    content = src.read_text().strip()
+
+    # Strip import lines from the snippet — they likely duplicate what's in models.py
+    body_lines = [
+        line for line in content.splitlines()
+        if not (line.startswith("from ") or line.startswith("import "))
+    ]
+    body = "\n".join(body_lines).strip()
+    separator = f"\n\n# ── Plugin: {plugin_name} {'─' * max(0, 40 - len(plugin_name))}\n"
+    append_to_file(target, separator + body + "\n", f"append {plugin_name} models")
+
+
+def install_migration(plugin_dir: Path, plugin_name: str):
+    src = plugin_dir / "migration.py"
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    dst = ROOT / f"backend/alembic/versions/{ts}_{plugin_name}.py"
+    copy_file(src, dst)
+    print(f"  [!]  Migration installed → run: cd backend && alembic upgrade head")
+
+
+def install_frontend(plugin_dir: Path, plugin_name: str):
+    src = plugin_dir / "page.tsx"
+    dst = ROOT / f"frontend/app/dashboard/[guildId]/{plugin_name}/page.tsx"
+    copy_file(src, dst)
+
+
+def install_translations(plugin_dir: Path, plugin_name: str):
+    for lang in ("en", "es"):
+        src = plugin_dir / "translations" / f"{lang}.ts"
+        if not src.exists():
+            print(f"  [WARN] translations/{lang}.ts not found — skipping")
+            continue
+
+        dst = ROOT / f"frontend/lib/i18n/translations/{lang}.ts"
+        snippet = src.read_text().strip()
+
+        if not DRY_RUN:
+            target_src = dst.read_text()
+            marker = f"// ── Plugin: {plugin_name}"
+            if marker in target_src:
+                print(f"  [SKIP] {lang}.ts already contains plugin namespace — remove manually to re-inject")
+                continue
+
+            # Inject before the closing `} as const;`
+            injected = (
+                f"\n\n  {marker} {'─' * max(0, 38 - len(plugin_name))}\n"
+                f"  {snippet.rstrip(',')},\n"
+            )
+            patched = re.sub(r"\n\} as const;", injected + "\n} as const;", target_src)
+            if patched == target_src:
+                print(f"  [WARN] Could not find '}} as const;' in {lang}.ts — manual merge required")
+                print(f"         Add to {lang}.ts:\n{injected}")
+            else:
+                log(f"MERGE  translations/{lang}.ts ← {plugin_name} namespace")
+                dst.write_text(patched)
+        else:
+            log(f"MERGE  translations/{lang}.ts ← {plugin_name} namespace")
+
+
+# ── Post-install guidance ─────────────────────────────────────────────────────
+
+def print_manual_steps(manifest: dict, components: dict):
+    plugin_name = manifest["name"]
+    steps = []
+
+    if components.get("migration"):
+        steps.append("Run migrations:\n     cd backend && alembic upgrade head")
+
+    nav = manifest.get("navigation", {})
+    if components.get("frontend") and nav.get("enabled", False):
+        perm = manifest.get("permission_level", 3)
+        perm_names = {
+            0: "PUBLIC", 1: "PUBLIC_DATA", 2: "USER",
+            3: "AUTHORIZED", 4: "OWNER", 5: "DEVELOPER",
+        }
+        perm_name = perm_names.get(perm, str(perm))
+        icon = nav.get("icon", "Settings")
+        color = nav.get("color", "text-blue-500")
+        bg = nav.get("bg_color", "bg-blue-500/10")
+        border = nav.get("border_color", "group-hover:border-blue-500/50")
+
+        steps.append(
+            f"Add a navigation card in frontend/app/page.tsx (cards array):\n"
+            f"     {{\n"
+            f"       id: '{plugin_name}',\n"
+            f"       title: t('{_to_camel_case(plugin_name)}.title'),\n"
+            f"       description: t('{_to_camel_case(plugin_name)}.description'),\n"
+            f"       icon: {icon},\n"
+            f"       href: `/dashboard/${{activeGuildId}}/{plugin_name}`,\n"
+            f"       level: PermissionLevel.{perm_name},\n"
+            f"       color: '{color}',\n"
+            f"       bgColor: '{bg}',\n"
+            f"       borderColor: '{border}',\n"
+            f"     }}"
+        )
+
+    if steps:
+        print(f"\nManual steps required:")
+        for i, step in enumerate(steps, 1):
+            print(f"  {i}. {step}")
+
+
+def _to_camel_case(snake: str) -> str:
+    parts = snake.split("_")
+    return parts[0] + "".join(p.capitalize() for p in parts[1:])
+
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+def main():
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    if not args:
+        print("Usage: python scripts/plugin_install.py plugins/<plugin_name> [--dry-run] [--force]")
+        sys.exit(1)
+
+    plugin_dir = Path(args[0])
+    if not plugin_dir.is_absolute():
+        plugin_dir = ROOT / plugin_dir
+
+    if not plugin_dir.is_dir():
+        print(f"ERROR: '{plugin_dir}' is not a directory")
+        sys.exit(1)
+
+    if not run_validator(plugin_dir):
+        print("\nInstall aborted — fix validation errors first.")
+        sys.exit(1)
+
+    manifest_path = plugin_dir / "plugin.json"
+    if not manifest_path.exists():
+        print("ERROR: plugin.json not found")
+        sys.exit(1)
+
+    manifest = json.loads(manifest_path.read_text())
+    plugin_name = manifest["name"]
+    components = manifest.get("components", {})
+    router_cfg = manifest.get("router", {})
+    router_prefix = router_cfg.get("prefix", "/guilds")
+    router_tag = router_cfg.get("tag", plugin_name)
+
+    print(f"\nInstalling plugin '{plugin_name}'...\n{'=' * 50}")
+
+    if components.get("cog") and (plugin_dir / "cog.py").exists():
+        install_cog(plugin_dir, plugin_name)
+
+    if components.get("api") and (plugin_dir / "api.py").exists():
+        install_api(plugin_dir, plugin_name, router_prefix, router_tag)
+
+    if components.get("models") and (plugin_dir / "models.py").exists():
+        install_models(plugin_dir, plugin_name)
+
+    if components.get("migration") and (plugin_dir / "migration.py").exists():
+        install_migration(plugin_dir, plugin_name)
+
+    if components.get("frontend") and (plugin_dir / "page.tsx").exists():
+        install_frontend(plugin_dir, plugin_name)
+
+    if components.get("translations") and (plugin_dir / "translations").is_dir():
+        install_translations(plugin_dir, plugin_name)
+
+    print(f"\n{'=' * 50}")
+    if DRY_RUN:
+        print("Dry-run complete — no files were modified.")
+    else:
+        print(f"Plugin '{plugin_name}' installed successfully.")
+        print_manual_steps(manifest, components)
+
+
+if __name__ == "__main__":
+    main()

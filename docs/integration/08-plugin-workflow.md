@@ -1,0 +1,348 @@
+# 08 — Plugin Staging Workflow
+
+This guide explains how to develop, validate, and install a plugin using the staging toolchain. The **Event Logging** plugin (`plugins/event_logging/`) is used as the worked example throughout.
+
+---
+
+## Overview
+
+All new functionality is developed as a **plugin** in a staging folder rather than editing the live project directly. This keeps speculative or LLM-generated code isolated until it is verified to meet framework contracts.
+
+```
+plugins/<plugin_name>/   ← develop here
+        ↓
+scripts/plugin_validate.py   ← machine-checks all framework rules
+        ↓
+scripts/plugin_install.py    ← copies files + patches project
+```
+
+---
+
+## Step 0 — Prepare the Staging Folder
+
+Copy the blank template and rename it for your plugin:
+
+```bash
+cp -r plugins/_template plugins/my_feature
+```
+
+Update `plugins/my_feature/plugin.json` with the plugin name, description, permission level, and which components (`cog`, `api`, `frontend`, `translations`, etc.) it includes. Only declare components you actually build.
+
+**`plugin.json` reference:**
+
+```json
+{
+  "name": "event_logging",
+  "display_name": "Event Logging",
+  "version": "1.0.0",
+  "description": "Logs guild events to a designated channel.",
+  "permission_level": 3,
+  "components": {
+    "cog": true,
+    "api": true,
+    "models": false,
+    "migration": false,
+    "frontend": true,
+    "translations": true
+  },
+  "router": {
+    "prefix": "/guilds",
+    "tag": "event_logging"
+  },
+  "navigation": {
+    "enabled": true,
+    "icon": "FileText",
+    "color": "text-amber-400",
+    "bg_color": "bg-amber-500/10",
+    "border_color": "group-hover:border-amber-500/50"
+  }
+}
+```
+
+---
+
+## Step 1 — Build the Plugin (manually or with an LLM)
+
+Each component lives in its own file inside the staging folder. The installer knows where to put each one based on `plugin.json`.
+
+### `cog.py` → `bot/cogs/<name>.py`
+
+The bot's event/command logic. Key rules:
+
+- Inherit from `commands.Cog`
+- Use `bot.services.llm` for inference (never instantiate your own client)
+- Use `bot.session` for HTTP requests (never create a new `aiohttp.ClientSession`)
+- Declare `SETTINGS_SCHEMA` if the cog reads guild settings
+- Include `async def setup(bot)` at the end
+
+```python
+class EventLoggingCog(commands.Cog):
+    SETTINGS_SCHEMA = {
+        "id": "event_logging",
+        "label": "Event Logging",
+        "fields": [
+            {"key": "logging_enabled", "type": "boolean", "label": "Enable", "default": False},
+            {"key": "logging_channel_id", "type": "channel_select", "label": "Log Channel"},
+        ],
+    }
+
+    def __init__(self, bot):
+        self.bot = bot
+
+    async def _get_settings(self, guild_id):
+        async with self.bot.session.get(
+            f"http://backend:8000/api/v1/guilds/{guild_id}/settings",
+            headers={"Authorization": f"Bot {self.bot.services.config.DISCORD_BOT_TOKEN}"},
+        ) as resp:
+            return (await resp.json()).get("settings", {}) if resp.status == 200 else {}
+
+async def setup(bot):
+    await bot.add_cog(EventLoggingCog(bot))
+```
+
+> The `SETTINGS_SCHEMA` is the only thing needed to get a settings form in the dashboard — no frontend code required for simple configuration.
+
+### `api.py` → `backend/app/api/<name>.py`
+
+REST endpoints for reading/writing plugin data. Key rules:
+
+- Use `Depends(get_guild_db)` on **every** endpoint that has `{guild_id}` in the path (enforces Row-Level Security)
+- Write an `AuditLog` entry in every POST / PUT / PATCH / DELETE handler
+- `router = APIRouter()` must be defined at the top
+
+```python
+router = APIRouter()
+
+@router.get("/{guild_id}/event-logging/settings")
+async def get_settings(
+    guild_id: int,
+    db: AsyncSession = Depends(get_guild_db),           # RLS enforced
+    current_user: User = Depends(require_permission(PermissionLevel.AUTHORIZED)),
+):
+    ...
+
+@router.post("/{guild_id}/event-logging/settings")
+async def update_settings(
+    guild_id: int,
+    payload: EventLoggingSettings,
+    db: AsyncSession = Depends(get_guild_db),
+    current_user: User = Depends(require_permission(PermissionLevel.AUTHORIZED)),
+):
+    # ... persist ...
+    db.add(AuditLog(guild_id=guild_id, user_id=current_user.id,
+                    action="event_logging.settings.update", details=payload.model_dump()))
+    await db.commit()
+```
+
+### `page.tsx` → `frontend/app/dashboard/[guildId]/<name>/page.tsx`
+
+The dashboard page. Key rules:
+
+- Export as `withPermission(PageComponent, PermissionLevel.X)` — bare `export default` is forbidden
+- Use `useTranslation()` for all user-visible strings — no hardcoded English text
+- Use Tailwind semantic tokens for all colors (`bg-card`, `text-foreground`, `border-border`, etc.) — no hex or rgb values
+
+```tsx
+function EventLoggingPage({ params }: Props) {
+  const { t } = useTranslation();
+  return (
+    <div className="rounded-lg border border-border bg-card p-5">
+      <h1 className="text-foreground">{t('eventLogging.title')}</h1>
+    </div>
+  );
+}
+
+export default withPermission(EventLoggingPage, PermissionLevel.AUTHORIZED);
+```
+
+### `translations/en.ts` and `translations/es.ts`
+
+These files contain **only the namespace block** — not a full file. The installer merges them into the project translation files before the closing `} as const;`.
+
+```typescript
+// translations/en.ts
+eventLogging: {
+  title: 'Event Logging',
+  description: 'Monitor and configure guild event logging.',
+},
+```
+
+```typescript
+// translations/es.ts  — must mirror en.ts exactly
+eventLogging: {
+  title: 'Registro de Eventos',
+  description: 'Monitorea y configura el registro de eventos del servidor.',
+},
+```
+
+---
+
+## Step 2 — Validate
+
+Run the validator before touching any live project file:
+
+```bash
+python scripts/plugin_validate.py plugins/event_logging
+```
+
+**Example output (clean):**
+
+```
+Validating plugin: event_logging
+==================================================
+
+[plugin.json]
+  [OK]    plugin.json is valid
+
+[cog.py]
+  [OK]    Cog class(es): EventLoggingCog
+  [OK]    SETTINGS_SCHEMA declared
+  [OK]    setup() entrypoint present
+
+[api.py]
+  [OK]    APIRouter instance defined
+  [OK]    2 guild-scoped route(s) use get_guild_db
+  [OK]    Mutation endpoint 'update_settings' writes AuditLog
+
+[page.tsx]
+  [OK]    withPermission export present
+  [OK]    useTranslation() used
+  [OK]    No hardcoded colors detected
+
+[translations/]
+  [OK]    Namespace 'eventLogging' in en.ts
+  [OK]    Namespace 'eventLogging' in es.ts
+  [OK]    en.ts and es.ts keys match
+
+==================================================
+Results: 0 error(s), 0 warning(s)
+
+Validation PASSED — plugin is ready to install
+```
+
+**If there are errors**, fix them in the staging folder and re-run. The validator exit code is `0` on pass, `1` on failure — it can be used in CI.
+
+Use `--strict` to promote warnings to errors:
+
+```bash
+python scripts/plugin_validate.py plugins/event_logging --strict
+```
+
+---
+
+## Step 3 — Install
+
+```bash
+# Preview what will happen (no files written)
+python scripts/plugin_install.py plugins/event_logging --dry-run
+
+# Install for real
+python scripts/plugin_install.py plugins/event_logging
+```
+
+**What the installer does:**
+
+| Action | Result |
+|---|---|
+| Copies `cog.py` | `bot/cogs/event_logging.py` |
+| Copies `api.py` | `backend/app/api/event_logging.py` |
+| Patches `backend/main.py` | Adds `from app.api.event_logging import router ...` + `app.include_router(...)` |
+| Copies `page.tsx` | `frontend/app/dashboard/[guildId]/event_logging/page.tsx` (dir created) |
+| Merges `translations/en.ts` | Injects `eventLogging: { ... }` into `frontend/lib/i18n/translations/en.ts` |
+| Merges `translations/es.ts` | Same for Spanish |
+
+---
+
+## Step 4 — Manual Steps After Install
+
+The installer prints these at the end, but they always apply:
+
+### 4a. If the plugin added database tables — run migrations
+
+```bash
+docker compose exec backend alembic upgrade head
+```
+
+Also bump `FRAMEWORK_VERSION` and append to `MIGRATION_CHANGELOG` in `backend/app/core/version.py`.
+
+### 4b. Add a navigation card to the dashboard home
+
+The installer prints the exact object. Paste it into the `cards` array in `frontend/app/page.tsx`:
+
+```typescript
+{
+  id: 'event_logging',
+  title: t('eventLogging.title'),
+  description: t('eventLogging.description'),
+  icon: FileText,            // import from lucide-react
+  href: `/dashboard/${activeGuildId}/event_logging`,
+  level: PermissionLevel.AUTHORIZED,
+  color: 'text-amber-400',
+  bgColor: 'bg-amber-500/10',
+  borderColor: 'group-hover:border-amber-500/50',
+},
+```
+
+---
+
+## Step 5 — Restart Services
+
+```bash
+docker compose restart bot frontend
+```
+
+The bot will pick up the new cog, introspect its `SETTINGS_SCHEMA`, and sync the settings form to the database. The frontend will show the new dashboard page.
+
+---
+
+## Prompting an LLM to Build a Plugin
+
+When asking Claude (or any LLM) to generate a plugin, provide this context:
+
+1. **`CLAUDE.md`** — the five golden rules and file locations
+2. **`docs/PLUGIN_SYSTEM_SPECS.md`** — full specifications for each layer
+3. **`plugins/_template/`** — the blank template as a structural reference
+4. **The staging target path** — `plugins/<plugin_name>/`
+5. **The functional requirements** — what the plugin should do
+
+Example prompt pattern:
+
+```
+Using the Baseline framework (see CLAUDE.md and docs/PLUGIN_SYSTEM_SPECS.md),
+build a complete plugin in plugins/welcome_message/ that:
+- Sends a configurable welcome DM when a member joins the server
+- Has a settings form for the message text and an enable/disable toggle
+- Has a dashboard page showing recent welcome events
+
+Follow all five golden rules. Produce plugin.json, cog.py, api.py, page.tsx,
+and translations/en.ts + es.ts.
+```
+
+After generation, always run `plugin_validate.py` before installing.
+
+---
+
+## Common Validation Errors and Fixes
+
+| Error | Fix |
+|---|---|
+| `@app_commands.command 'foo' missing description=` | Add `description="..."` to the decorator |
+| `Direct openai.OpenAI()` | Replace with `self.bot.services.llm` |
+| `Direct aiohttp.ClientSession()` | Replace with `async with self.bot.session.get(...)` |
+| `guild-scoped route(s) but get_guild_db not used` | Add `db: AsyncSession = Depends(get_guild_db)` to the route |
+| `Mutation endpoint 'X' has no AuditLog` | Add `db.add(AuditLog(...))` before `db.commit()` |
+| `Page not wrapped with withPermission()` | Change `export default function Page` to `export default withPermission(Page, PermissionLevel.X)` |
+| `Hardcoded hex color in className` | Replace `#3b82f6` with `text-primary` or other semantic token |
+| `translations/es.ts missing` | Create the file mirroring `en.ts` with translated values |
+
+---
+
+## Related Documentation
+
+- `docs/PLUGIN_SYSTEM_SPECS.md` — specs for all three plugin layers
+- `docs/SECURITY.md` — full permission level reference
+- `docs/integration/01-adding-cogs.md` — cog patterns in depth
+- `docs/integration/04-backend-endpoints.md` — API router patterns
+- `docs/integration/05-frontend-pages.md` — frontend page patterns
+- `plugins/event_logging/` — complete worked example (all files pass the validator)
+- `plugins/_template/` — blank template to copy for new plugins

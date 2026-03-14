@@ -13,6 +13,7 @@ If you're an **LLM/AI assistant** helping to extend this framework, start here:
 5. [Frontend Pages](05-frontend-pages.md) - Add web UI
 6. [Bot Configuration](06-bot-configuration.md) - Load bot-specific config
 7. [Observability](07-observability.md) - Prometheus, Grafana & Loki
+8. **[Plugin Staging Workflow](08-plugin-workflow.md)** - Build, validate, and install plugins safely
 
 ## Architecture
 
@@ -20,6 +21,10 @@ For a complete understanding of the system design, see:
 - [Architecture Documentation](../ARCHITECTURE.md) - System design and plugin architecture
 
 ## Common Tasks
+
+### I want to build a complete plugin (LLM-assisted)
+
+→ See [Plugin Staging Workflow](08-plugin-workflow.md)
 
 ### I want to add a new Discord command
 
@@ -53,6 +58,7 @@ For a complete understanding of the system design, see:
 
 | Component | Extension Point | Guide |
 |-----------|----------------|-------|
+| **Plugin** | Full workflow (stage → validate → install) | [08-plugin-workflow.md](08-plugin-workflow.md) |
 | **Bot** | Add commands | [01-adding-cogs.md](01-adding-cogs.md) |
 | **Bot** | Use LLM | [02-llm-integration.md](02-llm-integration.md) |
 | **Bot** | **Gemini 3 AI** | [GEMINI_CAPABILITIES.md](../GEMINI_CAPABILITIES.md) |
