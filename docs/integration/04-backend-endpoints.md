@@ -34,26 +34,22 @@ The backend uses FastAPI with:
 Create or update models in `backend/app/models.py`:
 
 ```python
-from sqlalchemy import Column, String, BigInteger, DateTime, ForeignKey, JSON
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, String, BigInteger, DateTime, JSON
 from sqlalchemy.sql import func
-from .db.session import Base
+from app.db.base import Base                  # ← always use this path
+from app.db.mixins import GuildScopedMixin    # ← adds guild_id + RLS marker
 
-class CustomFeature(Base):
+class CustomFeature(GuildScopedMixin, Base):  # ← GuildScopedMixin first
     __tablename__ = "custom_features"
-    __guild_scoped__ = True  # enables Row-Level Security on guild_id
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
-    guild_id = Column(BigInteger, ForeignKey("guilds.id"), nullable=False)
     name = Column(String, nullable=False)
     config = Column(JSON, default={})
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-
-    guild = relationship("Guild")
 ```
 
-> Add `__guild_scoped__ = True` to any model that belongs to a guild. This enables PostgreSQL Row-Level Security so one guild can never read another guild's rows, even on a misconfigured query.
+> Use `GuildScopedMixin` (from `app.db.mixins`) instead of manually adding `guild_id` and `__guild_scoped__ = True`. The mixin adds both the column and the RLS marker in one step, ensuring consistent guild isolation across all models. Never import `Base` from `.db.session` — the correct path is `app.db.base`.
 
 ## Step 2: Create Database Migration
 

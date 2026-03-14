@@ -99,29 +99,29 @@ async def analyze(
 
 ## Using Guild Settings
 
-The bot automatically fetches guild-specific settings from the backend:
+Use `self.bot.session` (the shared `aiohttp.ClientSession` on the bot) — never create a new session per request:
 
 ```python
-@app_commands.command()
+@app_commands.command(name="smart-reply", description="Reply using guild-configured AI settings")
+@app_commands.describe(message="Your message")
 async def smart_reply(self, interaction: discord.Interaction, message: str):
     await interaction.response.defer()
-    
-    # Get guild settings from backend
-    async with aiohttp.ClientSession() as session:
-        url = f"http://backend:8000/api/v1/guilds/{interaction.guild_id}/settings"
-        async with session.get(url) as resp:
-            if resp.status == 200:
-                data = await resp.json()
-                settings = data.get("settings", {})
-                
-                # Use guild's configured model and system prompt
-                response = await self.bot.services.llm.chat(
-                    message=message,
-                    model=settings.get("model", "openai"),
-                    system_prompt=settings.get("system_prompt")
-                )
-                
-                await interaction.followup.send(response)
+
+    # Use self.bot.session — the shared aiohttp session, already open on the bot
+    headers = {"Authorization": f"Bot {self.bot.services.config.DISCORD_BOT_TOKEN}"}
+    url = f"http://backend:8000/api/v1/guilds/{interaction.guild_id}/settings"
+    async with self.bot.session.get(url, headers=headers) as resp:
+        settings = (await resp.json()).get("settings", {}) if resp.status == 200 else {}
+
+    response = await self.bot.services.llm.chat(
+        message=message,
+        model=settings.get("model", "openai"),
+        system_prompt=settings.get("system_prompt"),
+        guild_id=interaction.guild_id,
+        user_id=interaction.user.id,
+    )
+
+    await interaction.followup.send(response)
 ```
 
 ## Adding Context from Chat History
@@ -231,14 +231,20 @@ Non-secret configuration (e.g. `DEFAULT_LLM_PROVIDER`, `LLM_TEMPERATURE`) can be
 2. **Handle Errors**: Network and API issues are common
 3. **Respect Limits**: Stay within Discord's message size limits (2000 chars)
 4. **Use Ephemeral**: For sensitive or personal responses
-5. **Add Cooldowns**: Prevent spam with command cooldowns
+5. **Add Cooldowns**: Prevent spam with command cooldowns. Use `@app_commands.checks.cooldown` for slash commands — `@commands.cooldown` is for prefix commands only and will not work here:
    ```python
-   from discord.ext import commands
-   
-   @app_commands.command()
-   @commands.cooldown(1, 30, commands.BucketType.user)  # 1 use per 30s per user
-   async def ask(self, interaction, question):
+   @app_commands.command(name="ask", description="Ask the AI")
+   @app_commands.checks.cooldown(1, 30.0, key=lambda i: (i.guild_id, i.user.id))  # 1 use per 30s per user per guild
+   async def ask(self, interaction: discord.Interaction, question: str):
        ...
+
+   @ask.error
+   async def ask_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
+       if isinstance(error, app_commands.CommandOnCooldown):
+           await interaction.response.send_message(
+               f"Command on cooldown. Try again in {error.retry_after:.1f}s.",
+               ephemeral=True
+           )
    ```
 
 6. **Log Usage**: Track API usage for billing and debugging
@@ -258,63 +264,73 @@ Non-secret configuration (e.g. `DEFAULT_LLM_PROVIDER`, `LLM_TEMPERATURE`) can be
 import discord
 from discord import app_commands
 from discord.ext import commands
-import aiohttp
 import structlog
 
 logger = structlog.get_logger()
 
 class AIAssistant(commands.Cog):
     """AI-powered assistant commands."""
-    
+
     def __init__(self, bot):
         self.bot = bot
-        
+        self.llm = bot.services.llm
+
+    async def _get_settings(self, guild_id: int) -> dict:
+        """Fetch guild settings using the shared bot session."""
+        headers = {"Authorization": f"Bot {self.bot.services.config.DISCORD_BOT_TOKEN}"}
+        url = f"http://backend:8000/api/v1/guilds/{guild_id}/settings"
+        # Use self.bot.session — never create a new aiohttp.ClientSession per request
+        async with self.bot.session.get(url, headers=headers) as resp:
+            if resp.status == 200:
+                return (await resp.json()).get("settings", {})
+        return {}
+
     @app_commands.command(name="ask", description="Ask the AI a question")
     @app_commands.describe(question="Your question")
-    @commands.cooldown(1, 15, commands.BucketType.user)
+    @app_commands.checks.cooldown(1, 15.0, key=lambda i: (i.guild_id, i.user.id))
     async def ask(self, interaction: discord.Interaction, question: str):
-        """Ask a question to the AI."""
         await interaction.response.defer()
-        
+
         try:
-            # Get guild settings
-            async with aiohttp.ClientSession() as session:
-                url = f"http://backend:8000/api/v1/guilds/{interaction.guild_id}/settings"
-                async with session.get(url) as resp:
-                    settings = {}
-                    if resp.status == 200:
-                        data = await resp.json()
-                        settings = data.get("settings", {})
-            
-            # Call LLM
-            response = await self.bot.services.llm.chat(
+            settings = await self._get_settings(interaction.guild_id)
+
+            # guild_id and user_id are required for usage attribution in AI Analytics
+            response = await self.llm.chat(
                 message=question,
                 model=settings.get("model", "openai"),
-                system_prompt=settings.get("system_prompt")
+                system_prompt=settings.get("system_prompt"),
+                guild_id=interaction.guild_id,
+                user_id=interaction.user.id,
             )
-            
-            # Log usage
+
             logger.info(
                 "ai_ask",
                 user=interaction.user.id,
                 guild=interaction.guild_id,
                 question_length=len(question),
-                response_length=len(response)
+                response_length=len(response),
             )
-            
-            # Send response
+
+            # Discord message limit is 2000 chars
             if len(response) > 2000:
-                # Split long responses
                 await interaction.followup.send(response[:2000])
                 await interaction.followup.send(response[2000:4000])
             else:
                 await interaction.followup.send(response)
-                
+
         except Exception as e:
             logger.error("ai_ask_failed", error=str(e))
             await interaction.followup.send(
                 "I encountered an error. Please try again later.",
-                ephemeral=True
+                ephemeral=True,
+            )
+
+    @ask.error
+    async def ask_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
+        if isinstance(error, app_commands.CommandOnCooldown):
+            await interaction.response.send_message(
+                f"Command on cooldown. Try again in {error.retry_after:.1f}s.",
+                ephemeral=True,
             )
 
 async def setup(bot):

@@ -72,28 +72,34 @@ class MyCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command()
+    @app_commands.command(name="example", description="Example command")
     async def example(self, interaction: discord.Interaction):
-        # Access LLM service
-        response = await self.bot.services.llm.chat("Hello!")
+        # Access LLM service — always pass guild_id and user_id for usage attribution
+        response = await self.bot.services.llm.chat(
+            message="Hello!",
+            guild_id=interaction.guild_id,
+            user_id=interaction.user.id,
+        )
 
         # Access shard monitor
         status = self.bot.services.shard_monitor.get_status()
 ```
 
-## Step 5: Environment Variables
+## Step 5: Accessing Configuration and Secrets
 
-Access environment variables safely:
+**Do not use `os.getenv()` for API keys or credentials.** All secrets (API keys, tokens) are stored encrypted by the Setup Wizard and accessed through `self.bot.services.config`:
 
 ```python
-import os
-
 class MyCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        # Get from environment
-        self.api_key = os.getenv("MY_API_KEY", "default_value")
+        # Access bot-level config (populated by the Setup Wizard)
+        self.my_api_key = bot.services.config.my_api_key  # or however it is named
 ```
+
+For **guild-specific settings** (per-guild configuration that guild owners can change), fetch them from the backend at command time — see [Bot Configuration](06-bot-configuration.md) for the full `SETTINGS_SCHEMA` pattern.
+
+`os.getenv()` is acceptable only for **non-sensitive operational variables** (e.g. `MAX_RETRIES=3`, `DEBUG_MODE=false`) that do not contain credentials. Never use it for tokens, API keys, or secrets.
 
 ## Step 6: Logging
 

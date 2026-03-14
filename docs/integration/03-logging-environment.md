@@ -14,7 +14,7 @@ import structlog
 logger = structlog.get_logger()
 
 class MyCog(commands.Cog):
-    @app_commands.command()
+    @app_commands.command(name="example", description="Example command")
     async def example(self, interaction: discord.Interaction):
         # Simple log
         logger.info("command_executed", command="example")
@@ -88,7 +88,7 @@ class Example(commands.Cog):
         self.bot = bot
         logger.info("cog_initialized", cog="Example")
     
-    @app_commands.command()
+    @app_commands.command(name="process", description="Process some data")
     async def process(self, interaction: discord.Interaction, data: str):
         logger.info(
             "command_started",
@@ -136,11 +136,19 @@ class Example(commands.Cog):
             )
 ```
 
-## Environment Variables
+## Environment Variables and Secrets
 
-Environment variables are used for configuration without hardcoding values.
+> **Secrets vs configuration — use the right mechanism:**
+> - **API keys, tokens, credentials** → Setup Wizard (encrypted volume, accessed via `bot.services.config`)
+> - **Operational settings** (`MAX_RETRIES`, `DEBUG_MODE`, etc.) → `.env` file + `os.getenv()`
+>
+> Never put credentials in `.env`, environment variables, or `secrets/` files — the Setup Wizard
+> encrypts them with AES-256-GCM and stores them in a Docker volume. Accessing a secret that was
+> entered via the wizard looks like `self.bot.services.config.my_api_key`.
 
-### Reading Environment Variables
+### Reading Non-Sensitive Operational Variables
+
+Use `os.getenv()` only for configuration that is **not sensitive**:
 
 ```python
 import os
@@ -148,59 +156,23 @@ import os
 class MyCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        
-        # Basic read with default
-        self.api_url = os.getenv("MY_API_URL", "https://api.example.com")
-        
-        # Required variable (will be None if not set)
-        self.api_key = os.getenv("MY_API_KEY")
-        if not self.api_key:
-            logger.error("missing_api_key", variable="MY_API_KEY")
-            raise ValueError("MY_API_KEY environment variable is required")
-        
-        # Boolean variable
+
+        # Operational settings (non-sensitive) — OK to use os.getenv
         self.debug_mode = os.getenv("DEBUG_MODE", "false").lower() == "true"
-        
-        # Integer variable
         self.max_retries = int(os.getenv("MAX_RETRIES", "3"))
+        self.api_url = os.getenv("MY_API_URL", "https://api.example.com")
 ```
 
-### Where to Define Variables
+### Where to Define Operational Variables
 
-1. **`.env` file**: For non-sensitive defaults
-   ```bash
-   # .env
-   DEFAULT_LANG=en
-   MAX_RETRIES=3
-   ENABLE_FEATURE_X=true
-   ```
+**`.env` file**: For non-sensitive defaults
 
-2. **`secrets/` directory**: For sensitive values
-   ```bash
-   # Add to docker-compose.yml
-   services:
-     bot:
-       secrets:
-         - my_api_key
-   
-   secrets:
-     my_api_key:
-       file: ./secrets/my_api_key
-   ```
-   
-   Then read in code:
-   ```python
-   # Docker secrets are mounted to /run/secrets/
-   def read_secret(name):
-       try:
-           with open(f"/run/secrets/{name}") as f:
-               return f.read().strip()
-       except FileNotFoundError:
-           # Fallback to environment variable
-           return os.getenv(name.upper())
-   
-   api_key = read_secret("my_api_key")
-   ```
+```bash
+# .env
+DEFAULT_LANG=en
+MAX_RETRIES=3
+ENABLE_FEATURE_X=true
+```
 
 ### Configuration Class Pattern
 
@@ -246,7 +218,7 @@ class MyCog(commands.Cog):
         self.bot = bot
         self.config = BotConfig.from_env()
         
-    @app_commands.command()
+    @app_commands.command(name="status", description="Show bot configuration status")
     async def status(self, interaction: discord.Interaction):
         await interaction.response.send_message(
             f"AI Enabled: {self.config.enable_ai}\n"
@@ -315,7 +287,7 @@ class Config:
 
 ## Best Practices
 
-1. **Never Commit Secrets**: Use `secrets/` and `.gitignore`
+1. **Never Commit Secrets**: Use the Setup Wizard for all credentials (API keys, tokens). Never put secrets in `.env`, environment variables, or files that could be committed.
 2. **Provide Defaults**: Use sensible defaults for non-critical settings
 3. **Validate Early**: Check required variables at startup
 4. **Document Variables**: Keep a list in `README.md` or `.env.example`

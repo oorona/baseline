@@ -68,7 +68,7 @@ class MyCog(commands.Cog):
         self.bot = bot
         self.config = config
         
-    @app_commands.command()
+    @app_commands.command(name="status", description="Show bot version and feature status")
     async def status(self, interaction: discord.Interaction):
         await interaction.response.send_message(
             f"{self.config.bot_name} v{self.config.bot_version}\n"
@@ -81,27 +81,29 @@ class MyCog(commands.Cog):
 Best for: Per-server configuration that users can change
 
 ```python
-import aiohttp
 import structlog
 
 logger = structlog.get_logger()
 
 class MyCog(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+
     async def get_guild_config(self, guild_id: int) -> dict:
         """Fetch guild-specific configuration from backend."""
         try:
-            async with aiohttp.ClientSession() as session:
-                url = f"http://backend:8000/api/v1/guilds/{guild_id}/settings"
-                async with session.get(url) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        return data.get("settings", {})
+            # Use self.bot.session — never create a new aiohttp.ClientSession per request
+            url = f"http://backend:8000/api/v1/guilds/{guild_id}/settings"
+            async with self.bot.session.get(url) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    return data.get("settings", {})
         except Exception as e:
             logger.error("failed_to_fetch_guild_config", guild_id=guild_id, error=str(e))
-        
+
         return {}  # Return empty dict as fallback
     
-    @app_commands.command()
+    @app_commands.command(name="configure-feature", description="Show current feature configuration")
     async def configure_feature(self, interaction: discord.Interaction):
         # Get guild-specific settings
         guild_config = await self.get_guild_config(interaction.guild_id)
@@ -177,7 +179,7 @@ class MyCog(commands.Cog):
         self.bot = bot
         self.features = ConfigLoader.load_features_config()
         
-    @app_commands.command()
+    @app_commands.command(name="check-moderation", description="Check whether moderation is enabled")
     async def check_moderation(self, interaction: discord.Interaction):
         mod_config = self.features.get("moderation", {})
         enabled = mod_config.get("enabled", False)
@@ -191,105 +193,58 @@ class MyCog(commands.Cog):
 
 Best for: API keys, tokens, passwords
 
+**All secrets are entered via the Setup Wizard** (accessible at `/dashboard/config` as a platform admin) and stored encrypted with AES-256-GCM in a Docker volume. Never put secrets in `.env`, environment variables, or files.
+
+Access secrets in your cog through `bot.services.config`:
+
 ```python
-from pathlib import Path
-
-class SecretManager:
-    @staticmethod
-    def read_secret(name: str) -> str:
-        """Read a secret from Docker secrets or file."""
-        # Try Docker secrets first
-        secret_path = Path(f"/run/secrets/{name}")
-        if secret_path.exists():
-            return secret_path.read_text().strip()
-        
-        # Fallback to local secrets directory
-        local_path = Path("secrets") / name
-        if local_path.exists():
-            return local_path.read_text().strip()
-        
-        # Fallback to environment variable
-        import os
-        return os.getenv(name.upper(), "")
-
-# Usage
-api_key = SecretManager.read_secret("my_api_key")
+class MyCog(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        # Secrets populated by the Setup Wizard — access via bot.services.config
+        self.weather_api_key = bot.services.config.weather_api_key
+        self.news_api_key = bot.services.config.news_api_key
 ```
+
+The exact attribute names match what was registered in the Setup Wizard and declared in the `Config` class in `bot/services/core.py`.
 
 ## Combining Multiple Sources
 
-Create a unified configuration system:
+Each configuration source has its correct place:
+
+| Source | What Goes There |
+|--------|-----------------|
+| `bot.services.config` | Secrets / API keys (entered via Setup Wizard) |
+| `os.getenv()` | Non-sensitive operational settings (`MAX_RETRIES`, `DEBUG_MODE`) |
+| Guild settings (backend) | Per-guild config that server owners can change |
+| Config JSON files | Static presets, feature flags that ship with the code |
+
+Example cog that draws from all three non-secrets sources:
 
 ```python
 import os
 import json
 from pathlib import Path
-from dataclasses import dataclass, field
-from typing import Optional
 import structlog
 
 logger = structlog.get_logger()
 
-@dataclass
-class AppConfig:
-    """Unified application configuration."""
-    
-    # From environment
-    bot_name: str
-    bot_version: str
-    
-    # From secrets
-    api_key: str
-    
-    # From config file
-    features: dict = field(default_factory=dict)
-    
-    @classmethod
-    def load(cls):
-        """Load configuration from all sources."""
-        # Load from environment
-        bot_name = os.getenv("BOT_NAME", "MyBot")
-        bot_version = os.getenv("BOT_VERSION", "1.0.0")
-        
-        # Load from secrets
-        api_key = cls._read_secret("my_api_key")
-        
-        # Load from file
-        features = cls._load_features_config()
-        
-        logger.info(
-            "config_loaded",
-            bot_name=bot_name,
-            version=bot_version,
-            features_count=len(features)
-        )
-        
-        return cls(
-            bot_name=bot_name,
-            bot_version=bot_version,
-            api_key=api_key,
-            features=features
-        )
-    
-    @staticmethod
-    def _read_secret(name: str) -> str:
-        """Read secret from file or environment."""
-        secret_path = Path(f"/run/secrets/{name}")
-        if secret_path.exists():
-            return secret_path.read_text().strip()
-        return os.getenv(name.upper(), "")
-    
-    @staticmethod
-    def _load_features_config() -> dict:
-        """Load features configuration."""
-        config_path = Path("bot/config/features.json")
-        if config_path.exists():
-            with open(config_path) as f:
-                return json.load(f)
-        return {}
+class MyCog(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
 
-# Initialize at startup
-app_config = AppConfig.load()
+        # Secrets — from Setup Wizard, never from env vars or files
+        self.weather_api_key = bot.services.config.weather_api_key
+
+        # Non-sensitive operational config — from environment
+        self.max_retries = int(os.getenv("MAX_RETRIES", "3"))
+        self.debug_mode = os.getenv("DEBUG_MODE", "false").lower() == "true"
+
+        # Static presets — from JSON file shipped with the code
+        config_path = Path(__file__).parent.parent / "config" / "features.json"
+        self.features = json.loads(config_path.read_text()) if config_path.exists() else {}
+
+        logger.info("cog_initialized", cog="MyCog", debug=self.debug_mode)
 ```
 
 ## Per-Guild Configuration Cache
@@ -302,7 +257,8 @@ import aiohttp
 import asyncio
 
 class GuildConfigCache:
-    def __init__(self):
+    def __init__(self, bot):
+        self.bot = bot  # hold a reference so _fetch_from_backend can use bot.session
         self._cache: Dict[int, dict] = {}
         self._ttl = 300  # 5 minutes
         
@@ -326,12 +282,12 @@ class GuildConfigCache:
     async def _fetch_from_backend(self, guild_id: int) -> dict:
         """Fetch configuration from backend API."""
         try:
-            async with aiohttp.ClientSession() as session:
-                url = f"http://backend:8000/api/v1/guilds/{guild_id}/settings"
-                async with session.get(url) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        return data.get("settings", {})
+            # Use the shared bot session — never create a new ClientSession per request
+            url = f"http://backend:8000/api/v1/guilds/{guild_id}/settings"
+            async with self.bot.session.get(url) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    return data.get("settings", {})
         except Exception:
             pass
         return {}
@@ -345,14 +301,15 @@ class GuildConfigCache:
         """Manually invalidate cache for a guild."""
         self._cache.pop(guild_id, None)
 
-# Create global instance
-guild_config_cache = GuildConfigCache()
-
-# Use in cogs
+# Use in cogs — pass bot so the cache can use bot.session
 class MyCog(commands.Cog):
-    @app_commands.command()
+    def __init__(self, bot):
+        self.bot = bot
+        self._config_cache = GuildConfigCache(bot)
+
+    @app_commands.command(name="my-command", description="Example command using cached guild config")
     async def my_command(self, interaction: discord.Interaction):
-        config = await guild_config_cache.get(interaction.guild_id)
+        config = await self._config_cache.get(interaction.guild_id)
         # Use config...
 ```
 
@@ -366,84 +323,60 @@ class MyCog(commands.Cog):
 6. **Hot Reload**: Consider reloading config without restart for some settings
 7. **Environment-Specific**: Use different configs for dev/prod
 
-## Example: Complete Configuration System
+## Example: Complete Cog with All Config Sources
 
 ```python
-# bot/core/config.py
+# bot/cogs/my_feature.py
 import os
-import json
-from pathlib import Path
-from dataclasses import dataclass
 import structlog
+import discord
+from discord import app_commands
+from discord.ext import commands
 
 logger = structlog.get_logger()
 
-@dataclass
-class BotConfiguration:
-    """Complete bot configuration."""
-    
-    # Identity
-    name: str = "MyBot"
-    version: str = "1.0.0"
-    
-    # Features
-    enable_moderation: bool = True
-    enable_ai: bool = True
-    
-    # External APIs
-    weather_api_key: str = ""
-    news_api_key: str = ""
-    
-    # Limits
-    max_message_length: int = 2000
-    rate_limit_per_user: int = 5
-    
-    @classmethod
-    def load_all(cls):
-        """Load from all sources."""
-        instance = cls()
-        instance._load_from_env()
-        instance._load_from_secrets()
-        instance._validate()
-        instance._log_config()
-        return instance
-    
-    def _load_from_env(self):
-        """Load from environment variables."""
-        self.name = os.getenv("BOT_NAME", self.name)
-        self.version = os.getenv("BOT_VERSION", self.version)
+
+class MyFeature(commands.Cog):
+    """Example cog drawing configuration from all correct sources."""
+
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+
+        # Secrets — entered via Setup Wizard, accessed via bot.services.config
+        self.weather_api_key = bot.services.config.weather_api_key
+
+        # Non-sensitive operational settings — from environment variables
+        self.max_retries = int(os.getenv("MAX_RETRIES", "3"))
         self.enable_moderation = os.getenv("ENABLE_MODERATION", "true").lower() == "true"
-        self.enable_ai = os.getenv("ENABLE_AI", "true").lower() == "true"
-    
-    def _load_from_secrets(self):
-        """Load secrets."""
-        self.weather_api_key = self._read_secret("weather_api_key")
-        self.news_api_key = self._read_secret("news_api_key")
-    
-    def _read_secret(self, name: str) -> str:
-        """Read a secret."""
-        path = Path(f"/run/secrets/{name}")
-        if path.exists():
-            return path.read_text().strip()
-        return os.getenv(name.upper(), "")
-    
-    def _validate(self):
-        """Validate configuration."""
-        if self.enable_ai and not self.weather_api_key:
-            logger.warning("ai_enabled_but_no_api_key")
-    
-    def _log_config(self):
-        """Log loaded configuration."""
+
         logger.info(
-            "configuration_loaded",
-            bot_name=self.name,
-            version=self.version,
-            moderation=self.enable_moderation,
-            ai=self.enable_ai
+            "cog_initialized",
+            cog="MyFeature",
+            enable_moderation=self.enable_moderation,
         )
 
-# Global config instance
-config = BotConfiguration.load_all()
+    async def _get_guild_settings(self, guild_id: int) -> dict:
+        """Fetch per-guild settings from backend (cached by Redis)."""
+        url = f"http://backend:8000/api/v1/guilds/{guild_id}/settings"
+        async with self.bot.session.get(url) as resp:  # use shared session
+            if resp.status == 200:
+                data = await resp.json()
+                return data.get("settings", {})
+        return {}
+
+    @app_commands.command(name="feature-status", description="Show current feature configuration")
+    async def feature_status(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        guild_settings = await self._get_guild_settings(interaction.guild_id)
+        await interaction.followup.send(
+            f"Moderation: {'on' if self.enable_moderation else 'off'}\n"
+            f"Max retries: {self.max_retries}\n"
+            f"Custom prompt: {guild_settings.get('system_prompt', '(default)')}"
+        )
+
+
+async def setup(bot: commands.Bot):
+    await bot.add_cog(MyFeature(bot))
 ```
 
 ## Next Steps

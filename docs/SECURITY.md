@@ -852,10 +852,9 @@ Run through this checklist before deploying a new bot or after adding new featur
 
 ### Secrets & Configuration
 
-- [ ] All secrets are in `secrets/` files — never in `.env` or docker-compose.yml plaintext
-- [ ] `DISCORD_CLIENT_SECRET` is set correctly
-- [ ] `API_SECRET_KEY` is a strong random value (32+ bytes)
-- [ ] `DISCORD_BOT_TOKEN` is loaded from Docker secret
+- [ ] Setup Wizard completed — all secrets entered via the browser UI and encrypted in the Docker volume
+- [ ] `secrets/encryption_key` exists and is **not** committed to git (check `.gitignore`)
+- [ ] No secrets in `.env`, `docker-compose.yml`, or any committed file
 - [ ] `FRONTEND_URL` is set to the production domain (OAuth redirect and postMessage origin)
 - [ ] `DISCORD_GUILD_ID` and `DEVELOPER_ROLE_ID` are set for L5 admin access
 
@@ -872,7 +871,7 @@ Run through this checklist before deploying a new bot or after adding new featur
 - [ ] `Depends(get_current_user)` is present on all non-public, non-internal endpoints
 - [ ] Guild membership is validated after authentication
 - [ ] `user_id = int(current_user["user_id"])` — not `current_user["id"]`
-- [ ] `AsyncSession` from `Depends(get_db)` — not sync `Session`
+- [ ] `AsyncSession` from `Depends(get_guild_db)` for guild endpoints, `Depends(get_db)` for global tables only — not sync `Session`
 - [ ] No `db.refresh()` after `await db.commit()` — re-query instead
 - [ ] Pydantic input schema validates and constrains all fields
 - [ ] Audit log entry written for all mutating operations

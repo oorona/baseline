@@ -1,173 +1,86 @@
-# Baseline Bot Platform Walkthrough
+# Baseline Framework — Walkthrough
 
-This document outlines the implemented baseline architecture and the Simple LLM Bot.
+This document gives a high-level tour of what the framework includes and where to find things. For task-specific guides, see `docs/integration/`.
 
-## 1. Architecture Overview
+---
 
-The platform consists of the following Docker services:
-- **backend**: FastAPI service for API endpoints (port 8000).
-- **bot**: Discord bot service using `discord.py` (port 8080 for health).
-- **frontend**: Next.js web interface (port 3000).
-- **postgres**: Database for persistent storage.
-- **redis**: Cache and session storage.
+## Architecture
 
-## 2. Simple LLM Bot
+Three Docker services behind an nginx gateway:
 
-A simple bot implementation has been added to `bot/cogs/simple_llm.py`.
+| Service | Stack | Port |
+|---------|-------|------|
+| **backend** | FastAPI + PostgreSQL + Redis | 8000 |
+| **bot** | discord.py (auto-sharded) | 8080 (health) |
+| **frontend** | Next.js 16 + TypeScript | 3000 |
 
-### Features
-- Listens for messages from a specific user (configurable via `TARGET_USER_ID`).
-- Generates responses using an LLM (OpenAI).
-- Responds directly to the user in Discord.
+Traffic flows: `Internet → nginx → Backend ← Bot / Frontend (intranet)`
 
-### Configuration
-To configure the target user, add `TARGET_USER_ID` to your `.env` file or environment variables.
+---
 
-## 3. Running the Platform
+## What is Included
 
-### Prerequisites
-- Docker and Docker Compose installed.
-- Discord Bot Token and Client Secret.
-- OpenAI API Key (optional, uses dummy by default).
+### Bot
+- Auto-sharded discord.py bot with Cog autoloading from `bot/cogs/`
+- LLM service (`bot.services.llm`) supporting OpenAI, Anthropic, Google Gemini, and xAI Grok
+- Shared `aiohttp.ClientSession` (`bot.session`) for all backend HTTP calls
+- Shard health monitoring
+- Per-guild settings fetched from backend at command time
 
-### Setup
-1.  **Secrets**: Run `bash setup_secrets.sh` to generate dummy secrets for development. Update `secrets/discord_bot_token.txt` and `secrets/openai_api_key.txt` with real credentials.
-2.  **Environment**: Ensure `.env` exists (copied from `.env.example`). Update `DATABASE_URL` and `REDIS_URL` if not using the default docker-compose values.
+### Backend
+- Discord OAuth2 login + session management (Redis, HTTP-only cookies)
+- PostgreSQL with **Row-Level Security** — guild data is strictly isolated
+- Guild sync: bot registers guilds in the database on join/leave
+- Audit log for every settings mutation
+- 6-tier permission model (L0 Public → L5 Developer)
+- Full Gemini AI API surface (text, images, TTS, embeddings, RAG, function calling, caching)
+- LLM usage tracking per guild and per user
 
-### Start Services
+### Frontend
+- Next.js 16 dashboard with per-guild settings, audit logs, permissions, shard monitor
+- `withPermission` HOC enforces permission levels on every page
+- Custom i18n system (English + Spanish) — all strings via `t('key')`
+- API client in `frontend/app/api-client.ts` — never call backend URLs directly
+
+---
+
+## Running the Platform
+
 ```bash
-docker compose up -d
+docker compose up -d              # Start all services
+docker compose logs -f            # Tail all logs
+docker compose restart bot        # Restart a single service
 ```
 
-### Verify
+Visit:
 - **Frontend**: http://localhost:3000
-- **Backend Health**: http://localhost:8000/api/v1/health
-- **Bot Health**: http://localhost:8080/health
+- **Backend API docs**: http://localhost:8000/docs
+- **Bot health**: http://localhost:8080/health
 
-## 4. Development
+---
 
-- **Backend**: Code in `backend/`.
-- **Bot**: Code in `bot/`. Add new cogs in `bot/cogs/`.
-- **Frontend**: Code in `frontend/`.
+## Extending the Framework
 
-## 5. Phase 2: Authentication & Authorization
+The framework is designed to be extended by adding Cogs, backend routers, and frontend pages. An LLM coding assistant can generate correct, framework-compliant code by reading the docs in this order:
 
-The platform now includes a complete authentication system using Discord OAuth2.
+1. `CLAUDE.md` — mandatory rules every AI assistant must follow
+2. `docs/integration/01-adding-cogs.md` — add Discord slash commands
+3. `docs/integration/02-llm-integration.md` — use AI features in cogs
+4. `docs/integration/04-backend-endpoints.md` — add REST API endpoints
+5. `docs/integration/05-frontend-pages.md` — add dashboard pages
+6. `docs/integration/06-bot-configuration.md` — per-guild settings schema
+7. `docs/API_ROUTES.md` — full API reference
 
-### Features
-- **Discord Login**: Users can log in via Discord to access the dashboard.
-- **Session Management**: Secure sessions stored in Redis with HTTP-only cookies.
-- **Guild Sync**: The bot automatically syncs joined guilds to the database.
-- **Authorization**: Role-based access control (Owner, Admin, User) for guild management.
+---
 
-### Database Schema
-New tables added:
-- `users`: Stores Discord user profiles.
-- `guilds`: Stores Discord server information.
-- `authorized_users`: Maps users to guilds with permission levels.
-- `guild_settings`: Stores JSON-based settings for each guild.
+## Key Files
 
-### API Endpoints
-- `GET /api/v1/auth/discord/login`: Initiates OAuth flow.
-- `GET /api/v1/auth/me`: Returns current user info.
-- `POST /api/v1/guilds/`: Used by the bot to sync guild data.
-
-## 6. Phase 3: Settings Management & LLM Integration
-
-Users can now configure bot behavior per guild.
-
-### Features
-- **Settings Dashboard**: New UI for managing guild settings.
-- **Channel Restrictions**: Restrict bot chat to specific channels.
-- **Custom System Prompts**: Define the bot's personality per guild.
-- **Model Selection**: Choose between OpenAI, Anthropic, Google, or xAI models.
-
-### Implementation Details
-- **Frontend**: Added `dashboard` layout and `settings` page.
-- **Backend**: Updated `GuildSettings` schema and API endpoints.
-- **Bot**: Updated `Chat` cog to fetch and apply settings dynamically.
-
-## 7. Phase 4: System Status & Shard Monitoring
-
-Admins can now monitor the health and status of bot shards in real-time.
-
-### Features
-- **Shard Monitor**: View status (Ready, Connecting, Disconnected) of all shards.
-- **Latency Tracking**: Real-time latency metrics for each shard.
-- **Guild Distribution**: See which guilds are on which shard.
-- **Admin Security**: Restricted access to status endpoints.
-
-### Implementation Details
-- **Frontend**: Moved status page to `/dashboard/status` and added sidebar link.
-- **Backend**: Added admin check to `/api/v1/shards` endpoint.
-
-## 8. Phase 5: Audit Logs
-
-Admins can now track all changes made to guild settings and authorized users.
-
-### Features
-- **Audit Log Table**: View a history of actions (Update Settings, Add/Remove User).
-- **Detailed Records**: See exactly what changed (e.g., which settings were modified).
-- **User Tracking**: Identify who performed each action.
-
-### Implementation Details
-- **Database**: Added `audit_logs` table.
-- **Backend**: Updated endpoints to record actions automatically.
-- **Frontend**: Added `Audit Logs` page to the dashboard.
-
-## 9. Phase 6: Granular Permissions
-
-Access control is now enforced based on user roles (`OWNER`, `ADMIN`, `USER`).
-
-### Features
-- **Role-Based Access**:
-    - **OWNER**: Full access.
-    - **ADMIN**: Can manage settings, users, and view logs.
-    - **USER**: Read-only access to settings.
-- **UI Adaptation**: Dashboard automatically hides restricted actions based on your role.
-
-### Implementation Details
-- **Backend**: Added permission checks to all write endpoints.
-- **Frontend**: Updated `Settings` page to read-only mode for non-admins.
-
-## 10. Phase 7: Production Readiness
-
-The platform is now production-ready with deployment tooling and configurations.
-
-### Features
-- **Production Config**: `docker-compose.prod.yml` with restart policies and resource limits.
-- **Deployment Script**: Automated deployment with `./scripts/deploy.sh`.
-- **Documentation**: Comprehensive README with setup and deployment instructions.
-
-### Implementation Details
-- **Configuration**: Production-specific Docker Compose override (`docker-compose.prod.yml`).
-- **Commands**: All operations run via `docker compose` directly (see README for reference).
-
-## 11. Phase 8: Integration Documentation
-
-Comprehensive documentation for extending the framework with custom functionality.
-
-### Documentation Created
-
-**For AI Assistants (LLM Integration Guides)**:
-1. **Adding Bot Cogs** - How to create Discord commands
-2. **LLM Integration** - Using AI features in your bot
-3. **Logging & Environment** - Configuration and structured logging
-4. **Backend Endpoints** - Adding REST APIs
-5. **Frontend Pages** - Creating web UI pages
-6. **Bot Configuration** - Loading bot-specific settings
-
-**For Developers**:
-- **Architecture Guide** - Complete system design and plugin architecture
-- **Integration README** - Quick reference and common tasks
-
-### Implementation Details
-- Created `docs/integration/` directory with 6 detailed guides
-- Each guide includes working code examples
-- Added `docs/ARCHITECTURE.md` explaining the overall system
-- Documentation is optimized for both human and AI consumption
-
-## 12. Next Steps
-- Set up real API keys in `secrets/`
-- Deploy to a production server
-- Build custom features using the integration guides
+| Purpose | Location |
+|---------|----------|
+| Bot entry + services | `bot/core/bot.py`, `bot/services/` |
+| Cog examples | `bot/cogs/status.py`, `bot/cogs/gemini_capabilities_demo.py` |
+| API routers | `backend/app/api/` |
+| Auth & security | `backend/app/core/security.py` |
+| Frontend API client | `frontend/app/api-client.ts` |
+| Permission HOC | `frontend/lib/components/with-permission.tsx` |
+| i18n translations | `frontend/lib/i18n/translations/` |

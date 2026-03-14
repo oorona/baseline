@@ -366,20 +366,15 @@ rate(guild_leaves_total[1h])
 To track cog-specific metrics, import the registry and add your own counters alongside the existing ones.
 
 ```python
-# In your cog file
-from app.api.prom_metrics import bot_commands_total  # or define new ones
-
-# Define a new counter in backend/app/api/prom_metrics.py:
-#   my_feature_total = Counter("my_feature_total", "...", ["label"])
+# The bot and backend are separate services — the bot cannot import from backend directly.
+# The correct pattern is to POST to the instrumentation endpoint from your cog:
 #
-# Then in your cog:
-from backend.app.api.prom_metrics import my_feature_total   # via bot HTTP call
-
-# More practically — the bot records metrics by posting to the backend:
-# POST /api/v1/instrumentation/bot-command  (already done by the framework)
+# POST /api/v1/instrumentation/bot-command  (already done by the framework for every command)
 #
-# For entirely new event types, add a new Counter/Histogram to prom_metrics.py
-# and a new POST endpoint in instrumentation.py following the existing pattern.
+# For entirely new event types:
+# 1. Add a new Counter/Histogram to backend/app/api/prom_metrics.py
+# 2. Add a new POST endpoint in backend/app/api/instrumentation.py following the existing pattern
+# 3. Call that endpoint from your cog using self.bot.session.post(...)
 ```
 
 For **bot-side custom events**, post to the instrumentation endpoint from your cog — the pattern is already established in the framework:
@@ -387,7 +382,6 @@ For **bot-side custom events**, post to the instrumentation endpoint from your c
 ```python
 # bot/cogs/my_cog.py
 import time
-import aiohttp
 
 async def _record_my_event(self, event_name: str, duration_ms: float):
     payload = {
@@ -398,11 +392,11 @@ async def _record_my_event(self, event_name: str, duration_ms: float):
         "duration_ms": duration_ms,
         "success": True,
     }
-    async with aiohttp.ClientSession() as session:
-        await session.post(
-            "http://backend:8000/api/v1/instrumentation/bot-command",
-            json=payload,
-        )
+    # Use self.bot.session — never create a new aiohttp.ClientSession per call
+    await self.bot.session.post(
+        "http://backend:8000/api/v1/instrumentation/bot-command",
+        json=payload,
+    )
 ```
 
 ---

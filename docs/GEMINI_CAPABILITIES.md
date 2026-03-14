@@ -24,10 +24,7 @@
 The `google-genai>=1.0.0` package is already included in `requirements.txt`. Migrations run automatically on container startup.
 
 ### Environment Setup
-Ensure your `secrets/google_api_key.txt` contains a valid Google AI API key:
-```bash
-echo "your-api-key-here" > secrets/google_api_key.txt
-```
+Enter your Google AI API key via the **Setup Wizard** (platform admin → `/dashboard/config`). The wizard encrypts it and stores it in the Docker volume — never put it in a file or `.env`.
 
 ### Basic Usage in a Bot Cog
 
@@ -41,9 +38,8 @@ class MyCog(commands.Cog):
         self.llm = bot.services.llm
         self.gemini = bot.services.llm.gemini_service  # Direct access to Gemini
     
-    @app_commands.command(name="ask")
+    @app_commands.command(name="ask", description="Ask Gemini a question")
     async def ask(self, interaction, question: str):
-        """Ask Gemini a question."""
         await interaction.response.defer()
         
         # Simple text generation
@@ -996,7 +992,7 @@ class MultiModalCog(commands.Cog):
         self.bot = bot
         self.llm = bot.services.llm
     
-    @app_commands.command(name="creative")
+    @app_commands.command(name="creative", description="Generate text, images, or speech with Gemini")
     @app_commands.describe(
         prompt="What would you like to create?",
         mode="Generation mode"
@@ -1097,13 +1093,12 @@ class DataExtractionCog(commands.Cog):
         self.bot = bot
         self.llm = bot.services.llm
     
-    @app_commands.command(name="extract-contacts")
+    @app_commands.command(name="extract-contacts", description="Extract contact information from text")
     async def extract_contacts(
         self,
         interaction: discord.Interaction,
         text: str
     ):
-        """Extract contact information from text."""
         await interaction.response.defer()
         
         result = await self.llm.generate_structured(
@@ -1145,14 +1140,13 @@ class ImageAnalysisCog(commands.Cog):
         self.bot = bot
         self.llm = bot.services.llm
     
-    @app_commands.command(name="analyze-image")
+    @app_commands.command(name="analyze-image", description="Analyze an image with Gemini vision")
     async def analyze_image(
         self,
         interaction: discord.Interaction,
         image_url: str,
         question: Optional[str] = "Describe this image in detail"
     ):
-        """Analyze an image with Gemini vision."""
         await interaction.response.defer()
         
         result = await self.llm.understand_image(
@@ -1185,12 +1179,12 @@ class ImageAnalysisCog(commands.Cog):
 #### "GENAI_AVAILABLE is False"
 The `google-genai` package isn't installed. Check:
 1. `requirements.txt` has `google-genai>=1.0.0`
-2. Rebuild your Docker container: `docker-compose up --build`
+2. Rebuild your Docker container: `docker compose up --build`
 
 #### "API key not valid"
-1. Verify `secrets/google_api_key.txt` contains your key
+1. Re-enter your Google API key via the Setup Wizard (`/dashboard/config` → platform admin)
 2. Check the key is enabled for the Gemini API in Google Cloud Console
-3. Restart the bot container
+3. Restart the bot container: `docker compose restart bot`
 
 #### "Model not found"
 Some models are preview-only. Ensure:
@@ -1222,7 +1216,7 @@ structlog.configure(
 ### Getting Help
 
 1. Check the demo commands: `/gemini-demo help`
-2. Review logs in Docker: `docker-compose logs -f bot`
+2. Review logs in Docker: `docker compose logs -f bot`
 3. Test with the frontend demo: `/dashboard/[guildId]/gemini-demo/`
 
 ---

@@ -1,68 +1,269 @@
 # API Routing Reference
 
-## Backend API Endpoints
-
-
 All backend API endpoints are prefixed with `/api/v1`.
 
-### Rate Limiting
-API endpoints are rate-limited to prevent abuse:
-- **Authentication**: 5-10 requests/minute
-- **LLM Generation**: 10-20 requests/minute
-- **General API**: 20 requests/minute
+## Rate Limiting
 
-
-### Authentication
-- `POST /api/v1/auth/discord/login` - Initiate Discord OAuth
-- `GET /api/v1/auth/discord/callback` - OAuth callback
-- `GET /api/v1/auth/me` - Get current user
-- `POST /api/v1/auth/logout` - Logout
-- `POST /api/v1/auth/logout-all` - Logout from all devices
-
-### Guilds
-- `GET /api/v1/guilds` - List all guilds user has access to
-- `GET /api/v1/guilds/{guild_id}` - Get specific guild
-
-### Settings
-- `GET /api/v1/guilds/{guild_id}/settings` - Get guild settings
-- `PUT /api/v1/guilds/{guild_id}/settings` - Update guild settings
-  - Body: `{ "settings": { ... } }`
-
-### Permissions
-- `GET /api/v1/guilds/{guild_id}/authorized-users` - List authorized users
-- `POST /api/v1/guilds/{guild_id}/authorized-users` - Add authorized user
-  - Body: `{ "user_id": 123456789 }`
-- `DELETE /api/v1/guilds/{guild_id}/authorized-users/{user_id}` - Remove user
-
-### Shards
-- `GET /api/v1/shards` - List all shards
-- `GET /api/v1/shards/{shard_id}` - Get specific shard
-
-### Health
-- `GET /api/v1/health` - Health check
+| Category | Limit |
+|----------|-------|
+| Authentication | 5–10 req/min |
+| LLM generation | 10–20 req/min |
+| General API | 20 req/min |
 
 ---
 
-## Gemini AI Endpoints
+## Authentication — `/api/v1/auth`
 
-All Gemini endpoints are prefixed with `/api/v1/gemini`.
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/auth/discord/login` | — | Initiate Discord OAuth2 flow |
+| `GET` | `/auth/discord/callback` | — | OAuth2 callback (sets session cookie) |
+| `GET` | `/auth/me` | Session | Get current authenticated user |
+| `POST` | `/auth/logout` | Session | Invalidate current session |
+| `POST` | `/auth/logout-all` | Session | Invalidate all sessions for this user |
+| `GET` | `/auth/discord-config` | — | Public Discord OAuth config (client ID, scopes) |
 
-### Context Caching (75% cost savings)
+---
+
+## Users — `/api/v1/users`
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/users/me/settings` | Session | Get current user's preferences (language, etc.) |
+| `PUT` | `/users/me/settings` | Session | Update current user's preferences |
+
+---
+
+## Guilds — `/api/v1/guilds`
+
+### Guild Management
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/guilds` | Session | List all guilds the current user has access to |
+| `POST` | `/guilds` | Bot internal | Register or update a guild (called by bot on join) |
+| `GET` | `/guilds/{guild_id}` | Session | Get guild details |
+| `GET` | `/guilds/{guild_id}/public` | — | Public guild info (name, member count — no PII) |
+
+### Settings
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/guilds/{guild_id}/settings` | Session | Get guild settings |
+| `PUT` | `/guilds/{guild_id}/settings` | Session (owner/admin) | Update guild settings |
+
+Body for PUT: `{ "settings": { "key": "value", ... } }`
+
+### Permissions — Authorized Users
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/guilds/{guild_id}/authorized-users` | Session | List users authorized for this guild |
+| `POST` | `/guilds/{guild_id}/authorized-users` | Session (owner) | Add an authorized user |
+| `DELETE` | `/guilds/{guild_id}/authorized-users/{user_id}` | Session (owner) | Remove an authorized user |
+
+Body for POST: `{ "user_id": 123456789 }`
+
+### Permissions — Authorized Roles
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/guilds/{guild_id}/authorized-roles` | Session | List authorized Discord roles |
+| `POST` | `/guilds/{guild_id}/authorized-roles` | Session (owner) | Add an authorized role |
+| `DELETE` | `/guilds/{guild_id}/authorized-roles/{role_id}` | Session (owner) | Remove an authorized role |
+
+### Audit Logs
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/guilds/{guild_id}/audit-logs` | Session (admin) | List audit log entries for this guild |
+
+Query params: `limit`, `offset`, `action` (filter by action type)
+
+### Discord Data (Live from Discord API)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/guilds/{guild_id}/channels` | Session | List guild channels (from Discord API) |
+| `GET` | `/guilds/{guild_id}/roles` | Session | List guild roles (from Discord API) |
+| `GET` | `/guilds/{guild_id}/members/search` | Session | Search guild members (from Discord API) |
+
+---
+
+## Shards — `/api/v1/shards`
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/shards` | Session (admin) | List all shards with status and latency |
+| `GET` | `/shards/{shard_id}` | Session (admin) | Get specific shard details |
+
+---
+
+## Bot Info — `/api/v1/bot-info`
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/bot-info/public` | — | Public bot info (name, avatar, invite URL) |
+| `POST` | `/bot-info/report` | Bot internal | Bot posts its runtime info (used by dashboard) |
+| `GET` | `/bot-info/report` | Session (admin) | Get latest bot runtime report |
+| `GET` | `/bot-info/settings-schema` | Session | Get the `SETTINGS_SCHEMA` from all loaded cogs |
+
+---
+
+## Commands — `/api/v1/commands`
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/commands/` | Session | Get cached slash command list (Command Reference page) |
+| `POST` | `/commands/refresh` | Session (admin) | Re-fetch commands from Discord API and update cache |
+
+---
+
+## LLM — `/api/v1/llm`
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/llm/generate` | Session | Generate text with the configured LLM |
+| `POST` | `/llm/chat` | Session | Send a chat message and get a response |
+| `POST` | `/llm/structured` | Session | Get a structured JSON response |
+| `POST` | `/llm/tools` | Session | Function/tool calling |
+| `GET` | `/llm/stats` | Session (admin) | LLM usage analytics (tokens, cost, per-guild breakdown) |
+
+---
+
+## Config — `/api/v1/config`
+
+Platform-level configuration. **L5 Developer access required** for write operations.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/config/settings` | Session (admin) | Get all platform config settings |
+| `GET` | `/config/settings/database` | Session (admin) | Get database-related settings |
+| `GET` | `/config/settings/{key}` | Session (admin) | Get a specific config key |
+| `PUT` | `/config/settings` | Session (developer) | Update config settings |
+| `POST` | `/config/settings/refresh` | Session (developer) | Reload config from database |
+| `DELETE` | `/config/settings/{key}` | Session (developer) | Delete a config key |
+| `GET` | `/config/api-keys` | Session (developer) | List configured API key names (never values) |
+| `PUT` | `/config/api-keys` | Session (developer) | Update API keys (via Setup Wizard) |
+
+---
+
+## Database Management — `/api/v1/database`
+
+**L5 Developer access required** for all write operations.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/database/info` | Session (developer) | Database info (version, size, table counts) |
+| `GET` | `/database/migrations` | Session (developer) | List Alembic migration history |
+| `POST` | `/database/migrations/upgrade` | Session (developer) | Run `alembic upgrade head` |
+| `POST` | `/database/migrations/upgrade-to` | Session (developer) | Run `alembic upgrade <revision>` |
+| `POST` | `/database/test-connection` | Session (developer) | Test database connectivity |
+| `GET` | `/database/validate` | Session (developer) | Validate schema against models |
+| `GET` | `/database/migration-history` | Session (developer) | Full Alembic migration history |
+
+---
+
+## Platform — `/api/v1/platform`
+
+Internal service health and cross-service status.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/platform/settings` | Session (developer) | Platform-level settings |
+| `PUT` | `/platform/settings` | Session (developer) | Update platform settings |
+| `GET` | `/platform/db-status` | Session (admin) | Database health status |
+| `POST` | `/platform/heartbeat` | Bot internal | Bot posts heartbeat (used for health tracking) |
+| `GET` | `/platform/frontend-status` | — | Frontend service health |
+| `GET` | `/platform/backend-status` | — | Backend service health |
+
+---
+
+## Setup — `/api/v1/setup`
+
+Setup Wizard endpoints. Used during initial configuration to store secrets encrypted.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| (varies) | `/setup/...` | Developer only | Initial setup wizard steps |
+
+---
+
+## Instrumentation — `/api/v1/instrumentation`
+
+Internal Prometheus metrics collection. Not for direct use by extensions.
+
+---
+
+## Health Check
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/health` | Returns `{"status": "ok"}` |
+
+---
+
+## Gemini AI Endpoints — `/api/v1/gemini`
+
+### Text Generation
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/gemini/cache-info` | Get caching types, model requirements, pricing info |
-| `POST` | `/gemini/cache-create` | Create cache with text content or file URI |
-| `POST` | `/gemini/cache-query` | Query using cached context (returns cache hit info) |
+| `POST` | `/gemini/generate` | Generate text with configurable thinking depth |
+| `POST` | `/gemini/count-tokens` | Count tokens before sending |
+
+### Image
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/gemini/image-generate` | Generate images from a text prompt |
+| `POST` | `/gemini/image-edit` | Edit an existing image |
+| `POST` | `/gemini/image-compose` | Combine multiple images |
+
+### Audio
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/gemini/tts` | Text-to-speech (single speaker) |
+| `POST` | `/gemini/tts-multi` | Text-to-speech (multi-speaker) |
+| `POST` | `/gemini/audio-transcribe` | Speech-to-text |
+
+### Embeddings and Structured Output
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/gemini/embeddings` | Generate vector embeddings |
+| `POST` | `/gemini/structured-output` | Get a typed JSON response |
+
+### Function Calling
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/gemini/function-calling` | Execute function calling with tools |
+| `GET` | `/gemini/function-calling/scenarios` | Predefined demo scenarios |
+
+Key params: `mode` (AUTO/ANY/NONE/VALIDATED), `allowed_functions`, `parallel_tool_calls`, `auto_execute`
+
+### Grounding
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/gemini/google-search` | Generate with Google Search grounding |
+| `POST` | `/gemini/url-context` | Include web content as context |
+
+### Context Caching (up to 75% cost savings)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/gemini/cache-info` | Cache types, model requirements, pricing |
+| `POST` | `/gemini/cache-create` | Create a cache (text content or file URI) |
+| `POST` | `/gemini/cache-query` | Query using a cached context |
 | `GET` | `/gemini/cache-list` | List all active caches with TTL remaining |
-| `GET` | `/gemini/cache-get/{name}` | Get details for specific cache |
-| `POST` | `/gemini/cache-update` | Update cache TTL or expire_time |
+| `GET` | `/gemini/cache-get/{name}` | Get details for a specific cache |
+| `POST` | `/gemini/cache-update` | Update cache TTL or expiry |
 | `DELETE` | `/gemini/cache-delete/{name}` | Delete a cache |
 
-**Key Parameters:**
-- `ttl_seconds` OR `expire_time` for cache duration
-- Minimum tokens: Flash=1,024, Pro=4,096
-- Supports file caching via `file_uri` + `file_mime_type`
+Minimum tokens: Flash = 1,024 / Pro = 4,096
 
 ### File Search (RAG)
 
@@ -71,74 +272,58 @@ All Gemini endpoints are prefixed with `/api/v1/gemini`.
 | `POST` | `/gemini/file-search-store` | Create a file search store |
 | `GET` | `/gemini/file-search-stores` | List all stores |
 | `GET` | `/gemini/file-search-stores/{name}` | Get store details |
-| `DELETE` | `/gemini/file-search-stores/{name}` | Delete store (use `?force=true` to confirm) |
+| `DELETE` | `/gemini/file-search-stores/{name}` | Delete store (`?force=true` to confirm) |
 | `POST` | `/gemini/file-search-upload` | Upload document with chunking config |
-| `POST` | `/gemini/file-search-query` | Semantic search with metadata filtering |
-| `GET` | `/gemini/file-search-documents/{store}` | List documents in store |
-| `DELETE` | `/gemini/file-search-documents/{name}` | Delete specific document |
-
-**Key Parameters:**
-- `chunking_config`: `{ max_tokens_per_chunk, max_overlap_tokens }`
-- `custom_metadata`: Array of `{ key, string_value?, numeric_value? }`
-- `metadata_filter`: Filter query results by metadata
-- `response_schema`: JSON schema for structured output
-- `include_citations`: Get source citations in response
-
-### Function Calling
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/gemini/function-calling` | Execute function calling with tools |
-| `GET` | `/gemini/function-calling/scenarios` | Get predefined demo scenarios |
-
-**Key Parameters:**
-- `mode`: AUTO, ANY, NONE, VALIDATED
-- `allowed_functions`: Restrict to specific functions
-- `parallel_tool_calls`: Enable parallel execution
-- `auto_execute`: Automatically execute called functions
-
-### Text Generation
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/gemini/generate` | Generate text with thinking control |
-| `POST` | `/gemini/count-tokens` | Count tokens before sending |
-
-### Other Capabilities
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/gemini/tts` | Text-to-speech generation |
-| `POST` | `/gemini/tts-multi` | Multi-speaker TTS |
-| `POST` | `/gemini/audio-transcribe` | Speech-to-text |
-| `POST` | `/gemini/image-generate` | Generate images |
-| `POST` | `/gemini/image-edit` | Edit existing images |
-| `POST` | `/gemini/image-compose` | Combine multiple images |
-| `POST` | `/gemini/embeddings` | Generate vector embeddings |
-| `POST` | `/gemini/structured-output` | JSON schema output |
-| `POST` | `/gemini/google-search` | Web search grounding |
-| `POST` | `/gemini/url-context` | Include web content |
+| `POST` | `/gemini/file-search-query` | Semantic search with optional metadata filter |
+| `GET` | `/gemini/file-search-documents/{store}` | List documents in a store |
+| `DELETE` | `/gemini/file-search-documents/{name}` | Delete a specific document |
 
 ---
 
 ## Frontend Routes
 
-Frontend pages are served by Next.js:
+All frontend routes are served by Next.js from `/dashboard/`:
 
-- `/` - Home page
-- `/guilds/[guildId]/settings` - Guild settings page
-- `/guilds/[guildId]/permissions` - Permission management page
-- `/admin/shards` - Shard monitor (admin only)
+### Global Dashboard
+
+| Route | Permission | Description |
+|-------|-----------|-------------|
+| `/` | Public | Home / landing page |
+| `/dashboard` | L2 User | Dashboard home (guild picker) |
+| `/dashboard/account` | L2 User | User account and preferences |
+| `/dashboard/status` | L4 Owner | Shard monitor |
+| `/dashboard/platform` | L5 Developer | Platform management |
+| `/dashboard/config` | L5 Developer | Platform config editor |
+| `/dashboard/database` | L5 Developer | Database management |
+| `/dashboard/developer` | L5 Developer | Developer tools |
+| `/dashboard/instrumentation` | L5 Developer | Metrics and observability |
+| `/dashboard/ai-analytics` | L4 Owner | LLM usage analytics |
+| `/dashboard/llm-configs` | L5 Developer | LLM provider configuration |
+| `/dashboard/bot-health` | L4 Owner | Bot health dashboard |
+
+### Per-Guild Dashboard
+
+| Route | Permission | Description |
+|-------|-----------|-------------|
+| `/dashboard/[guildId]/settings` | L3 Authorized | Guild settings |
+| `/dashboard/[guildId]/permissions` | L4 Owner | Authorized users and roles |
+| `/dashboard/[guildId]/audit-logs` | L3 Authorized | Audit log viewer |
+| `/dashboard/[guildId]/plugins` | L3 Authorized | Plugin / cog management |
+| `/dashboard/[guildId]/card-visibility` | L3 Authorized | Dashboard card visibility settings |
+
+---
 
 ## Important Notes
 
-1. **Frontend API Client**: The frontend should ALWAYS use the `apiClient` from `/app/api-client.ts` to  make backend requests. Never access backend endpoints directly from browser location.
+1. **Frontend API calls**: Always use `apiClient` from `frontend/app/api-client.ts`. Never call backend URLs directly from browser code.
 
-2. **CORS**: Backend is configured to accept requests from `http://localhost:3000` (frontend).
+2. **CORS**: Backend accepts requests from `http://localhost:3000` in development and the configured frontend URL in production.
 
-3. **Authentication**: All API endpoints (except login/callback) require authentication via JWT token or session cookie.
+3. **Authentication**: All endpoints except login, callback, public, and health require a valid session cookie.
 
-4. **Development URLs**:
+4. **Guild data**: Any endpoint under `/{guild_id}/` uses `get_guild_db`, which activates PostgreSQL Row-Level Security. A query bug cannot leak data between guilds.
+
+5. **Development URLs**:
    - Frontend: `http://localhost:3000`
-   - Backend API: `http://localhost:8000/api/v1`
-   - Bot Health: `http://localhost:8001/health`
+   - Backend API + Swagger UI: `http://localhost:8000/docs`
+   - Bot health: `http://localhost:8080/health`
