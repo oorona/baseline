@@ -95,7 +95,6 @@ else
     echo -e "  ${YELLOW}!${RESET}  bot/cogs not found — skipped"
 fi
 
-remove_path "bot/services/gemini.py"
 
 # ── Strip demo cards from the dashboard (frontend/app/page.tsx) ───────────────
 echo
