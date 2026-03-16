@@ -186,6 +186,41 @@ else:
     print("  – /api/v1/gemini not found in SENSITIVE_PREFIXES")
 PYEOF
 
+# ── Write-protect core framework files ───────────────────────────────────────
+# Makes accidental edits to core infrastructure immediately visible (permission
+# error) rather than silently succeeding and breaking the framework contract.
+# To intentionally edit a core file: chmod 644 <file>, edit, chmod 444 <file>.
+echo
+echo -e "${BOLD}Write-protecting core framework files${RESET}"
+
+protect_file() {
+    local f="$1"
+    if [ -f "$f" ]; then
+        chmod 444 "$f"
+        echo -e "  ${GREEN}✓${RESET}  protected  ${f#$SCRIPT_DIR/}"
+    fi
+}
+
+# Bot core
+protect_file "bot/core/bot.py"
+protect_file "bot/core/loader.py"
+
+# Backend core
+protect_file "backend/app/api/auth.py"
+protect_file "backend/app/api/deps.py"
+protect_file "backend/app/db/guild_session.py"
+protect_file "backend/app/db/session.py"
+
+# Frontend core
+protect_file "frontend/lib/auth-context.tsx"
+protect_file "frontend/app/layout.tsx"
+
+# Existing migration files — never edit an already-applied migration
+if [ -d "backend/alembic/versions" ]; then
+    find "backend/alembic/versions" -name "*.py" -exec chmod 444 {} \;
+    echo -e "  ${GREEN}✓${RESET}  protected  backend/alembic/versions/*.py"
+fi
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo
 echo -e "${BOLD}${GREEN}Done!${RESET}"
@@ -195,7 +230,13 @@ echo
 echo -e "${BOLD}Next steps:${RESET}"
 echo -e "  1.  Rename your bot — update ${CYAN}NEXT_PUBLIC_APP_NAME${RESET} in ${CYAN}.env${RESET}"
 echo -e "      (or use the Setup Wizard after first launch)"
-echo -e "  2.  Add your bot's cogs under ${CYAN}bot/cogs/${RESET}"
-echo -e "  3.  Add your bot's slash-command routes under ${CYAN}backend/app/api/${RESET}"
-echo -e "  4.  Read ${CYAN}docs/DEVELOPER_MANUAL.md${RESET} for the full guide"
+echo -e "  2.  Build features as plugins in ${CYAN}plugins/<name>/${RESET}"
+echo -e "      Validate:  ${CYAN}python scripts/plugin_validate.py plugins/<name>${RESET}"
+echo -e "      Install:   ${CYAN}python scripts/plugin_install.py plugins/<name>${RESET}"
+echo -e "  3.  Read ${CYAN}docs/DEVELOPER_MANUAL.md${RESET} for the full guide"
+echo -e "  4.  Read ${CYAN}docs/integration/08-plugin-workflow.md${RESET} for the plugin workflow"
+echo -e ""
+echo -e "  ${YELLOW}Note:${RESET} Core framework files have been write-protected (chmod 444)."
+echo -e "        If you need to patch a core file intentionally:"
+echo -e "        ${CYAN}chmod 644 <file>${RESET}  →  edit  →  ${CYAN}chmod 444 <file>${RESET}"
 echo

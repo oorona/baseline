@@ -16,6 +16,21 @@ Every piece of code you generate must follow all five of these rules:
 4. **`SETTINGS_SCHEMA` for configurable cogs** — any cog that reads guild settings declares a `SETTINGS_SCHEMA` class attribute; the dashboard Settings page renders the form automatically with no frontend code needed
 5. **`AuditLog` on every settings mutation** — every backend endpoint that modifies settings must write an `AuditLog` entry; this is a hard framework contract
 
+## How to Build a Feature (Plugin Workflow)
+
+**Never write feature code directly into the live project.** Use the plugin staging system:
+
+```bash
+cp -r plugins/_template plugins/<name>   # start from the template
+# ... build cog.py, api.py, page.tsx, translations/ inside plugins/<name>/
+python scripts/plugin_validate.py plugins/<name>   # must pass before proceeding
+python scripts/plugin_install.py plugins/<name>    # copies into live project
+```
+
+The validator enforces all five golden rules automatically and will reject code that violates them. See `docs/integration/08-plugin-workflow.md` for the full guide.
+
+**If you are about to edit a file in `bot/core/`, `backend/app/api/auth.py`, `backend/app/api/deps.py`, `frontend/lib/auth-context.tsx`, or any existing migration — stop.** These files are write-protected after `init.sh`. Everything you need can be built within the extension points below.
+
 ## Core vs User Code
 
 | Never touch (core) | Safe to extend |

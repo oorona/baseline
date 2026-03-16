@@ -51,8 +51,9 @@ This removes:
 | `frontend/app/dashboard/[guildId]/test-l2/` | Framework access-level test page |
 | `frontend/app/dashboard/[guildId]/logging/` | Sample logging page |
 | `backend/app/api/gemini/` | Gemini demo API router |
-| `bot/services/gemini.py` | Gemini service (used only by demo cogs) |
 | Any `bot/cogs/*.py` with `__is_demo__ = True` | All cogs marked as demo are auto-discovered and deleted |
+
+> **Note:** `bot/services/gemini.py` is **core framework infrastructure** — it is the Google/Gemini backend for the LLM service and is **not removed** by `init.sh`. Only the demo API router and demo cogs that showcase Gemini are removed.
 
 It also strips demo navigation cards (`isDemo: true`) from `frontend/app/page.tsx` and removes the Gemini router from `backend/main.py`.
 
@@ -270,6 +271,21 @@ To ensure a cohesive look, all plugins **MUST** use the following semantic token
 ---
 
 ## 5. Plugin Workflow (How to Add Features)
+
+> **For AI coding assistants and developers alike — read this before writing a single line.**
+>
+> Every new feature must be built as a **plugin** in the `plugins/<name>/` staging folder, then installed with `plugin_install.py`. **Never modify core framework files directly.** Core files are write-protected (`chmod 444`) after `init.sh` runs — any attempt to edit them is an immediate signal that you are off the correct path.
+>
+> The correct workflow is always:
+> ```
+> plugins/<name>/   ← write all new code here
+>       ↓
+> python scripts/plugin_validate.py plugins/<name>   ← verify framework rules
+>       ↓
+> python scripts/plugin_install.py plugins/<name>    ← copy into the live project
+> ```
+>
+> If you find yourself editing `bot/core/`, `backend/app/api/auth.py`, `backend/app/api/deps.py`, `frontend/lib/auth-context.tsx`, or any existing Alembic migration file — **stop**. The feature you need can always be built within the extension points. See `docs/integration/08-plugin-workflow.md` for the full staging guide.
 
 To add a new feature (e.g., "Music Bot"), follow this strict workflow:
 
