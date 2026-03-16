@@ -37,35 +37,20 @@ This strips all demo pages, cogs, and API routes while leaving the core framewor
 
 ### Setup
 
-1. **Clone the repository**
-   ```bash
-   git clone <your-repo-url>
-   cd baseline
-   ```
+See **[SETUP.md](SETUP.md)** for the full step-by-step guide. In brief:
 
-2. **Generate the encryption key**
-   ```bash
-   ./setup_secrets.sh
-   ```
+```bash
+./setup_secrets.sh                                                        # encryption key + postgres password
+docker compose up -d postgres                                             # start DB container
+./setup_database.sh --container postgres --user <yourbot> --db <yourbot> # create app user
+chmod +x init.sh && ./init.sh                                             # strip demo code
+docker compose up                                                         # start everything
+```
 
-3. **Create the database user and schema**
-   ```bash
-   ./setup_database.sh --user mybot
-   ```
+Then open `http://localhost:3000` — you will be redirected to the Setup Wizard to enter your Discord token and database credentials.
 
-4. **Start the stack**
-   ```bash
-   docker compose up -d
-   ```
-
-5. **Complete the Setup Wizard**
-
-   Open `http://localhost:3000` — you will be redirected to `/setup`. Enter your Discord credentials, database password, and API keys. All secrets are encrypted with AES-256-GCM and stored in a Docker volume. The wizard only runs once.
-
-6. **Access the application**
-   - Frontend: http://localhost:3000
-   - Backend API: http://localhost:8000
-   - API Docs: http://localhost:8000/docs
+- Frontend: http://localhost:3000
+- Backend API docs: http://localhost:8000/docs
 
 ## Common Commands
 

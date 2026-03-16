@@ -1,21 +1,26 @@
-# Getting Started
+# Setup
 
 ## First-time setup (run once after cloning)
 
-1. Generate the encryption key
+1. Generate secrets (encryption key + Postgres superuser password)
    ```bash
    ./setup_secrets.sh
    ```
+   The script will prompt for the Postgres superuser password. Set it to whatever you want — it just needs to match `POSTGRES_PASSWORD` in `docker-compose.yml`.
 
 2. Start the database container
    ```bash
    docker compose up -d postgres
    ```
+   > The Postgres server runs as a Docker service named `postgres`. This is also the hostname you will enter in the Setup Wizard — not `localhost`.
 
-3. Create the database user and schema (pick any username)
+3. Create the app database user and schema
    ```bash
-   ./setup_database.sh --user mybot
+   ./setup_database.sh --container postgres --user <yourbot> --db <yourbot>
    ```
+   - `--container postgres` is the Docker service name running Postgres (matches `docker-compose.yml`)
+   - `--user` and `--db` are the app credentials you are creating — use the same value for both unless you have a reason not to
+   - The script will prompt for a password. Note the user, password, and db name — you will enter them in the Setup Wizard in step 6.
 
 4. Remove demo code and write-protect core files
    ```bash
@@ -28,7 +33,12 @@
    ```
 
 6. Open the app in your browser — you will be redirected to the Setup Wizard.
-   Enter your Discord token, database credentials, and any API keys. They are saved encrypted. The wizard never runs again after this.
+   Enter your Discord token and the database credentials from step 3:
+   - **Host:** `postgres` (the Docker service name, not localhost)
+   - **Port:** `5432`
+   - **User / Password / Database:** what you chose in step 3
+
+   Credentials are saved encrypted. The wizard never runs again after this.
 
 ---
 
