@@ -22,8 +22,16 @@ export function GuildSwitcher({ currentGuildId }: { currentGuildId?: string }) {
     const [isOpen, setIsOpen] = useState(false);
     const [guilds, setGuilds] = useState<Guild[]>([]);
     const [loading, setLoading] = useState(true);
+    const [baseInviteUrl, setBaseInviteUrl] = useState<string>('');
     const { user } = useAuth();
     const { t } = useTranslation();
+
+    useEffect(() => {
+        fetch('/api/v1/bot-info/public')
+            .then(r => r.ok ? r.json() : null)
+            .then(data => { if (data?.invite_url) setBaseInviteUrl(data.invite_url); })
+            .catch(() => null);
+    }, []);
 
     useEffect(() => {
         if (!user) { setLoading(false); return; }
@@ -50,11 +58,8 @@ export function GuildSwitcher({ currentGuildId }: { currentGuildId?: string }) {
     };
 
     const inviteUrl = (guildId: string) => {
-        const base = `https://discord.com/oauth2/authorize?scope=bot+applications.commands&permissions=8`;
-        const clientId = process.env.NEXT_PUBLIC_DISCORD_CLIENT_ID;
-        return clientId
-            ? `${base}&client_id=${clientId}&guild_id=${guildId}`
-            : base;
+        if (!baseInviteUrl) return '#';
+        return `${baseInviteUrl}&guild_id=${guildId}`;
     };
 
     return (
