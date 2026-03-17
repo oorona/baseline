@@ -22,10 +22,11 @@
    - `--user` and `--db` are the app credentials you are creating — use the same value for both unless you have a reason not to
    - The script will prompt for a password. Note the user, password, and db name — you will enter them in the Setup Wizard in step 6.
 
-4. Remove demo code and write-protect core files
+4. Write-protect core files and clean demo plugins
    ```bash
    chmod +x init.sh && ./init.sh
    ```
+   This removes all demo plugin folders from `plugins/` and write-protects core framework files. The blank `plugins/_template/` is kept as a starting point.
 
 5. Start the full stack
    ```bash

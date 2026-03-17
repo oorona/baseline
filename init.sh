@@ -6,9 +6,8 @@
 # It write-protects core framework files so accidental edits are caught
 # immediately rather than silently breaking the framework contract.
 #
-# Demo/example code is NOT part of the codebase — it lives in plugins/ and
-# can be installed on demand with:
-#   python scripts/plugin_install.py plugins/<name>
+# This script also removes all staged demo plugins from plugins/ so the
+# project starts completely clean. Build your own plugins from _template.
 #
 # Usage:
 #   chmod +x init.sh
@@ -59,6 +58,18 @@ if [ -d "backend/alembic/versions" ]; then
     echo -e "  ${GREEN}✓${RESET}  protected  backend/alembic/versions/*.py"
 fi
 
+# ── Remove demo plugins ───────────────────────────────────────────────────────
+echo
+echo -e "${BOLD}Removing demo plugins${RESET}"
+
+for d in "$SCRIPT_DIR/plugins"/*/; do
+    name="$(basename "$d")"
+    [[ "$name" == _* ]] && continue          # keep _template and any _* folders
+    [[ "$name" == "README.md" ]] && continue
+    rm -rf "$d"
+    echo -e "  ${GREEN}✓${RESET}  removed    plugins/${name}"
+done
+
 # ── Done ──────────────────────────────────────────────────────────────────────
 echo
 echo -e "${BOLD}${GREEN}Done!${RESET}"
@@ -67,8 +78,8 @@ echo -e "${BOLD}Next steps:${RESET}"
 echo -e "  1.  Rename your bot — update ${CYAN}NEXT_PUBLIC_APP_NAME${RESET} in ${CYAN}.env${RESET}"
 echo -e "      (or use the Setup Wizard after first launch)"
 echo -e "  2.  Build features as plugins in ${CYAN}plugins/<name>/${RESET}"
-echo -e "      Validate:  ${CYAN}python scripts/plugin_validate.py plugins/<name>${RESET}"
-echo -e "      Install:   ${CYAN}python scripts/plugin_install.py plugins/<name>${RESET}"
+echo -e "      cp -r plugins/_template plugins/<name>"
+echo -e "      ./install_plugin.sh <name>"
 echo -e "  3.  Read ${CYAN}docs/DEVELOPER_MANUAL.md${RESET} for the full guide"
 echo
 echo -e "  ${YELLOW}Note:${RESET} Core files are now write-protected (chmod 444)."

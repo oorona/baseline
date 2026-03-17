@@ -42,14 +42,11 @@ chmod +x init.sh
 ./init.sh
 ```
 
-This write-protects core framework files (`chmod 444`) so accidental edits produce a permission error rather than silently breaking the framework. That is all it does — there is no demo code to remove because **demo code is not part of the permanent codebase**.
+This does two things:
+1. **Removes all demo plugin folders** from `plugins/` — leaving only `_template/` and `README.md`
+2. **Write-protects core framework files** (`chmod 444`) so accidental edits produce a permission error
 
-Demo plugins live in `plugins/` and are installed on demand:
-
-```bash
-./install_plugin.sh event_logging
-# gemini_demo requires manual install — see plugins/gemini_demo/plugin.json
-```
+After `init.sh` the project is blank. Build your own plugins from `plugins/_template/`.
 
 > **`frontend/app/dashboard/[guildId]/settings/`** is a **core framework page** — it renders dynamically based on `SETTINGS_SCHEMA` declarations from loaded cogs. You do not need to modify it when adding new settings.
 
@@ -433,11 +430,11 @@ Follow the security rules in [docs/SECURITY.md](SECURITY.md) — every endpoint 
 
 ## 5.5 Initialising a New Bot
 
-Run `./init.sh` once after cloning. It write-protects core framework files (`chmod 444`) — that is all it does. There is no demo code to remove because **demo code is not part of the permanent codebase**. Demo plugins live in `plugins/` and are only installed if you explicitly run `./install_plugin.sh`.
+Run `./init.sh` once after cloning. It:
+1. Deletes all demo plugin folders from `plugins/` — only `_template/` and `README.md` remain
+2. Write-protects core framework files (`chmod 444`)
 
-After running `init.sh`:
-- Add your own cogs under `bot/cogs/`.
-- Add your own pages under `frontend/app/dashboard/[guildId]/`.
+The project is now blank. Build your features from `plugins/_template/`, then install them with `./install_plugin.sh`.
 
 ## 6. Database: Architecture and Extension Guide
 
