@@ -11,7 +11,6 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    # container_name: bot-backend # Removed to allow scaling
     secrets:
       - encryption_key
     environment:
@@ -37,7 +36,6 @@ services:
   # Load Balancer Gateway
   gateway:
     image: nginx:alpine
-    container_name: bot-gateway
     volumes:
       - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
     ports:
@@ -61,7 +59,6 @@ services:
     build:
       context: ./bot
       dockerfile: Dockerfile
-    container_name: bot-discord
     secrets:
       - encryption_key
     environment:
@@ -93,8 +90,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        - NEXT_PUBLIC_APP_NAME=${NEXT_PUBLIC_APP_NAME:-Baseline Bot}
-    container_name: bot-frontend
+        - NEXT_PUBLIC_APP_NAME=${NEXT_PUBLIC_APP_NAME:-My Discord Bot}
     networks:
       - internet  # Public facing
       - intranet  # Server-side backend API calls
