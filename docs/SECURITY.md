@@ -518,9 +518,6 @@ class MyFeatureCog(commands.Cog):
     Brief description of what this cog does.
     """
 
-    # ── If this is demo/example code, mark it so init.sh can delete it ────────
-    # __is_demo__ = True  # uncomment for demo cogs
-
     # ── Declare settings this cog reads from guild settings JSON ─────────────
     # SETTINGS_SCHEMA = {
     #     "id": "my_feature",
@@ -559,9 +556,6 @@ async def setup(bot):
 - `description=` in every `@app_commands.command()` — never omit this. Discord.py falls back to the docstring's first line, which will expose internal `*** DEMO ***` markers if present.
 - Structured log at the start of every command handler with `command`, `user_id`, `guild_id`.
 - `async def setup(bot)` at the bottom.
-
-**When the cog is demo/example code:**
-- Set `__is_demo__ = True` as a class attribute. `init.sh` scans for this and deletes the file on clone.
 
 **When the cog reads guild settings:**
 - Declare `SETTINGS_SCHEMA` as a class attribute. The introspection cog sends it to the backend on startup. The Bot Settings page renders it dynamically — no frontend code changes needed.
@@ -680,13 +674,8 @@ export default withPermission(MyFeaturePage, PermissionLevel.AUTHORIZED);
     href: `/dashboard/${guildId}/my-feature`,
     icon: MyIcon,
     level: PermissionLevel.AUTHORIZED,   // must match withPermission level
-    // isDemo: true,                     // add this if it's demo code — init.sh strips it
 },
 ```
-
-**If the card is demo code:**
-- Add `isDemo: true` to the card object. `init.sh` strips all `isDemo: true` blocks from `page.tsx` on clone.
-- Also add the corresponding page directory to `init.sh`'s `remove_path` list.
 
 ### 6.4 Reading and Writing Guild Settings (Backend)
 
@@ -834,16 +823,6 @@ export default withPermission(AdminPage, PermissionLevel.AUTHORIZED);
 
 Creating a router file in `app/api/` does not register it — it must be added to `main.py`. However, an unregistered router is dead code with no protection. If it gets registered later (e.g., during a merge), the security issues become live immediately. **Delete unreferenced router files rather than leaving them as dead code.**
 
-### ❌ Missing isDemo on demo cards
-
-```typescript
-// WRONG — demo card stays in the repo after init.sh runs
-{ id: "gemini-demo", title: "Gemini Demo", href: "...", level: ... }
-
-// CORRECT
-{ id: "gemini-demo", title: "Gemini Demo", href: "...", level: ..., isDemo: true }
-```
-
 ---
 
 ## 8. Security Checklist Before Going Live
@@ -864,7 +843,7 @@ Run through this checklist before deploying a new bot or after adding new featur
 - [ ] Permission level matches the sensitivity of the data shown
 - [ ] Write actions use L3 (AUTHORIZED) or higher
 - [ ] Navigation card has the correct `level` set to hide from unauthorized users
-- [ ] Demo pages have `isDemo: true` on the card and their directory listed in `init.sh`
+- [ ] Demo pages live in `plugins/` — not installed in the live project
 
 ### Every New Backend Endpoint
 
@@ -884,13 +863,13 @@ Run through this checklist before deploying a new bot or after adding new featur
 - [ ] Command checks `interaction.guild` before accessing guild data
 - [ ] Guild settings are fetched from backend, not hardcoded
 - [ ] Errors are caught and user-friendly messages returned
-- [ ] Demo commands have `__is_demo__ = True` on the cog class
+- [ ] Demo commands live in `plugins/` — not installed in the live project
 
 ### Every New Cog with Settings
 
 - [ ] `SETTINGS_SCHEMA` is declared as a class attribute
 - [ ] Each field key matches the key used to read from settings JSON
-- [ ] `__is_demo__ = True` is set if this cog is demo code
+- [ ] Demo cogs live in `plugins/` — not installed in the live project
 
 ### Network & Infrastructure
 
@@ -956,13 +935,9 @@ class FeatureSettings(BaseModel):
     prefix: str = Field(default="!", max_length=5, pattern=r"^[!?./]{1,5}$")
 ```
 
-### Rule 7: Mark demo code
-- Bot cogs: `__is_demo__ = True` on the cog class
-- Dashboard cards: `isDemo: true` on the card object in `page.tsx`
-- Dashboard page directory: listed in `init.sh`'s `remove_path` section
-- Backend API module: listed in `init.sh`'s `remove_path` section
+### Rule 7: Keep demo code out of the permanent codebase
 
-These ensure `init.sh` strips all demo code when someone clones the repo to start a new bot.
+Demo plugins live in `plugins/` and are installed on demand with `./install_plugin.sh`. Never commit demo code to the live project (`bot/cogs/`, `backend/app/api/`, `frontend/app/`). There is nothing to strip at clone time.
 
 ### Rule 8: No dead router files
 Every file in `backend/app/api/` that defines a `router` must be registered in `main.py`, or deleted. Unregistered routers with security bugs become live vulnerabilities the moment someone adds an `include_router` call.

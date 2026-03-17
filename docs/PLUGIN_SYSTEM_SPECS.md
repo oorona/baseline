@@ -18,7 +18,7 @@ A plugin\'s core execution logic lives in a `discord.py` Cog inside the `bot/cog
 *   **Command Descriptions:** Every `@app_commands.command()` must include an explicit `description=` argument.
 *   **LLM Usage:** Plugins must consume the shared `bot.services.llm` service for inference rather than directly instantiating their own provider clients. This ensures automatic tracking of token usage, cost, and rate-limiting.
 *   **Networking:** Must use the shared `bot.session` (an `aiohttp.ClientSession`) for all external HTTP requests or backend API queries. Do not create isolated `aiohttp` sessions per request to prevent connection leaks.
-*   **Demo Marker:** If a plugin is for demonstration purposes only, it must include a `__is_demo__ = True` class attribute so the `init.sh` script automatically strips it for production deployments.
+*   **Demo plugins** live in `plugins/` and are only installed on demand with `./install_plugin.sh`. Do not put demo code in the permanent codebase.
 
 ### Form-Driven Settings UI (`SETTINGS_SCHEMA`):
 Plugins can securely expose configurable options to the server administrator via the frontend Dashboard without requiring the developer to write custom React code.
@@ -84,14 +84,11 @@ plugins/
 # 1. Build — ask an LLM (e.g. Claude) to generate the plugin in the staging folder,
 #            providing CLAUDE.md and this file as context.
 
-# 2. Validate — check all framework contracts before touching the live project
-python scripts/plugin_validate.py plugins/event_logging
-
-# 3. Install — validator runs again, then files are copied and main.py is patched
-python scripts/plugin_install.py plugins/event_logging
+# 2. Validate and install (validator runs first, aborts on any error)
+./install_plugin.sh event_logging
 
 # Dry-run to preview without writing any files:
-python scripts/plugin_install.py plugins/event_logging --dry-run
+./install_plugin.sh event_logging --dry-run
 ```
 
 ### What the Validator Checks
@@ -123,8 +120,6 @@ python scripts/plugin_install.py plugins/event_logging --dry-run
 ### What Still Requires a Manual Step
 
 1. **Database migrations** — run `cd backend && alembic upgrade head` after install
-2. **Navigation card** — add an entry to the `cards` array in `frontend/app/page.tsx`
-   (the installer prints the exact object to paste)
 
 > See `docs/integration/08-plugin-workflow.md` for a step-by-step walkthrough using the Event Logging plugin as a worked example.
 
@@ -132,7 +127,6 @@ python scripts/plugin_install.py plugins/event_logging --dry-run
 
 ## Summary of the Plugin Installation Flow
 1. **Stage:** The developer (or LLM) creates the plugin files in `plugins/<plugin_name>/`.
-2. **Validate:** Run `python scripts/plugin_validate.py plugins/<plugin_name>` to catch spec violations before touching the live project.
-3. **Install:** Run `python scripts/plugin_install.py plugins/<plugin_name>` to copy files and patch `main.py`.
+2. **Validate + Install:** Run `./install_plugin.sh <plugin_name>` — the validator runs first and aborts on any error before any files are touched.
 4. **Migrate:** Run `alembic upgrade head` if the plugin added database tables.
 5. **Boot:** The bot connects, the introspection framework reads the new Cog\'s `SETTINGS_SCHEMA`, syncs with the Database, and dynamically updates the UI. No core infrastructure overrides were necessary.

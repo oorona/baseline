@@ -143,8 +143,7 @@ Two things always require a manual step:
 Demo plugins are **not installed by default**. To deploy one into the live project, follow the standard plugin workflow:
 
 ```bash
-python scripts/plugin_validate.py plugins/<name>
-python scripts/plugin_install.py plugins/<name>
+./install_plugin.sh <name>
 ```
 
 For plugins with `"install_mode": "manual"` in their `plugin.json`, follow the instructions in that file instead.

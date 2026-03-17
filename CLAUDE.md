@@ -23,8 +23,7 @@ Every piece of code you generate must follow all five of these rules:
 ```bash
 cp -r plugins/_template plugins/<name>   # start from the template
 # ... build cog.py, api.py, page.tsx, translations/ inside plugins/<name>/
-python scripts/plugin_validate.py plugins/<name>   # must pass before proceeding
-python scripts/plugin_install.py plugins/<name>    # copies into live project
+./install_plugin.sh <name>               # validates then installs into live project
 ```
 
 The validator enforces all five golden rules automatically and will reject code that violates them. See `docs/integration/08-plugin-workflow.md` for the full guide.

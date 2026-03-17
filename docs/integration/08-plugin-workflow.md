@@ -177,21 +177,27 @@ eventLogging: {
 
 ---
 
-## Step 2 — Validate
-
-Run the validator before touching any live project file:
+## Step 2 — Validate and Install
 
 ```bash
-python scripts/plugin_validate.py plugins/event_logging
+# Preview what will happen (no files written)
+./install_plugin.sh event_logging --dry-run
+
+# Install for real (validator runs first, aborts on any error)
+./install_plugin.sh event_logging
 ```
 
-**Example output (clean):**
+The validator checks all framework contracts before any file is touched. If there are errors, fix them in the staging folder and re-run.
+
+**Example validator output (clean):**
 
 ```
 Validating plugin: event_logging
 ==================================================
 
 [plugin.json]
+  [OK]    Folder name matches plugin name: 'event_logging'
+  [OK]    Version: 1.0.0
   [OK]    plugin.json is valid
 
 [cog.py]
@@ -220,25 +226,15 @@ Results: 0 error(s), 0 warning(s)
 Validation PASSED — plugin is ready to install
 ```
 
-**If there are errors**, fix them in the staging folder and re-run. The validator exit code is `0` on pass, `1` on failure — it can be used in CI.
-
-Use `--strict` to promote warnings to errors:
+Pass `--strict` to promote warnings to errors (useful in CI):
 
 ```bash
-python scripts/plugin_validate.py plugins/event_logging --strict
+./install_plugin.sh event_logging --strict
 ```
 
 ---
 
-## Step 3 — Install
-
-```bash
-# Preview what will happen (no files written)
-python scripts/plugin_install.py plugins/event_logging --dry-run
-
-# Install for real
-python scripts/plugin_install.py plugins/event_logging
-```
+## Step 3 — What the Installer Does
 
 **What the installer does:**
 
@@ -264,24 +260,6 @@ docker compose exec backend alembic upgrade head
 ```
 
 Also bump `FRAMEWORK_VERSION` and append to `MIGRATION_CHANGELOG` in `backend/app/core/version.py`.
-
-### 4b. Add a navigation card to the dashboard home
-
-The installer prints the exact object. Paste it into the `cards` array in `frontend/app/page.tsx`:
-
-```typescript
-{
-  id: 'event_logging',
-  title: t('eventLogging.title'),
-  description: t('eventLogging.description'),
-  icon: FileText,            // import from lucide-react
-  href: `/dashboard/${activeGuildId}/event_logging`,
-  level: PermissionLevel.AUTHORIZED,
-  color: 'text-amber-400',
-  bgColor: 'bg-amber-500/10',
-  borderColor: 'group-hover:border-amber-500/50',
-},
-```
 
 ---
 

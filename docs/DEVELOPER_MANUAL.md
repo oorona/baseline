@@ -47,7 +47,7 @@ This write-protects core framework files (`chmod 444`) so accidental edits produ
 Demo plugins live in `plugins/` and are installed on demand:
 
 ```bash
-python scripts/plugin_install.py plugins/logging_demo
+./install_plugin.sh event_logging
 # gemini_demo requires manual install — see plugins/gemini_demo/plugin.json
 ```
 
@@ -262,15 +262,13 @@ To ensure a cohesive look, all plugins **MUST** use the following semantic token
 
 > **For AI coding assistants and developers alike — read this before writing a single line.**
 >
-> Every new feature must be built as a **plugin** in the `plugins/<name>/` staging folder, then installed with `plugin_install.py`. **Never modify core framework files directly.** Core files are write-protected (`chmod 444`) after `init.sh` runs — any attempt to edit them is an immediate signal that you are off the correct path.
+> Every new feature must be built as a **plugin** in the `plugins/<name>/` staging folder, then installed with `./install_plugin.sh`. **Never modify core framework files directly.** Core files are write-protected (`chmod 444`) after `init.sh` runs — any attempt to edit them is an immediate signal that you are off the correct path.
 >
 > The correct workflow is always:
 > ```
 > plugins/<name>/   ← write all new code here
 >       ↓
-> python scripts/plugin_validate.py plugins/<name>   ← verify framework rules
->       ↓
-> python scripts/plugin_install.py plugins/<name>    ← copy into the live project
+> ./install_plugin.sh <name>   ← validates then installs into the live project
 > ```
 >
 > If you find yourself editing `bot/core/`, `backend/app/api/auth.py`, `backend/app/api/deps.py`, `frontend/lib/auth-context.tsx`, or any existing Alembic migration file — **stop**. The feature you need can always be built within the extension points. See `docs/integration/08-plugin-workflow.md` for the full staging guide.
@@ -283,7 +281,7 @@ Create `bot/cogs/music.py`. Every cog must:
 
 - Provide an explicit `description=` on every `@app_commands.command()` — never omit it.
 - Declare a `SETTINGS_SCHEMA` class attribute if the cog reads from guild settings — the Bot Settings page renders from this automatically.
-- Set `__is_demo__ = True` if this is demo/example code so `init.sh` removes it on clone.
+- Do not build demo/example code directly into the live project — use the plugin staging system.
 
 ```python
 # bot/cogs/music.py
@@ -371,7 +369,6 @@ If the feature needs its own dedicated dashboard page (beyond the generic Bot Se
     href: `/dashboard/${guildId}/music`,
     icon: MusicIcon,
     level: PermissionLevel.AUTHORIZED,  // must match withPermission level on the page
-    // isDemo: true,                    // uncomment if this is demo code
 },
 ```
 
@@ -434,12 +431,11 @@ Follow the security rules in [docs/SECURITY.md](SECURITY.md) — every endpoint 
 
 ---
 
-## 5.5 Initialising a New Bot (Removing Demo Code)
+## 5.5 Initialising a New Bot
 
-Run `./init.sh` once after cloning. It removes all demo pages, cogs, and API routes automatically — see [Section 2 "Starting a New Bot"](#starting-a-new-bot-from-this-framework) for the full list.
+Run `./init.sh` once after cloning. It write-protects core framework files (`chmod 444`) — that is all it does. There is no demo code to remove because **demo code is not part of the permanent codebase**. Demo plugins live in `plugins/` and are only installed if you explicitly run `./install_plugin.sh`.
 
 After running `init.sh`:
-- Keep `guild_sync.py` and `introspection.py` (core framework cogs — do not delete).
 - Add your own cogs under `bot/cogs/`.
 - Add your own pages under `frontend/app/dashboard/[guildId]/`.
 
@@ -852,7 +848,7 @@ Use the following prompts with an AI assistant to generate correct framework-com
 > - Declare `SETTINGS_SCHEMA` if the cog has configurable settings
 > - Use `structlog.get_logger()` for logging
 > - Wrap all command bodies in try/except; send ephemeral error messages on failure
-> - Set `__is_demo__ = True` if this is example code
+> - Build inside `plugins/<feature>/` and install with `./install_plugin.sh`
 >
 > Output: a single `bot/cogs/<feature>.py` file with the `async def setup(bot)` function at the bottom.
 
