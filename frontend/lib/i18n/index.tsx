@@ -7,13 +7,14 @@
  *
  * This module provides:
  *   - LanguageProvider  — wraps the app; resolves language from user prefs or
- *                         localStorage; defaults to Spanish for guests.
+ *                         localStorage; defaults to English for guests.
  *   - useTranslation()  — hook that returns { t, language, setLanguage }.
  *
  * LANGUAGE RESOLUTION ORDER:
  *   1. Logged-in user  → user.preferences.language (persisted in backend DB)
  *   2. Guest / no pref → localStorage 'language' key (set when user picks a lang on welcome page)
- *   3. Absolute default → 'en' (English)
+ *   3. First visit     → browser language (navigator.language), matched to supported languages
+ *   4. Absolute default → 'en' (English)
  *
  * USAGE IN A COMPONENT:
  *   const { t, language, setLanguage } = useTranslation();
@@ -74,6 +75,18 @@ function readStoredLanguage(): Language | null {
   return SUPPORTED.includes(stored as Language) ? (stored as Language) : null;
 }
 
+/** Detect the browser's preferred language and match it to a supported language. */
+function detectBrowserLanguage(): Language | null {
+  if (typeof window === 'undefined') return null;
+  const langs = navigator.languages?.length ? navigator.languages : [navigator.language];
+  for (const lang of langs) {
+    // Match full code first (e.g. 'es'), then prefix (e.g. 'es' from 'es-MX')
+    const code = lang.toLowerCase().split('-')[0] as Language;
+    if (SUPPORTED.includes(code)) return code;
+  }
+  return null;
+}
+
 // ── Context ───────────────────────────────────────────────────────────────────
 
 interface LanguageContextType {
@@ -123,7 +136,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   const [language, setLanguageState] = useState<Language>(() => {
     // SSR guard — default to 'en' on the server.
     if (typeof window === 'undefined') return 'en';
-    return readStoredLanguage() ?? 'en';
+    return readStoredLanguage() ?? detectBrowserLanguage() ?? 'en';
   });
 
   // When the user logs in, honour their saved preference.

@@ -38,7 +38,8 @@ lib/i18n/
 It reads the active language from:
 1. `user.preferences.language` (after login, from the backend database)
 2. `localStorage['language']` (persisted across page reloads for guests)
-3. Defaults to **`'es'`** (Spanish) for unauthenticated visitors
+3. Browser language (`navigator.languages`) matched against supported languages
+4. Defaults to **`'en'`** (English) if the browser language is not supported
 
 **`useTranslation()`** is a React hook available in any client component.
 It returns `{ t, language, setLanguage }`.
@@ -49,7 +50,7 @@ It returns `{ t, language, setLanguage }`.
 
 | Situation | Language used |
 |-----------|---------------|
-| User not logged in, first visit | **Spanish** (default) |
+| User not logged in, first visit | Browser language if supported, otherwise English |
 | User not logged in, switched via header toggle | Stored language in localStorage |
 | User just logged in | `user.preferences.language` from backend |
 | User saves Account Settings | Saved preference (backend + localStorage) |
@@ -141,33 +142,42 @@ const { t } = useTranslation();
 
 ## Adding a new language
 
-1. Create `frontend/lib/i18n/translations/<lang>.ts`.
+1. **Create the translation file** — `frontend/lib/i18n/translations/<lang>.ts`.
    Import `TranslationSchema` from `en.ts` and implement every key.
+   TypeScript will show a compile error for any missing key.
 
-2. Import it in `frontend/lib/i18n/index.tsx` and add it to `translationMap`:
    ```ts
+   // translations/fr.ts
+   import type { TranslationSchema } from './en';
+   export const fr: TranslationSchema = { /* all keys */ };
+   ```
+
+2. **Register it in `index.tsx`** — three places in the same file:
+
+   ```ts
+   // a) import
    import { fr } from './translations/fr';
+
+   // b) Language union
+   export type Language = 'en' | 'es' | 'fr';
+
+   // c) SUPPORTED array (enables browser auto-detection for this language)
+   const SUPPORTED: Language[] = ['en', 'es', 'fr'];
+
+   // d) translationMap
    const translationMap: Record<Language, TranslationSchema> = { en, es, fr };
    ```
 
-3. Extend the `Language` union type in the same file:
+3. **Add to the header switcher** — `app/components/LanguageSwitcher.tsx`:
    ```ts
-   export type Language = 'en' | 'es' | 'fr';
+   { code: 'fr', label: 'FR' }
    ```
 
-4. Add the language option to `LanguageSwitcher.tsx`:
-   ```ts
-   const LANGUAGES = [
-     { code: 'en', label: 'EN' },
-     { code: 'es', label: 'ES' },
-     { code: 'fr', label: 'FR' },   // ← add here
-   ];
-   ```
+4. **Add to Account Settings** — add an `<option>` to the language `<select>`
+   in `app/dashboard/account/page.tsx`.
 
-5. Add the `<option>` to the language `<select>` in
-   `app/dashboard/account/page.tsx`.
-
-6. Update the backend `UserSettings.language` type if it uses an enum.
+5. **Update the backend enum** — if `UserSettings.language` uses a string enum,
+   add the new code there too.
 
 ---
 
