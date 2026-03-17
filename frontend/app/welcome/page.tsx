@@ -52,7 +52,7 @@ function WelcomeContent() {
     if (!user) return;
     fetch('/api/v1/guilds/', { headers: { Authorization: `Bearer ${localStorage.getItem('access_token') ?? ''}` } })
       .then(r => r.ok ? r.json() : [])
-      .then((guilds: unknown[]) => setUserGuilds(guilds.length))
+      .then((guilds: any[]) => setUserGuilds(guilds.filter((g: any) => !g.bot_not_added).length))
       .catch(() => setUserGuilds(0));
   }, [user]);
 

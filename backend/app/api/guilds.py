@@ -16,6 +16,7 @@ from ..models import Guild, User, AuthorizedUser, AuthorizedRole, PermissionLeve
 from ..schemas import (
     Guild as GuildSchema,
     GuildCreate,
+    GuildListItem,
     User as UserSchema,
     AuthorizedUser as AuthorizedUserSchema,
     AddUserRequest,
@@ -914,7 +915,7 @@ async def get_guild_roles(
 
 # --- Generic Guild Endpoints (Must be defined AFTER specific /{guild_id}/*) ---
 
-@router.get("", response_model=List[GuildSchema])
+@router.get("", response_model=List[GuildListItem])
 @limiter.limit("20/minute")
 async def list_guilds(
     request: Request,

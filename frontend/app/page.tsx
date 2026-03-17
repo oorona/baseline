@@ -50,23 +50,24 @@ function DashboardContent() {
 
     apiClient.getGuilds().then(data => {
       setGuilds(data);
-      if (data.length === 0) {
+      const activeGuilds = data.filter((g: any) => !g.bot_not_added);
+      if (activeGuilds.length === 0) {
         router.push('/welcome');
         return;
       }
 
       // Resolve Active Guild
       let resolvedId = null;
-      if (paramGuildId && data.find((g: any) => g.id === paramGuildId)) {
+      if (paramGuildId && activeGuilds.find((g: any) => g.id === paramGuildId)) {
         resolvedId = paramGuildId;
       } else {
         const stored = localStorage.getItem('lastGuildId');
-        if (stored && data.find((g: any) => g.id === stored)) {
+        if (stored && activeGuilds.find((g: any) => g.id === stored)) {
           resolvedId = stored;
-        } else if (user.preferences?.default_guild_id && data.find((g: any) => g.id === user.preferences.default_guild_id)) {
+        } else if (user.preferences?.default_guild_id && activeGuilds.find((g: any) => g.id === user.preferences.default_guild_id)) {
           resolvedId = user.preferences.default_guild_id;
         } else {
-          resolvedId = data[0].id;
+          resolvedId = activeGuilds[0].id;
         }
       }
 

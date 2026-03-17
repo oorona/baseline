@@ -32,6 +32,15 @@ class GuildBase(BaseModel):
 class GuildCreate(GuildBase):
     pass
 
+class GuildListItem(BaseModel):
+    """Lightweight guild representation returned by the list endpoint.
+    Includes both active guilds (bot present) and pending guilds (bot not yet added)."""
+    id: str
+    name: str
+    icon: Optional[str] = None
+    permission_level: Optional[str] = None
+    bot_not_added: bool = False
+
 class Guild(GuildBase):
     model_config = ConfigDict(from_attributes=True)
 
