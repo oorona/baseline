@@ -69,11 +69,12 @@ class Settings(BaseSettings):
     REDIS_PASSWORD: Optional[str] = None
 
     # ── Bot Identity ───────────────────────────────────────────────────────
-    BOT_NAME:        str           = "My Discord Bot"
-    BOT_TAGLINE:     str           = ""
-    BOT_DESCRIPTION: str           = ""
-    BOT_LOGO_URL:    str           = ""
-    BOT_INVITE_URL:  str           = ""
+    BOT_NAME:           str = "My Discord Bot"
+    BOT_TAGLINE:        str = ""
+    BOT_TAGLINE_ES:     str = ""
+    BOT_DESCRIPTION:    str = ""
+    BOT_DESCRIPTION_ES: str = ""
+    BOT_INVITE_URL:     str = ""
 
     # ── Discord ────────────────────────────────────────────────────────────
     DISCORD_CLIENT_ID:     Optional[str] = None
@@ -146,8 +147,8 @@ except Exception as e:
         BACKEND_CORS_ORIGINS=[],
         DB_HOST="", DB_PORT=5432, DB_USER="", DB_NAME="", DB_PASSWORD=None, DB_SCHEMA="",
         REDIS_HOST="", REDIS_PORT=6379, REDIS_DB=0, REDIS_PASSWORD=None,
-        BOT_NAME="My Discord Bot", BOT_TAGLINE="", BOT_DESCRIPTION="",
-        BOT_LOGO_URL="", BOT_INVITE_URL="",
+        BOT_NAME="My Discord Bot", BOT_TAGLINE="", BOT_TAGLINE_ES="",
+        BOT_DESCRIPTION="", BOT_DESCRIPTION_ES="", BOT_INVITE_URL="",
         DISCORD_CLIENT_ID=None, DISCORD_CLIENT_SECRET=None,
         DISCORD_BOT_TOKEN=None, DISCORD_REDIRECT_URI=None,
         FRONTEND_URL="http://localhost:3000", ADMIN_USER_IDS=None,

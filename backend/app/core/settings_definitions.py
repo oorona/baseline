@@ -161,7 +161,7 @@ APP_SETTINGS: List[SettingDef] = [
     ),
     SettingDef(
         key="BOT_TAGLINE",
-        friendly_name="Bot Tagline",
+        friendly_name="Bot Tagline (English)",
         description="A short one-line description displayed beneath the bot name on the public landing page.",
         category="bot_identity",
         type="string",
@@ -169,8 +169,17 @@ APP_SETTINGS: List[SettingDef] = [
         default="",
     ),
     SettingDef(
+        key="BOT_TAGLINE_ES",
+        friendly_name="Bot Tagline (Spanish)",
+        description="Spanish version of the tagline. Falls back to the English tagline if not set.",
+        category="bot_identity",
+        type="string",
+        is_dynamic=False,
+        default="",
+    ),
+    SettingDef(
         key="BOT_DESCRIPTION",
-        friendly_name="Bot Description",
+        friendly_name="Bot Description (English)",
         description="A longer marketing description explaining what the bot does. Shown on the public "
                     "landing page below the tagline.",
         category="bot_identity",
@@ -179,10 +188,9 @@ APP_SETTINGS: List[SettingDef] = [
         default="",
     ),
     SettingDef(
-        key="BOT_LOGO_URL",
-        friendly_name="Bot Logo URL",
-        description="Public URL of the bot's avatar or logo image. Used on the landing page. "
-                    "Leave blank to use the default bot icon.",
+        key="BOT_DESCRIPTION_ES",
+        friendly_name="Bot Description (Spanish)",
+        description="Spanish version of the description. Falls back to the English description if not set.",
         category="bot_identity",
         type="string",
         is_dynamic=False,

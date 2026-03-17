@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Body
 from redis.asyncio import Redis
+import httpx
 import json
 import structlog
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from pydantic import BaseModel
 
 from app.core.config import settings
@@ -12,19 +13,71 @@ from app.api.deps import verify_platform_admin
 router = APIRouter()
 logger = structlog.get_logger()
 
+AVATAR_CACHE_KEY = "bot:discord_avatar_url"
+AVATAR_CACHE_TTL = 3600  # 1 hour
+
+
+async def _fetch_discord_avatar(redis: Redis) -> Optional[str]:
+    """Fetch bot avatar URL from Discord API, caching in Redis for 1 hour."""
+    cached = await redis.get(AVATAR_CACHE_KEY)
+    if cached:
+        return cached.decode()
+
+    if not settings.DISCORD_BOT_TOKEN:
+        return None
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                "https://discord.com/api/v10/users/@me",
+                headers={"Authorization": f"Bot {settings.DISCORD_BOT_TOKEN}"},
+                timeout=5.0,
+            )
+        if resp.status_code == 200:
+            data = resp.json()
+            user_id = data.get("id")
+            avatar = data.get("avatar")
+            if user_id and avatar:
+                url = f"https://cdn.discordapp.com/avatars/{user_id}/{avatar}.png?size=256"
+                await redis.setex(AVATAR_CACHE_KEY, AVATAR_CACHE_TTL, url)
+                return url
+    except Exception as exc:
+        logger.warning("Could not fetch Discord bot avatar", error=str(exc))
+
+    return None
+
+
 @router.get("/public")
-async def get_public_bot_info():
+async def get_public_bot_info(lang: str = "en", redis: Redis = Depends(get_redis)):
     """
     Public endpoint — no authentication required.
     Returns bot identity information for the public landing page.
+    Pass ?lang=es to receive Spanish tagline/description (falls back to English if not set).
+    Logo is auto-fetched from Discord using the bot token.
     """
+    logo_url = await _fetch_discord_avatar(redis)
+
+    # Auto-generate invite URL from client ID if not explicitly set
+    invite_url = settings.BOT_INVITE_URL
+    if not invite_url and settings.DISCORD_CLIENT_ID:
+        invite_url = (
+            f"https://discord.com/oauth2/authorize"
+            f"?client_id={settings.DISCORD_CLIENT_ID}"
+            f"&scope=bot+applications.commands&permissions=8"
+        )
+
+    # Serve localised content, falling back to English
+    use_es = lang == "es"
+    tagline = (settings.BOT_TAGLINE_ES if use_es and settings.BOT_TAGLINE_ES else settings.BOT_TAGLINE)
+    description = (settings.BOT_DESCRIPTION_ES if use_es and settings.BOT_DESCRIPTION_ES else settings.BOT_DESCRIPTION)
+
     return {
         "name":        settings.BOT_NAME,
-        "tagline":     settings.BOT_TAGLINE,
-        "description": settings.BOT_DESCRIPTION,
-        "logo_url":    settings.BOT_LOGO_URL,
-        "invite_url":  settings.BOT_INVITE_URL,
-        "configured":  bool(settings.BOT_INVITE_URL),
+        "tagline":     tagline,
+        "description": description,
+        "logo_url":    logo_url or "",
+        "invite_url":  invite_url,
+        "configured":  bool(invite_url),
     }
 
 

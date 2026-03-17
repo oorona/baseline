@@ -11,8 +11,8 @@ interface BotInfo {
     logo_url: string;
 }
 
-async function fetchBotInfo(): Promise<BotInfo> {
-    const res = await fetch('/api/v1/bot-info/public');
+async function fetchBotInfo(lang: string): Promise<BotInfo> {
+    const res = await fetch(`/api/v1/bot-info/public?lang=${lang}`);
     if (!res.ok) throw new Error('Failed to load bot info');
     return res.json();
 }
@@ -23,11 +23,11 @@ function LoginContent() {
     const details = searchParams.get('details');
     const [loggingIn, setLoggingIn] = useState(false);
     const [botInfo, setBotInfo] = useState<BotInfo | null>(null);
-    const { t, setLanguage } = useTranslation();
+    const { t, setLanguage, language } = useTranslation();
 
     useEffect(() => {
-        fetchBotInfo().then(setBotInfo).catch(() => null);
-    }, []);
+        fetchBotInfo(language).then(setBotInfo).catch(() => null);
+    }, [language]);
 
     // Apply ?lang= query param on first render so shareable URLs work.
     useEffect(() => {

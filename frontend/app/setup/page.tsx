@@ -31,7 +31,7 @@ async function setupFetch(path: string, method = 'GET', body?: object, key?: str
 interface PostgresConfig     { host: string; port: string; user: string; db: string; password: string; }
 interface RedisConfig        { host: string; port: string; db: string; password: string; }
 interface DiscordConfig      { client_id: string; client_secret: string; bot_token: string; redirect_uri: string; guild_id: string; developer_role_id: string; }
-interface BotIdentityConfig  { name: string; tagline: string; description: string; logo_url: string; invite_url: string; }
+interface BotIdentityConfig  { name: string; tagline: string; tagline_es: string; description: string; description_es: string; invite_url: string; }
 interface AppConfig          { api_secret_key: string; app_name: string; openai_api_key: string; google_api_key: string; anthropic_api_key: string; xai_api_key: string; }
 
 // ---------------------------------------------------------------------------
@@ -202,7 +202,7 @@ export default function SetupWizardPage() {
 
   const [discord, setDiscord] = useState<DiscordConfig>({ client_id: '', client_secret: '', bot_token: '', redirect_uri: 'http://localhost:3000/auth/callback', guild_id: '', developer_role_id: '' });
 
-  const [botId, setBotId] = useState<BotIdentityConfig>({ name: '', tagline: '', description: '', logo_url: '', invite_url: '' });
+  const [botId, setBotId] = useState<BotIdentityConfig>({ name: '', tagline: '', tagline_es: '', description: '', description_es: '', invite_url: '' });
 
   const [appCfg, setAppCfg] = useState<AppConfig>({ api_secret_key: '', app_name: '', openai_api_key: '', google_api_key: '', anthropic_api_key: '', xai_api_key: '' });
 
@@ -246,11 +246,12 @@ export default function SetupWizardPage() {
 
           setBotId(b => ({
             ...b,
-            ...(s.BOT_NAME        ? { name:        s.BOT_NAME }        : {}),
-            ...(s.BOT_TAGLINE     ? { tagline:     s.BOT_TAGLINE }     : {}),
-            ...(s.BOT_DESCRIPTION ? { description: s.BOT_DESCRIPTION } : {}),
-            ...(s.BOT_LOGO_URL    ? { logo_url:    s.BOT_LOGO_URL }    : {}),
-            ...(s.BOT_INVITE_URL  ? { invite_url:  s.BOT_INVITE_URL }  : {}),
+            ...(s.BOT_NAME           ? { name:           s.BOT_NAME }           : {}),
+            ...(s.BOT_TAGLINE        ? { tagline:        s.BOT_TAGLINE }        : {}),
+            ...(s.BOT_TAGLINE_ES     ? { tagline_es:     s.BOT_TAGLINE_ES }     : {}),
+            ...(s.BOT_DESCRIPTION    ? { description:    s.BOT_DESCRIPTION }    : {}),
+            ...(s.BOT_DESCRIPTION_ES ? { description_es: s.BOT_DESCRIPTION_ES } : {}),
+            ...(s.BOT_INVITE_URL     ? { invite_url:     s.BOT_INVITE_URL }     : {}),
           }));
 
           setAppCfg(a => ({
@@ -389,10 +390,11 @@ export default function SetupWizardPage() {
       ...(discord.guild_id         ? { DISCORD_GUILD_ID:    discord.guild_id }         : {}),
       ...(discord.developer_role_id ? { DEVELOPER_ROLE_ID: discord.developer_role_id } : {}),
       BOT_NAME: botId.name,
-      ...(botId.tagline     ? { BOT_TAGLINE:     botId.tagline }     : {}),
-      ...(botId.description ? { BOT_DESCRIPTION: botId.description } : {}),
-      ...(botId.logo_url    ? { BOT_LOGO_URL:    botId.logo_url }    : {}),
-      BOT_INVITE_URL: botId.invite_url,
+      ...(botId.tagline        ? { BOT_TAGLINE:        botId.tagline }        : {}),
+      ...(botId.tagline_es     ? { BOT_TAGLINE_ES:     botId.tagline_es }     : {}),
+      ...(botId.description    ? { BOT_DESCRIPTION:    botId.description }    : {}),
+      ...(botId.description_es ? { BOT_DESCRIPTION_ES: botId.description_es } : {}),
+      ...(botId.invite_url     ? { BOT_INVITE_URL:     botId.invite_url }     : {}),
       API_SECRET_KEY: appCfg.api_secret_key,
       APP_NAME: appCfg.app_name,
       NEXT_PUBLIC_APP_NAME: appCfg.app_name,
@@ -687,34 +689,53 @@ export default function SetupWizardPage() {
           {/* ── Optional ── */}
           <div className="pt-4 border-t border-border space-y-4">
             <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Optional — can be updated any time in Settings</p>
-            <TextInput
-              label="Tagline"
-              value={botId.tagline}
-              onChange={v => setBotId(b => ({ ...b, tagline: v }))}
-              placeholder="A short one-line description shown on the landing page"
-            />
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Description</label>
-              <textarea
-                value={botId.description}
-                onChange={e => setBotId(b => ({ ...b, description: e.target.value }))}
-                placeholder="Explain what this bot does, what features it has, why people should add it…"
-                rows={3}
-                className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary resize-none"
-              />
-            </div>
-            <TextInput
-              label="Logo URL"
-              value={botId.logo_url}
-              onChange={v => setBotId(b => ({ ...b, logo_url: v }))}
-              placeholder="https://cdn.example.com/bot-logo.png"
-            />
-            {botId.logo_url && (
-              <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg border border-border">
-                <img src={botId.logo_url} alt="Logo preview" className="w-12 h-12 rounded-full object-cover bg-muted" onError={e => (e.currentTarget.style.display = 'none')} />
-                <span className="text-xs text-muted-foreground">Logo preview</span>
+
+            <p className="text-xs text-muted-foreground">
+              The bot logo is automatically fetched from Discord using the bot token configured above.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <TextInput
+                  label="Tagline (English)"
+                  value={botId.tagline}
+                  onChange={v => setBotId(b => ({ ...b, tagline: v }))}
+                  placeholder="A short one-line description"
+                />
               </div>
-            )}
+              <div>
+                <TextInput
+                  label="Tagline (Spanish)"
+                  value={botId.tagline_es}
+                  onChange={v => setBotId(b => ({ ...b, tagline_es: v }))}
+                  placeholder="Una breve descripción en una línea"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Description (English)</label>
+                <textarea
+                  value={botId.description}
+                  onChange={e => setBotId(b => ({ ...b, description: e.target.value }))}
+                  placeholder="Explain what this bot does…"
+                  rows={3}
+                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary resize-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Description (Spanish)</label>
+                <textarea
+                  value={botId.description_es}
+                  onChange={e => setBotId(b => ({ ...b, description_es: e.target.value }))}
+                  placeholder="Explica qué hace este bot…"
+                  rows={3}
+                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary resize-none"
+                />
+              </div>
+            </div>
+
             <div>
               <TextInput
                 label="Bot Invite URL"
@@ -723,7 +744,7 @@ export default function SetupWizardPage() {
                 placeholder="https://discord.com/oauth2/authorize?client_id=…&permissions=…&scope=bot"
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Generate in Discord Developer Portal → OAuth2 → URL Generator. You can add this later after deciding which permissions your bot needs.
+                Optional — auto-generated from your Client ID if left blank. Generate a custom one in Discord Developer Portal → OAuth2 → URL Generator to specify exact permissions.
               </p>
             </div>
           </div>
@@ -845,8 +866,10 @@ export default function SetupWizardPage() {
                 // Identity — required name, rest optional
                 ['Bot Name',             botId.name || '(not set)'],
                 ['Application Name',     appCfg.app_name || '(not set)'],
-                ['Tagline',              botId.tagline || '(none)'],
-                ['Invite URL',           botId.invite_url ? `${botId.invite_url.slice(0, 40)}…` : '(none — add later)'],
+                ['Tagline (EN)',          botId.tagline || '(none)'],
+                ['Tagline (ES)',          botId.tagline_es || '(none)'],
+                ['Logo',                 'Auto-fetched from Discord'],
+                ['Invite URL',           botId.invite_url ? `${botId.invite_url.slice(0, 40)}…` : '(auto-generated from Client ID)'],
                 // Security — required
                 ['API Secret Key',       appCfg.api_secret_key ? '••••••••' : '(not set — required!)'],
                 // Optional

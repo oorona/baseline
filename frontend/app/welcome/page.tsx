@@ -15,15 +15,15 @@ interface BotInfo {
   configured: boolean;
 }
 
-async function fetchBotInfo(): Promise<BotInfo> {
-  const res = await fetch('/api/v1/bot-info/public');
+async function fetchBotInfo(lang: string): Promise<BotInfo> {
+  const res = await fetch(`/api/v1/bot-info/public?lang=${lang}`);
   if (!res.ok) throw new Error('Failed to load bot info');
   return res.json();
 }
 
 function WelcomeContent() {
   const { user, loading: authLoading } = useAuth();
-  const { t, setLanguage } = useTranslation();
+  const { t, setLanguage, language } = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
   const noRedirect = searchParams.get('noRedirect') === '1';
@@ -42,11 +42,11 @@ function WelcomeContent() {
   }, []);
 
   useEffect(() => {
-    fetchBotInfo()
+    fetchBotInfo(language)
       .then(setBotInfo)
       .catch(() => setBotInfo({ name: 'My Discord Bot', tagline: '', description: '', logo_url: '', invite_url: '', configured: false }))
       .finally(() => setBotLoading(false));
-  }, []);
+  }, [language]);
 
   useEffect(() => {
     if (!user) return;
