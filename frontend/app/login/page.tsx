@@ -3,15 +3,41 @@
 import { LogIn } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
-import { siteConfig } from '../config';
 import { useTranslation } from '@/lib/i18n';
+
+interface BotInfo {
+    name: string;
+    tagline: string;
+    logo_url: string;
+}
+
+async function fetchBotInfo(): Promise<BotInfo> {
+    const res = await fetch('/api/v1/bot-info/public');
+    if (!res.ok) throw new Error('Failed to load bot info');
+    return res.json();
+}
 
 function LoginContent() {
     const searchParams = useSearchParams();
     const error = searchParams.get('error');
     const details = searchParams.get('details');
     const [loggingIn, setLoggingIn] = useState(false);
-    const { t } = useTranslation();
+    const [botInfo, setBotInfo] = useState<BotInfo | null>(null);
+    const { t, setLanguage } = useTranslation();
+
+    useEffect(() => {
+        fetchBotInfo().then(setBotInfo).catch(() => null);
+    }, []);
+
+    // Apply ?lang= query param on first render so shareable URLs work.
+    useEffect(() => {
+        const lang = searchParams.get('lang');
+        if (lang === 'en' || lang === 'es') setLanguage(lang);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    const botName = botInfo?.name || '';
+    const tagline = botInfo?.tagline || '';
 
     useEffect(() => {
         const handleMessage = (event: MessageEvent) => {
@@ -89,8 +115,8 @@ function LoginContent() {
         <div className="min-h-screen flex items-center justify-center bg-background p-4">
             <div className="bg-card rounded-2xl p-8 shadow-xl border border-border max-w-md w-full">
                 <div className="text-center mb-8">
-                    <h1 className="text-4xl font-bold text-foreground mb-2">{siteConfig.name}</h1>
-                    <p className="text-muted-foreground">{siteConfig.description}</p>
+                    {botName && <h1 className="text-4xl font-bold text-foreground mb-2">{botName}</h1>}
+                    {tagline && <p className="text-muted-foreground">{tagline}</p>}
                 </div>
 
                 {error && (

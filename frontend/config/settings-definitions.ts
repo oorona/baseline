@@ -357,7 +357,7 @@ export const APP_SETTINGS: SettingDef[] = [
     category: 'frontend',
     type: 'string',
     isDynamic: false,
-    default: 'Baseline Bot',
+    default: 'My Discord Bot',
   },
   {
     key: 'NEXT_PUBLIC_API_URL',

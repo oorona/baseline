@@ -204,7 +204,7 @@ export default function SetupWizardPage() {
 
   const [botId, setBotId] = useState<BotIdentityConfig>({ name: '', tagline: '', description: '', logo_url: '', invite_url: '' });
 
-  const [appCfg, setAppCfg] = useState<AppConfig>({ api_secret_key: '', app_name: 'Baseline Bot', openai_api_key: '', google_api_key: '', anthropic_api_key: '', xai_api_key: '' });
+  const [appCfg, setAppCfg] = useState<AppConfig>({ api_secret_key: '', app_name: '', openai_api_key: '', google_api_key: '', anthropic_api_key: '', xai_api_key: '' });
 
   const [saving, setSaving] = useState(false);
   const [saved, setSaved]   = useState(false);
