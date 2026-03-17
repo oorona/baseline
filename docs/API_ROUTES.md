@@ -40,7 +40,7 @@ All backend API endpoints are prefixed with `/api/v1`.
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `GET` | `/guilds` | Session | List all guilds the current user has access to |
+| `GET` | `/guilds` | Session | List all guilds the current user has access to. Each item includes `bot_not_added: bool` — `true` for servers where the user is an admin but the bot has not been invited yet. The frontend uses this to display an "Add Bot" prompt. |
 | `POST` | `/guilds` | Bot internal | Register or update a guild (called by bot on join) |
 | `GET` | `/guilds/{guild_id}` | Session | Get guild details |
 | `GET` | `/guilds/{guild_id}/public` | — | Public guild info (name, member count — no PII) |
@@ -115,7 +115,7 @@ Query params: `limit`, `offset`, `action` (filter by action type)
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `GET` | `/commands/` | Session | Get cached slash command list (Command Reference page) |
-| `POST` | `/commands/refresh` | Session (admin) | Re-fetch commands from Discord API and update cache |
+| `POST` | `/commands/refresh` | Session (admin) | Re-fetch commands from Discord API and update cache. Returns 503 only if `DISCORD_BOT_TOKEN` or `DISCORD_CLIENT_ID` are missing. An empty command list (no cogs registered yet) is treated as success. |
 
 ---
 

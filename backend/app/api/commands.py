@@ -28,14 +28,15 @@ _SUB_COMMAND = 1
 _SUB_COMMAND_GROUP = 2
 
 
-async def _fetch_discord_commands() -> list[dict]:
-    """Fetch registered application commands from Discord API."""
+async def _fetch_discord_commands() -> list[dict] | None:
+    """Fetch registered application commands from Discord API.
+    Returns None if the bot is not configured; [] if configured but no commands registered."""
     app_id = settings.DISCORD_CLIENT_ID
     bot_token = settings.DISCORD_BOT_TOKEN
     guild_id = settings.DISCORD_GUILD_ID
 
     if not app_id or not bot_token:
-        return []
+        return None
 
     headers = {
         "Authorization": f"Bot {bot_token}",
@@ -180,10 +181,10 @@ async def refresh_commands(
 ):
     """Re-fetch commands from Discord API and update the cache (admin only)."""
     raw_commands = await _fetch_discord_commands()
-    if not raw_commands:
+    if raw_commands is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Could not fetch commands from Discord. Check bot token and application ID.",
+            detail="Bot is not configured. Set DISCORD_BOT_TOKEN and DISCORD_CLIENT_ID.",
         )
 
     cog_map = await _build_cog_map(db)

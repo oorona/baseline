@@ -58,8 +58,9 @@ function CommandsPage() {
             await apiClient.refreshCommands();
             await fetchCommands();
             setMessage({ type: 'success', text: t('commands.refreshSuccess') });
-        } catch {
-            setMessage({ type: 'error', text: t('commands.refreshError') });
+        } catch (err: any) {
+            const detail = err?.response?.data?.detail || err?.message;
+            setMessage({ type: 'error', text: detail ? `${t('commands.refreshError')} ${detail}` : t('commands.refreshError') });
         } finally {
             setRefreshing(false);
         }

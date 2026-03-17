@@ -315,8 +315,8 @@ async def test_refresh_commands_success():
 
 
 @pytest.mark.asyncio
-async def test_refresh_commands_discord_unavailable():
-    """Returns 503 when Discord returns no commands."""
+async def test_refresh_commands_bot_not_configured():
+    """Returns 503 when bot token/client ID are not set (fetch returns None)."""
     from app.api.commands import refresh_commands
     from fastapi import HTTPException
 
@@ -324,11 +324,29 @@ async def test_refresh_commands_discord_unavailable():
     mock_db = AsyncMock()
     mock_admin_user = {"user_id": "999"}
 
-    with patch("app.api.commands._fetch_discord_commands", return_value=[]):
+    with patch("app.api.commands._fetch_discord_commands", return_value=None):
         with pytest.raises(HTTPException) as exc_info:
             await refresh_commands(redis=mock_redis, db=mock_db, _user=mock_admin_user)
 
     assert exc_info.value.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_refresh_commands_no_cogs_is_success():
+    """Returns success with zero commands when bot is configured but no commands are registered yet."""
+    from app.api.commands import refresh_commands
+
+    mock_redis = AsyncMock()
+    mock_db = AsyncMock()
+    mock_db.execute.return_value.fetchall.return_value = []
+    mock_admin_user = {"user_id": "999"}
+
+    with patch("app.api.commands._fetch_discord_commands", return_value=[]):
+        result = await refresh_commands(redis=mock_redis, db=mock_db, _user=mock_admin_user)
+
+    assert result["total"] == 0
+    assert result["commands"] == []
+    mock_redis.set.assert_called_once()
 
 
 @pytest.mark.asyncio
