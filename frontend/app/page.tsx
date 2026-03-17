@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { apiClient } from '@/app/api-client';
 import { usePlugins } from '@/app/plugins';
-import { Bot, Settings, Activity, Terminal, Shield, Lock, ExternalLink, User, FileText, Database, BarChart2, Settings2, Wrench, Gauge, Sparkles, BrainCircuit, Globe, BookOpen } from 'lucide-react';
+import { Bot, Settings, Activity, Terminal, Shield, Lock, ExternalLink, User, FileText, Database, BarChart2, Settings2, Wrench, Gauge, BrainCircuit, Globe, BookOpen } from 'lucide-react';
 import { usePermissions } from '@/lib/hooks/use-permissions';
 import { PermissionLevel } from '@/lib/permissions';
 import { useTranslation } from '@/lib/i18n';
@@ -108,7 +108,6 @@ function DashboardContent() {
     bgColor: string;
     borderColor: string;
     isAdminOnly?: boolean;
-    isDemo?: boolean;
   }
 
   const cards: DashboardCard[] = [
@@ -135,7 +134,6 @@ function DashboardContent() {
       bgColor: 'bg-sky-500/10',
       borderColor: 'group-hover:border-sky-500/50',
       isAdminOnly: false,
-      isDemo: true
     },
     {
       id: 'bot-settings',
@@ -148,7 +146,6 @@ function DashboardContent() {
       bgColor: 'bg-blue-500/10',
       borderColor: 'group-hover:border-blue-500/50',
       isAdminOnly: false,
-      isDemo: true
     },
     {
       id: 'permissions',
@@ -257,19 +254,6 @@ function DashboardContent() {
       bgColor: 'bg-orange-500/10',
       borderColor: 'group-hover:border-orange-500/50',
       isAdminOnly: true
-    },
-    {
-      id: 'gemini-demo',
-      title: t('dashboard.cardGeminiTitle'),
-      description: t('dashboard.cardGeminiDesc'),
-      icon: Sparkles,
-      href: `/dashboard/${activeGuildId}/gemini-demo`,
-      level: PermissionLevel.DEVELOPER,
-      color: 'text-sky-500',
-      bgColor: 'bg-sky-500/10',
-      borderColor: 'group-hover:border-sky-500/50',
-      isAdminOnly: true,
-      isDemo: true
     },
     {
       id: 'llm-configs',
@@ -384,12 +368,6 @@ function DashboardContent() {
                         <div className={`absolute top-6 right-6 p-3 rounded-xl ${card.bgColor} ${card.color} transition-colors group-hover:scale-110 duration-300`}>
                           <card.icon size={28} />
                         </div>
-
-                        {card.isDemo && (
-                          <span className="absolute top-4 left-4 text-[10px] font-semibold uppercase tracking-widest px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25">
-                            {t('common.demo')}
-                          </span>
-                        )}
 
                         <div className="mt-4 mb-auto">
                           <h3 className="text-2xl font-bold mb-3 group-hover:text-primary transition-colors">{card.title}</h3>

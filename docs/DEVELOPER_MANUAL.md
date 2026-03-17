@@ -35,35 +35,23 @@ This documentation is the **authoritative source** for developers and AI Agents 
 
 ### Starting a New Bot from this Framework
 
-After cloning the repository, run the initialiser script **once** to strip all demo/example code:
+After cloning the repository, run the initialiser script **once**:
 
 ```bash
 chmod +x init.sh
 ./init.sh
 ```
 
-This removes:
+This write-protects core framework files (`chmod 444`) so accidental edits produce a permission error rather than silently breaking the framework. That is all it does — there is no demo code to remove because **demo code is not part of the permanent codebase**.
 
-| Path | Why |
-| :--- | :--- |
-| `frontend/app/dashboard/[guildId]/gemini-demo/` | Gemini capabilities demo pages |
-| `frontend/app/dashboard/[guildId]/test-l1/` | Framework access-level test page |
-| `frontend/app/dashboard/[guildId]/test-l2/` | Framework access-level test page |
-| `frontend/app/dashboard/[guildId]/logging/` | Sample logging page |
-| `backend/app/api/gemini/` | Gemini demo API router |
-| Any `bot/cogs/*.py` with `__is_demo__ = True` | All cogs marked as demo are auto-discovered and deleted |
+Demo plugins live in `plugins/` and are installed on demand:
 
-> **Note:** `bot/services/gemini.py` is **core framework infrastructure** — it is the Google/Gemini backend for the LLM service and is **not removed** by `init.sh`. Only the demo API router and demo cogs that showcase Gemini are removed.
+```bash
+python scripts/plugin_install.py plugins/logging_demo
+# gemini_demo requires manual install — see plugins/gemini_demo/plugin.json
+```
 
-It also strips demo navigation cards (`isDemo: true`) from `frontend/app/page.tsx` and removes the Gemini router from `backend/main.py`.
-
-> **What is NOT removed:** `frontend/app/dashboard/[guildId]/settings/` is a **core framework page** — it renders dynamically based on `SETTINGS_SCHEMA` declarations from loaded cogs. You do not need to modify it when adding new settings.
-
-> **How to mark your own demo code:**
-> - Bot cogs: add `__is_demo__ = True` as a class attribute — `init.sh` auto-discovers and deletes these.
-> - Dashboard cards: add `isDemo: true` to the card object in `frontend/app/page.tsx`.
-> - Pages/APIs: add `remove_path "path/to/file"` in `init.sh`.
-> - Demo files also have `*** DEMO CODE ***` banners in their headers so they are easy to spot before running `init.sh`.
+> **`frontend/app/dashboard/[guildId]/settings/`** is a **core framework page** — it renders dynamically based on `SETTINGS_SCHEMA` declarations from loaded cogs. You do not need to modify it when adding new settings.
 
 ---
 

@@ -1,0 +1,16 @@
+{
+  "name": "test_pages",
+  "display_name": "Permission Level Test Pages",
+  "version": "1.0.0",
+  "description": "Two minimal dashboard pages for verifying L1 and L2 permission enforcement. Useful during development.",
+  "install_mode": "manual",
+  "install_notes": "Copy test-l1.page.tsx → frontend/app/dashboard/[guildId]/test-l1/page.tsx and test-l2.page.tsx → frontend/app/dashboard/[guildId]/test-l2/page.tsx.",
+  "components": {
+    "cog": false,
+    "api": false,
+    "frontend": true,
+    "models": false,
+    "migration": false,
+    "translations": false
+  }
+}

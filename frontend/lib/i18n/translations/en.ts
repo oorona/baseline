@@ -18,7 +18,6 @@ export const en = {
     loading: 'Loading...',
     loadingDashboard: 'Loading dashboard...',
     checkingPermissions: 'Checking Permissions...',
-    demo: 'Demo',
     dashboard: 'Dashboard',
     saving: 'Saving...',
   },
@@ -126,9 +125,6 @@ export const en = {
     cardInstrumentationTitle: 'Instrumentation',
     cardInstrumentationDesc:
       'Performance metrics, guild growth, card usage stats, and bot command analytics across all servers.',
-    cardGeminiTitle: 'Gemini Capabilities',
-    cardGeminiDesc:
-      'Demo suite for Gemini API: text generation, image generation, vision, TTS, embeddings, and more.',
     cardLlmConfigsTitle: 'LLM Configs',
     cardLlmConfigsDesc:
       'Manage output schemas and function sets for Gemini API calls. View call logs with token stats and cost.',

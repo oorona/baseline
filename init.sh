@@ -3,20 +3,21 @@
 # Baseline Framework — New Bot Initialiser
 # =============================================================================
 # Run this script ONCE after cloning the repository to start a new bot project.
-# It removes all demo/example code that is not needed in production, leaving
-# only the core framework structure.
+# It write-protects core framework files so accidental edits are caught
+# immediately rather than silently breaking the framework contract.
+#
+# Demo/example code is NOT part of the codebase — it lives in plugins/ and
+# can be installed on demand with:
+#   python scripts/plugin_install.py plugins/<name>
 #
 # Usage:
 #   chmod +x init.sh
 #   ./init.sh
-#
-# Safe to re-run; already-deleted files are silently skipped.
 # =============================================================================
 
 set -euo pipefail
 
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
-CYAN='\033[0;36m'; BOLD='\033[1m'; RESET='\033[0m'
+GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; BOLD='\033[1m'; RESET='\033[0m'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -25,9 +26,6 @@ echo
 echo -e "${BOLD}${CYAN}Baseline Framework — New Bot Initialiser${RESET}"
 echo -e "${CYAN}==========================================${RESET}"
 echo
-echo -e "This will ${YELLOW}permanently delete${RESET} all demo/example code from this repo."
-echo -e "Run it ${BOLD}once${RESET} after cloning, before you start building your bot."
-echo
 read -rp "Continue? [y/N] " confirm
 if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
     echo -e "${YELLOW}Aborted.${RESET}"
@@ -35,162 +33,8 @@ if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
 fi
 echo
 
-removed=0
-skipped=0
-
-remove_path() {
-    local path="$1"
-    if [ -e "$path" ]; then
-        rm -rf "$path"
-        echo -e "  ${GREEN}✓${RESET}  removed  ${path#$SCRIPT_DIR/}"
-        ((removed++)) || true
-    else
-        echo -e "  ${CYAN}–${RESET}  skipped  ${path#$SCRIPT_DIR/}  (already gone)"
-        ((skipped++)) || true
-    fi
-}
-
-# ── Frontend demo pages ───────────────────────────────────────────────────────
-echo -e "${BOLD}Frontend demo pages${RESET}"
-
-remove_path "frontend/app/dashboard/[guildId]/gemini-demo"
-remove_path "frontend/app/dashboard/[guildId]/test-l1"
-remove_path "frontend/app/dashboard/[guildId]/test-l2"
-remove_path "frontend/app/dashboard/[guildId]/logging"
-# Note: frontend/app/dashboard/[guildId]/settings is kept — it is a core
-# schema-driven page that renders whichever SETTINGS_SCHEMA cogs declare.
-
-# ── Backend demo modules ──────────────────────────────────────────────────────
-echo
-echo -e "${BOLD}Backend demo modules${RESET}"
-
-remove_path "backend/app/api/gemini"
-
-# ── Bot demo cogs & services ──────────────────────────────────────────────────
-echo
-echo -e "${BOLD}Bot demo cogs & services${RESET}"
-
-# Auto-discover and remove any cog file whose class declares __is_demo__ = True.
-# New demo cogs just need the attribute — no manual entry here required.
-if [ -d "bot/cogs" ]; then
-    python3 - "bot/cogs" <<'PYEOF'
-import sys, os, re
-
-cogs_dir = sys.argv[1]
-pattern = re.compile(r'__is_demo__\s*=\s*True')
-
-for fname in sorted(os.listdir(cogs_dir)):
-    if not fname.endswith('.py') or fname.startswith('_'):
-        continue
-    fpath = os.path.join(cogs_dir, fname)
-    try:
-        src = open(fpath).read()
-    except Exception:
-        continue
-    if pattern.search(src):
-        os.remove(fpath)
-        print(f"  \033[0;32m✓\033[0m  removed  {fpath}")
-PYEOF
-else
-    echo -e "  ${YELLOW}!${RESET}  bot/cogs not found — skipped"
-fi
-
-
-# ── Strip demo cards from the dashboard (frontend/app/page.tsx) ───────────────
-echo
-echo -e "${BOLD}Stripping demo cards from frontend/app/page.tsx${RESET}"
-
-PAGE="frontend/app/page.tsx"
-if [ -f "$PAGE" ]; then
-    python3 - "$PAGE" <<'PYEOF'
-import sys, re
-
-path = sys.argv[1]
-text = open(path).read()
-
-# Remove entire card object blocks that contain `isDemo: true`
-# Matches from the opening `{` of a card object to its closing `},` or `}`
-# Strategy: find objects whose content contains `isDemo: true` and remove them.
-
-# Split on top-level card objects in the cards array.
-# We use a regex that removes any { ... isDemo: true ... } block
-# (handles multi-line, non-greedy, within JS object literal braces)
-pattern = re.compile(
-    r'\{\s*\n(?:[^{}]|\{[^{}]*\})*?\bisDemo:\s*true\b(?:[^{}]|\{[^{}]*\})*?\},?\n',
-    re.DOTALL
-)
-
-new_text = pattern.sub('', text)
-
-if new_text == text:
-    print("  – no isDemo blocks found (already clean)")
-else:
-    removed = len(pattern.findall(text))
-    open(path, 'w').write(new_text)
-    print(f"  ✓  removed {removed} isDemo card block(s)")
-PYEOF
-else
-    echo -e "  ${YELLOW}!${RESET}  ${PAGE} not found — skipped"
-fi
-
-# ── Remove Gemini router from backend/main.py ─────────────────────────────────
-echo
-echo -e "${BOLD}Removing Gemini router registration from backend/main.py${RESET}"
-
-MAINPY="backend/main.py"
-if [ -f "$MAINPY" ]; then
-    python3 - "$MAINPY" <<'PYEOF'
-import sys, re
-
-path = sys.argv[1]
-text = open(path).read()
-
-# Remove the gemini router import + include block
-pattern = re.compile(
-    r'\n?try:\n    from app\.api\.gemini import router as gemini_router\n'
-    r'    app\.include_router\(gemini_router.*?\n'
-    r'except.*?pass\n?',
-    re.DOTALL
-)
-new_text = pattern.sub('', text)
-
-# Also remove simple (non-try) gemini router lines
-simple = re.compile(r'\nfrom app\.api\.gemini import router as gemini_router\n'
-                    r'app\.include_router\(gemini_router[^\n]*\n')
-new_text = simple.sub('', new_text)
-
-if new_text == text:
-    print("  – gemini router already removed or not found")
-else:
-    open(path, 'w').write(new_text)
-    print("  ✓  removed gemini router from main.py")
-PYEOF
-else
-    echo -e "  ${YELLOW}!${RESET}  ${MAINPY} not found — skipped"
-fi
-
-# ── Remove Gemini SENSITIVE_PREFIXES entry from backend/main.py ───────────────
-python3 - "backend/main.py" <<'PYEOF'
-import sys
-path = sys.argv[1]
-try:
-    text = open(path).read()
-except FileNotFoundError:
-    sys.exit(0)
-
-new_text = text.replace('"/api/v1/gemini", ', '').replace(', "/api/v1/gemini"', '').replace('"/api/v1/gemini"', '')
-if new_text != text:
-    open(path, 'w').write(new_text)
-    print("  ✓  removed /api/v1/gemini from SENSITIVE_PREFIXES")
-else:
-    print("  – /api/v1/gemini not found in SENSITIVE_PREFIXES")
-PYEOF
-
 # ── Write-protect core framework files ───────────────────────────────────────
-# Makes accidental edits to core infrastructure immediately visible (permission
-# error) rather than silently succeeding and breaking the framework contract.
 # To intentionally edit a core file: chmod 644 <file>, edit, chmod 444 <file>.
-echo
 echo -e "${BOLD}Write-protecting core framework files${RESET}"
 
 protect_file() {
@@ -201,31 +45,23 @@ protect_file() {
     fi
 }
 
-# Bot core
 protect_file "bot/core/bot.py"
 protect_file "bot/core/loader.py"
-
-# Backend core
 protect_file "backend/app/api/auth.py"
 protect_file "backend/app/api/deps.py"
 protect_file "backend/app/db/guild_session.py"
 protect_file "backend/app/db/session.py"
-
-# Frontend core
 protect_file "frontend/lib/auth-context.tsx"
 protect_file "frontend/app/layout.tsx"
 
-# Existing migration files — never edit an already-applied migration
 if [ -d "backend/alembic/versions" ]; then
     find "backend/alembic/versions" -name "*.py" -exec chmod 444 {} \;
     echo -e "  ${GREEN}✓${RESET}  protected  backend/alembic/versions/*.py"
 fi
 
-# ── Summary ───────────────────────────────────────────────────────────────────
+# ── Done ──────────────────────────────────────────────────────────────────────
 echo
 echo -e "${BOLD}${GREEN}Done!${RESET}"
-echo -e "  Removed paths : ${GREEN}${removed}${RESET}"
-echo -e "  Already gone  : ${CYAN}${skipped}${RESET}"
 echo
 echo -e "${BOLD}Next steps:${RESET}"
 echo -e "  1.  Rename your bot — update ${CYAN}NEXT_PUBLIC_APP_NAME${RESET} in ${CYAN}.env${RESET}"
@@ -234,9 +70,8 @@ echo -e "  2.  Build features as plugins in ${CYAN}plugins/<name>/${RESET}"
 echo -e "      Validate:  ${CYAN}python scripts/plugin_validate.py plugins/<name>${RESET}"
 echo -e "      Install:   ${CYAN}python scripts/plugin_install.py plugins/<name>${RESET}"
 echo -e "  3.  Read ${CYAN}docs/DEVELOPER_MANUAL.md${RESET} for the full guide"
-echo -e "  4.  Read ${CYAN}docs/integration/08-plugin-workflow.md${RESET} for the plugin workflow"
-echo -e ""
-echo -e "  ${YELLOW}Note:${RESET} Core framework files have been write-protected (chmod 444)."
-echo -e "        If you need to patch a core file intentionally:"
+echo
+echo -e "  ${YELLOW}Note:${RESET} Core files are now write-protected (chmod 444)."
+echo -e "        To patch one intentionally:"
 echo -e "        ${CYAN}chmod 644 <file>${RESET}  →  edit  →  ${CYAN}chmod 444 <file>${RESET}"
 echo

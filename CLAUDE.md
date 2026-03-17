@@ -61,7 +61,6 @@ The validator enforces all five golden rules automatically and will reject code 
 
 - [ ] **Cog**: `description=` on every `@app_commands.command()` — never omit it
 - [ ] **Cog**: `SETTINGS_SCHEMA` if the cog reads from guild settings
-- [ ] **Cog**: `__is_demo__ = True` if this is example code (so `init.sh` strips it)
 - [ ] **Backend**: use `Depends(get_guild_db)` for any endpoint under `/{guild_id}/`
 - [ ] **Backend**: import and register the new router in `backend/main.py`
 - [ ] **Backend**: write an `AuditLog` entry on every settings mutation

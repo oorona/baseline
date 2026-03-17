@@ -54,15 +54,12 @@ All new code goes into a staging folder, never directly into the live project.
 2. Build your feature inside `plugins/<your_feature>/`
    (cog, API router, frontend page, translations — see `docs/integration/08-plugin-workflow.md`)
 
-3. Validate
+3. Validate and install
    ```bash
-   python scripts/plugin_validate.py plugins/<your_feature>
+   ./install_plugin.sh <your_feature>
    ```
-
-4. Install
-   ```bash
-   python scripts/plugin_install.py plugins/<your_feature>
-   ```
+   Add `--dry-run` to preview changes without writing any files.
+   Add `--force` to skip validation (not recommended).
 
 5. If the plugin added database tables, run migrations
    ```bash

@@ -179,7 +179,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from app.core.security import is_trusted_request, get_client_info, log_security_event
 
-SENSITIVE_PREFIXES = ["/api/v1/gemini", "/api/v1/llm"]
+SENSITIVE_PREFIXES = ["/api/v1/llm"]
 
 class SecurityMiddleware(BaseHTTPMiddleware):
     """
@@ -338,10 +338,6 @@ app.include_router(instrumentation_router, prefix=f"{settings.API_V1_STR}/instru
 
 from app.api.llm import router as llm_router
 app.include_router(llm_router, prefix=f"{settings.API_V1_STR}/llm", tags=["llm"])
-
-# Gemini API endpoints for AI-powered features
-from app.api.gemini import router as gemini_router
-app.include_router(gemini_router, prefix=f"{settings.API_V1_STR}", tags=["gemini"])
 
 # System configuration (Level 5 — Platform Admin only)
 from app.api.config import router as config_router

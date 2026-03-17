@@ -18,7 +18,6 @@ export const es: TranslationSchema = {
     loading: 'Cargando...',
     loadingDashboard: 'Cargando panel...',
     checkingPermissions: 'Verificando permisos...',
-    demo: 'Demo',
     dashboard: 'Panel',
     saving: 'Guardando...',
   },
@@ -125,9 +124,6 @@ export const es: TranslationSchema = {
     cardInstrumentationTitle: 'Instrumentación',
     cardInstrumentationDesc:
       'Métricas de rendimiento, crecimiento de servidores, estadísticas de uso de tarjetas y analíticas de comandos del bot.',
-    cardGeminiTitle: 'Capacidades de Gemini',
-    cardGeminiDesc:
-      'Suite de demostraciones para la API de Gemini: generación de texto, imágenes, visión, TTS, embeddings y más.',
     cardLlmConfigsTitle: 'Configuraciones LLM',
     cardLlmConfigsDesc:
       'Administra esquemas de salida y conjuntos de funciones para la API de Gemini. Visualiza registros de llamadas con estadísticas de tokens y costos.',

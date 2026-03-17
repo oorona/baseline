@@ -140,6 +140,66 @@ def install_frontend(plugin_dir: Path, plugin_name: str):
     copy_file(src, dst)
 
 
+def install_nav_card(manifest: dict):
+    nav = manifest.get("navigation", {})
+    if not nav.get("enabled", False):
+        return
+
+    plugin_name = manifest["name"]
+    perm = manifest.get("permission_level", 3)
+    perm_names = {
+        0: "PUBLIC", 1: "PUBLIC_DATA", 2: "USER",
+        3: "AUTHORIZED", 4: "OWNER", 5: "DEVELOPER",
+    }
+    perm_name = perm_names.get(perm, str(perm))
+    is_admin = perm >= 4
+    camel = _to_camel_case(plugin_name)
+    icon = nav.get("icon", "Settings")
+    color = nav.get("color", "text-blue-500")
+    bg = nav.get("bg_color", "bg-blue-500/10")
+    border = nav.get("border_color", "group-hover:border-blue-500/50")
+
+    card_block = (
+        f"    {{\n"
+        f"      id: '{plugin_name}',\n"
+        f"      title: t('{camel}.title'),\n"
+        f"      description: t('{camel}.description'),\n"
+        f"      icon: {icon},\n"
+        f"      href: `/dashboard/${{activeGuildId}}/{plugin_name}`,\n"
+        f"      level: PermissionLevel.{perm_name},\n"
+        f"      color: '{color}',\n"
+        f"      bgColor: '{bg}',\n"
+        f"      borderColor: '{border}',\n"
+        f"      isAdminOnly: {'true' if is_admin else 'false'},\n"
+        f"    }},\n"
+        f"    // Plugins — titles come from plugin definitions; descriptions are translated"
+    )
+
+    page_tsx = ROOT / "frontend/app/page.tsx"
+    anchor = "    // Plugins — titles come from plugin definitions; descriptions are translated"
+    patched = patch_file(page_tsx, anchor, card_block, f"insert nav card for {plugin_name}")
+    if not patched:
+        print(
+            f"  [!]  Could not auto-insert nav card — add manually to frontend/app/page.tsx:\n"
+            f"       icon import: import {{ {icon} }} from 'lucide-react'\n"
+            f"       card: {card_block.split(chr(10))[0].strip()} ..."
+        )
+        return
+
+    # Ensure the icon is imported from lucide-react
+    if not DRY_RUN:
+        src = page_tsx.read_text()
+        lucide_re = re.compile(r"(import \{)([^}]+)(\} from 'lucide-react';)")
+        m = lucide_re.search(src)
+        if m:
+            imports = [i.strip() for i in m.group(2).split(",") if i.strip()]
+            if icon not in imports:
+                imports_sorted = sorted(imports + [icon])
+                new_import = f"{m.group(1)} {', '.join(imports_sorted)} {m.group(3)}"
+                page_tsx.write_text(src.replace(m.group(0), new_import, 1))
+                log(f"PATCH  frontend/app/page.tsx — add {icon} to lucide-react imports")
+
+
 def install_translations(plugin_dir: Path, plugin_name: str):
     for lang in ("en", "es"):
         src = plugin_dir / "translations" / f"{lang}.ts"
@@ -176,39 +236,10 @@ def install_translations(plugin_dir: Path, plugin_name: str):
 # ── Post-install guidance ─────────────────────────────────────────────────────
 
 def print_manual_steps(manifest: dict, components: dict):
-    plugin_name = manifest["name"]
     steps = []
 
     if components.get("migration"):
         steps.append("Run migrations:\n     cd backend && alembic upgrade head")
-
-    nav = manifest.get("navigation", {})
-    if components.get("frontend") and nav.get("enabled", False):
-        perm = manifest.get("permission_level", 3)
-        perm_names = {
-            0: "PUBLIC", 1: "PUBLIC_DATA", 2: "USER",
-            3: "AUTHORIZED", 4: "OWNER", 5: "DEVELOPER",
-        }
-        perm_name = perm_names.get(perm, str(perm))
-        icon = nav.get("icon", "Settings")
-        color = nav.get("color", "text-blue-500")
-        bg = nav.get("bg_color", "bg-blue-500/10")
-        border = nav.get("border_color", "group-hover:border-blue-500/50")
-
-        steps.append(
-            f"Add a navigation card in frontend/app/page.tsx (cards array):\n"
-            f"     {{\n"
-            f"       id: '{plugin_name}',\n"
-            f"       title: t('{_to_camel_case(plugin_name)}.title'),\n"
-            f"       description: t('{_to_camel_case(plugin_name)}.description'),\n"
-            f"       icon: {icon},\n"
-            f"       href: `/dashboard/${{activeGuildId}}/{plugin_name}`,\n"
-            f"       level: PermissionLevel.{perm_name},\n"
-            f"       color: '{color}',\n"
-            f"       bgColor: '{bg}',\n"
-            f"       borderColor: '{border}',\n"
-            f"     }}"
-        )
 
     if steps:
         print(f"\nManual steps required:")
@@ -269,6 +300,7 @@ def main():
 
     if components.get("frontend") and (plugin_dir / "page.tsx").exists():
         install_frontend(plugin_dir, plugin_name)
+        install_nav_card(manifest)
 
     if components.get("translations") and (plugin_dir / "translations").is_dir():
         install_translations(plugin_dir, plugin_name)

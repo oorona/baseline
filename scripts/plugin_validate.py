@@ -55,13 +55,50 @@ def validate_manifest(plugin_dir: Path) -> dict:
         if field not in manifest:
             err(f"plugin.json missing required field: '{field}'")
 
+    if "display_name" not in manifest:
+        warn("plugin.json missing 'display_name' — used in UI and docs")
+
     name = manifest.get("name", "")
     if name and not re.match(r"^[a-z][a-z0-9_]*$", name):
         err(f"plugin name '{name}' must be snake_case lowercase (e.g. my_plugin)")
 
+    # Folder name must match the declared name
+    if name and plugin_dir.name != name:
+        err(
+            f"Plugin folder name '{plugin_dir.name}' does not match "
+            f"plugin.json 'name' field '{name}' — they must be identical"
+        )
+    elif name:
+        ok(f"Folder name matches plugin name: '{name}'")
+
+    # Version must be semver (MAJOR.MINOR.PATCH)
+    version = manifest.get("version", "")
+    if version and not re.match(r"^\d+\.\d+\.\d+$", version):
+        err(
+            f"version '{version}' is not valid semver — use MAJOR.MINOR.PATCH format (e.g. 1.0.0)"
+        )
+    elif version:
+        ok(f"Version: {version}")
+
     perm = manifest.get("permission_level")
     if perm is not None and perm not in range(6):
         err(f"permission_level must be 0–5, got {perm}")
+    elif perm is None:
+        warn("permission_level not set — defaults to 3 (AUTHORIZED) at install time")
+
+    # Navigation section consistency
+    nav = manifest.get("navigation", {})
+    if nav.get("enabled"):
+        if not manifest.get("components", {}).get("frontend"):
+            err("navigation.enabled is true but 'frontend' component is not declared")
+        if not nav.get("icon"):
+            warn("navigation.icon not set — installer will default to 'Settings'")
+        if manifest.get("permission_level") is None:
+            warn("navigation.enabled requires permission_level to be set for the dashboard card")
+
+    # Router section consistency
+    if manifest.get("components", {}).get("api") and "router" not in manifest:
+        warn("'api' component declared but no 'router' section in plugin.json — installer defaults to prefix='/guilds'")
 
     valid_components = {"cog", "api", "models", "migration", "frontend", "translations"}
     for key in manifest.get("components", {}):

@@ -131,6 +131,24 @@ Two things always require a manual step:
 2. **Navigation card** — add an entry to the `cards` array in `frontend/app/page.tsx`
    (the installer prints the exact object to paste)
 
+## Available Plugins
+
+| Folder | What it does | Install method |
+|---|---|---|
+| `event_logging/` | Logs guild events (message delete/edit, member join/leave) to a configurable channel. Cog + dashboard settings page. Worked example from the plugin workflow guide. | Standard — `plugin_install.py` |
+| `gemini_demo/` | Full Gemini API demo suite: text generation with thinking, image gen, vision, TTS, audio, embeddings, function calling, URL context, caching, RAG. | Manual — see `gemini_demo/plugin.json` for instructions |
+| `test_pages/` | Two minimal pages for verifying L1 and L2 permission enforcement during development. | Manual — copy files, see `test_pages/plugin.json` |
+| `_template/` | Blank template to copy when starting a new plugin. | — |
+
+Demo plugins are **not installed by default**. To deploy one into the live project, follow the standard plugin workflow:
+
+```bash
+python scripts/plugin_validate.py plugins/<name>
+python scripts/plugin_install.py plugins/<name>
+```
+
+For plugins with `"install_mode": "manual"` in their `plugin.json`, follow the instructions in that file instead.
+
 ## Using `_template`
 
 Copy `plugins/_template/` to `plugins/<your_plugin_name>/` as a starting point.
