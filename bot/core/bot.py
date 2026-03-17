@@ -88,8 +88,22 @@ class BaselineBot(commands.AutoShardedBot):
         if self.services.config.DISCORD_GUILD_ID:
             guild = discord.Object(id=self.services.config.DISCORD_GUILD_ID)
             self.tree.copy_global_to(guild=guild)
-            await self.tree.sync(guild=guild)
-            logger.info("bot_commands_synced", guild_id=self.services.config.DISCORD_GUILD_ID)
+            try:
+                await self.tree.sync(guild=guild)
+                logger.info("bot_commands_synced", guild_id=self.services.config.DISCORD_GUILD_ID)
+            except discord.Forbidden:
+                logger.error(
+                    "bot_guild_sync_failed",
+                    guild_id=self.services.config.DISCORD_GUILD_ID,
+                    message=(
+                        "Bot does not have access to the developer guild. "
+                        "The bot must be invited to the server set as DISCORD_GUILD_ID before "
+                        "slash commands can be synced. "
+                        "Invite URL: https://discord.com/oauth2/authorize"
+                        f"?client_id={self.application_id}&scope=bot+applications.commands&permissions=8"
+                    ),
+                )
+                logger.warning("bot_continuing_without_guild_sync", message="Bot is running but guild commands are not synced.")
         else:
             logger.warning("no_guild_id_for_sync", message="Syncing globally. This may take up to an hour.")
             await self.tree.sync()

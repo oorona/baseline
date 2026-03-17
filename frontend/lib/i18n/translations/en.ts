@@ -45,17 +45,17 @@ export const en = {
 
   // ── /login ────────────────────────────────────────────────────────────────
   login: {
-    loginFailed: 'Login Failed!',
-    rateLimitError:
-      'Discord Rate Limit: Too many login attempts. Wait 5 minutes and try again.',
-    discordError: 'Discord Login Failed. Please try again.',
-    unexpectedError: 'An unexpected error occurred during login.',
+    loginFailed: 'Login Failed',
+    rateLimitError: 'Too many login attempts. Please wait 5 minutes and try again.',
+    discordError: 'Discord could not complete the login. Please try again.',
+    unexpectedError: 'Something went wrong. Please try again in a moment.',
+    serviceUnavailable: 'The service is temporarily unavailable. Please try again in a moment.',
     detailsLabel: 'Details: {details}',
     loggingIn: 'Logging in...',
-    loginButton: 'Login with Discord (Redirect)',
+    loginButton: 'Login with Discord',
     switchAccount: 'Switch Account',
-    signInPrompt: 'Sign in with your Discord account to manage your bots',
-    popupBlocked: 'Popup was blocked. Please allow popups for this site.',
+    signInPrompt: 'Sign in with your Discord account to manage your server',
+    popupBlocked: 'Popup was blocked. Please allow popups for this site and try again.',
     loading: 'Loading...',
   },
 
@@ -196,13 +196,19 @@ export const en = {
     hint: 'Hidden cards are not shown to users on this server. You can always re-enable them.',
   },
 
+  // ── GuildSwitcher component ───────────────────────────────────────────────
+  guildSwitcher: {
+    selectServer: 'Select a server',
+    addBot: 'Add bot to server',
+    noServers: 'No servers found.',
+  },
+
   // ── /access-denied ────────────────────────────────────────────────────────
   accessDenied: {
     title: 'Access Denied',
-    cancelledMsg: 'You cancelled the login or denied access to the bot.',
-    noPermissionMsg:
-      "You don't have permission to access this resource. If you believe this is an error, please contact an administrator.",
-    errorLabel: 'Error: {error}',
+    cancelledMsg: 'You cancelled the login. Click below to try again.',
+    noPermissionMsg: "You don't have permission to access this page. Contact an administrator if you believe this is a mistake.",
+    errorLabel: 'Error code: {error}',
     returnHome: 'Return Home',
     tryAgain: 'Try Again',
     loading: 'Loading...',

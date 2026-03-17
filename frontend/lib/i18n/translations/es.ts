@@ -45,18 +45,17 @@ export const es: TranslationSchema = {
 
   // ── /login ────────────────────────────────────────────────────────────────
   login: {
-    loginFailed: '¡Error de inicio de sesión!',
-    rateLimitError:
-      'Límite de velocidad de Discord: Demasiados intentos. Espera 5 minutos e intenta de nuevo.',
-    discordError: 'Error al iniciar sesión con Discord. Por favor, intenta de nuevo.',
-    unexpectedError: 'Ocurrió un error inesperado durante el inicio de sesión.',
+    loginFailed: 'Error al iniciar sesión',
+    rateLimitError: 'Demasiados intentos. Por favor espera 5 minutos e intenta de nuevo.',
+    discordError: 'Discord no pudo completar el inicio de sesión. Por favor, intenta de nuevo.',
+    unexpectedError: 'Algo salió mal. Por favor, intenta de nuevo en un momento.',
+    serviceUnavailable: 'El servicio no está disponible temporalmente. Intenta de nuevo en un momento.',
     detailsLabel: 'Detalles: {details}',
     loggingIn: 'Iniciando sesión...',
-    loginButton: 'Iniciar sesión con Discord (Redirigir)',
+    loginButton: 'Iniciar sesión con Discord',
     switchAccount: 'Cambiar cuenta',
-    signInPrompt: 'Inicia sesión con tu cuenta de Discord para gestionar tus bots',
-    popupBlocked:
-      'La ventana emergente fue bloqueada. Permite ventanas emergentes para este sitio.',
+    signInPrompt: 'Inicia sesión con tu cuenta de Discord para gestionar tu servidor',
+    popupBlocked: 'La ventana emergente fue bloqueada. Permite ventanas emergentes para este sitio e intenta de nuevo.',
     loading: 'Cargando...',
   },
 
@@ -195,13 +194,19 @@ export const es: TranslationSchema = {
     hint: 'Las tarjetas ocultas no se muestran a los usuarios en este servidor. Puedes volver a activarlas en cualquier momento.',
   },
 
+  // ── GuildSwitcher component ───────────────────────────────────────────────
+  guildSwitcher: {
+    selectServer: 'Selecciona un servidor',
+    addBot: 'Agregar bot al servidor',
+    noServers: 'No se encontraron servidores.',
+  },
+
   // ── /access-denied ────────────────────────────────────────────────────────
   accessDenied: {
     title: 'Acceso denegado',
-    cancelledMsg: 'Cancelaste el inicio de sesión o denegaste el acceso al bot.',
-    noPermissionMsg:
-      'No tienes permiso para acceder a este recurso. Si crees que esto es un error, contacta a un administrador.',
-    errorLabel: 'Error: {error}',
+    cancelledMsg: 'Cancelaste el inicio de sesión. Haz clic abajo para intentar de nuevo.',
+    noPermissionMsg: 'No tienes permiso para acceder a esta página. Contacta a un administrador si crees que esto es un error.',
+    errorLabel: 'Código de error: {error}',
     returnHome: 'Volver al inicio',
     tryAgain: 'Intentar de nuevo',
     loading: 'Cargando...',

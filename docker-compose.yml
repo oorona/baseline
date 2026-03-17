@@ -91,6 +91,7 @@ services:
       dockerfile: Dockerfile
       args:
         - NEXT_PUBLIC_APP_NAME=${NEXT_PUBLIC_APP_NAME:-My Discord Bot}
+        - NEXT_PUBLIC_DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID:-}
     networks:
       - internet  # Public facing
       - intranet  # Server-side backend API calls

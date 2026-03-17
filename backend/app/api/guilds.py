@@ -1016,9 +1016,39 @@ async def list_guilds(
         except Exception as e:
             # If Discord fetch fails (rate limit, invalid token), stick to DB permissions
             print(f"Failed to fetch user guilds for L2 check: {e}")
-            pass
+            user_guilds_discord = []
 
-    return list(all_guilds.values())
+        # Guilds where the user is admin but the bot hasn't been added yet.
+        # These are returned so the frontend can show an "Add Bot" prompt.
+        bot_guild_ids = set(all_guilds.keys())
+        MANAGE_GUILD_PERMISSION = 0x20
+        pending_guilds = [
+            {
+                "id": g["id"],
+                "name": g["name"],
+                "icon": f"https://cdn.discordapp.com/icons/{g['id']}/{g['icon']}.png" if g.get("icon") else None,
+                "bot_not_added": True,
+                "permission_level": "owner",
+            }
+            for g in user_guilds_discord
+            if int(g["id"]) not in bot_guild_ids
+            and (g.get("owner") or (int(g.get("permissions", 0)) & MANAGE_GUILD_PERMISSION))
+        ]
+    else:
+        pending_guilds = []
+
+    result_guilds = [
+        {
+            "id": str(g.id),
+            "name": g.name,
+            "icon": g.icon_url,
+            "permission_level": getattr(g, "permission_level", "LEVEL_2"),
+            "bot_not_added": False,
+        }
+        for g in all_guilds.values()
+    ]
+
+    return result_guilds + pending_guilds
 
 @router.post("", response_model=GuildSchema)
 async def create_or_update_guild(

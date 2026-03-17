@@ -23,10 +23,13 @@ function LoginContent() {
     const details = searchParams.get('details');
     const [loggingIn, setLoggingIn] = useState(false);
     const [botInfo, setBotInfo] = useState<BotInfo | null>(null);
+    const [serviceDown, setServiceDown] = useState(false);
     const { t, setLanguage, language } = useTranslation();
 
     useEffect(() => {
-        fetchBotInfo(language).then(setBotInfo).catch(() => null);
+        fetchBotInfo(language)
+            .then(info => { setBotInfo(info); setServiceDown(false); })
+            .catch(() => setServiceDown(true));
     }, [language]);
 
     // Apply ?lang= query param on first render so shareable URLs work.
@@ -119,6 +122,12 @@ function LoginContent() {
                     {tagline && <p className="text-muted-foreground">{tagline}</p>}
                 </div>
 
+                {serviceDown && (
+                    <div className="bg-yellow-500/10 border border-yellow-500/30 text-yellow-600 dark:text-yellow-400 px-4 py-3 rounded-lg mb-4 text-sm text-center">
+                        {t('login.serviceUnavailable')}
+                    </div>
+                )}
+
                 {error && (
                     <div className="bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded-lg relative mb-4" role="alert">
                         <strong className="font-bold">{t('login.loginFailed')} </strong>
@@ -127,6 +136,8 @@ function LoginContent() {
                                 ? t('login.rateLimitError')
                                 : error === 'discord_error'
                                 ? t('login.discordError')
+                                : error === 'internal_error'
+                                ? t('login.unexpectedError')
                                 : t('login.unexpectedError')}
                         </span>
                         {details && !details.includes('rate limit') && (
