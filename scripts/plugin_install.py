@@ -240,36 +240,44 @@ def install_nav_card(manifest: dict):
 
 
 def install_translations(plugin_dir: Path, plugin_name: str):
+    marker = f"// ── Plugin: {plugin_name}"
+    pending: list[tuple[Path, str]] = []  # (dst, patched_content) — built before any write
+
     for lang in ("en", "es"):
         src = plugin_dir / "translations" / f"{lang}.ts"
         if not src.exists():
-            print(f"  [WARN] translations/{lang}.ts not found — skipping")
-            continue
+            print(f"  [ERROR] translations/{lang}.ts not found in plugin — both en.ts and es.ts are required.")
+            print(f"         Install aborted. Fix the plugin and re-run.")
+            sys.exit(1)
 
         dst = ROOT / f"frontend/lib/i18n/translations/{lang}.ts"
         snippet = src.read_text().strip()
+        log(f"MERGE  translations/{lang}.ts ← {plugin_name} namespace")
 
-        if not DRY_RUN:
-            target_src = dst.read_text()
-            marker = f"// ── Plugin: {plugin_name}"
-            if marker in target_src:
-                print(f"  [SKIP] {lang}.ts already contains plugin namespace — remove manually to re-inject")
-                continue
+        if DRY_RUN:
+            continue
 
-            # Inject before the closing `} as const;`
-            injected = (
-                f"\n\n  {marker} {'─' * max(0, 38 - len(plugin_name))}\n"
-                f"  {snippet.rstrip(',')},\n"
-            )
-            patched = re.sub(r"\n\} as const;", injected + "\n} as const;", target_src)
-            if patched == target_src:
-                print(f"  [WARN] Could not find '}} as const;' in {lang}.ts — manual merge required")
-                print(f"         Add to {lang}.ts:\n{injected}")
-            else:
-                log(f"MERGE  translations/{lang}.ts ← {plugin_name} namespace")
-                dst.write_text(patched)
-        else:
-            log(f"MERGE  translations/{lang}.ts ← {plugin_name} namespace")
+        target_src = dst.read_text()
+
+        if marker in target_src:
+            print(f"  [SKIP] {lang}.ts already contains plugin namespace — remove manually to re-inject")
+            continue
+
+        injected = (
+            f"\n\n  {marker} {'─' * max(0, 38 - len(plugin_name))}\n"
+            f"  {snippet.rstrip(',')},\n"
+        )
+        patched = re.sub(r"\n\} as const;", injected + "\n} as const;", target_src)
+        if patched == target_src:
+            print(f"  [ERROR] Could not find '}} as const;' anchor in {lang}.ts — merge failed.")
+            print(f"         Install aborted. No files were written. Check the translation file structure.")
+            sys.exit(1)
+
+        pending.append((dst, patched))
+
+    # All languages validated — now write atomically
+    for dst, patched in pending:
+        dst.write_text(patched)
 
 
 # ── Post-install guidance ─────────────────────────────────────────────────────
