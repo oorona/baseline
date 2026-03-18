@@ -1491,9 +1491,25 @@ class APIClient {
     }
 
     // ── Generic helpers ────────────────────────────────────────────────────
+    // Use these in plugin pages — do NOT add named methods to this file.
+
+    async get<T = unknown>(path: string, params?: Record<string, unknown>): Promise<T> {
+        const response = await this.client.get(path, { params });
+        return response.data as T;
+    }
 
     async post<T = unknown>(path: string, data?: unknown): Promise<T> {
         const response = await this.client.post(path, data);
+        return response.data as T;
+    }
+
+    async put<T = unknown>(path: string, data?: unknown): Promise<T> {
+        const response = await this.client.put(path, data);
+        return response.data as T;
+    }
+
+    async delete<T = unknown>(path: string): Promise<T> {
+        const response = await this.client.delete(path);
         return response.data as T;
     }
 }

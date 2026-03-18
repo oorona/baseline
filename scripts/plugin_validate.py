@@ -319,6 +319,18 @@ def validate_frontend(page_path: Path):
     if not ERRORS:
         ok("No hardcoded colors detected")
 
+    # API call patterns — must use apiClient, not raw fetch/axios
+    if re.search(r"\bfetch\s*\(", src):
+        err(
+            "Raw fetch() call detected — use apiClient.get/post/put/delete() instead. "
+            "Raw fetch bypasses the auth interceptor and will fail on 401/403."
+        )
+    if re.search(r"\baxios\s*\.\s*(get|post|put|delete|patch)\s*\(", src):
+        err(
+            "Direct axios call detected — use apiClient.get/post/put/delete() instead. "
+            "Direct axios calls bypass the auth interceptor."
+        )
+
     # Bare 'use client' safety check
     if "'use client'" not in src and '"use client"' not in src:
         warn("No 'use client' directive — dashboard pages are almost always client components")

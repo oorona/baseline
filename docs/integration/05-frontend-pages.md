@@ -79,7 +79,7 @@ function MusicPage() {
 
     useEffect(() => {
         if (!guildId) return;
-        apiClient.getMusicSettings(guildId)
+        apiClient.get(`/guilds/${guildId}/music`)
             .then(setSettings)
             .catch(console.error)
             .finally(() => setLoading(false));
@@ -104,25 +104,27 @@ function MusicPage() {
 export default withPermission(MusicPage, PermissionLevel.AUTHORIZED);
 ```
 
-## Step 2: Add API Client Methods
+## Step 2: Making API Calls from Plugin Pages
 
-Update `frontend/app/api-client.ts`:
+Use the generic methods on `apiClient` — **do not add named methods to `api-client.ts`**, that file is core infrastructure:
 
 ```typescript
-class APIClient {
-    // ... existing methods ...
+import { apiClient } from '@/app/api-client';
 
-    async getMusicSettings(guildId: string) {
-        const response = await this.client.get(`/guilds/${guildId}/music`);
-        return response.data;
-    }
+// GET
+const data = await apiClient.get(`/guilds/${guildId}/myplugin/settings`);
 
-    async saveMusicSettings(guildId: string, data: any) {
-        const response = await this.client.post(`/guilds/${guildId}/music`, data);
-        return response.data;
-    }
-}
+// POST
+await apiClient.post(`/guilds/${guildId}/myplugin/settings`, { key: value });
+
+// PUT
+await apiClient.put(`/guilds/${guildId}/myplugin/item/123`, payload);
+
+// DELETE
+await apiClient.delete(`/guilds/${guildId}/myplugin/item/123`);
 ```
+
+All four methods route through the shared auth interceptor (Bearer token + 401/403 handling). Never use raw `fetch()` or `axios` directly — the validator will reject them.
 
 ## Step 3: Register the Navigation Card
 
@@ -192,7 +194,7 @@ function MusicSettingsPage() {
         setSaving(true);
         setMessage(null);
         try {
-            await apiClient.saveMusicSettings(guildId, { volume });
+            await apiClient.post(`/guilds/${guildId}/music`, { volume });
             setMessage('Settings saved!');
         } catch {
             setMessage('Failed to save settings.');
@@ -249,7 +251,7 @@ export default withPermission(MusicSettingsPage, PermissionLevel.AUTHORIZED);
 useEffect(() => {
     if (!guildId) return;
     const id = setInterval(() => {
-        apiClient.getMusicSettings(guildId).then(setSettings).catch(() => {});
+        apiClient.get(`/guilds/${guildId}/music`).then(setSettings).catch(() => {});
     }, 30000);
     return () => clearInterval(id);
 }, [guildId]);
