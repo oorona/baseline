@@ -117,14 +117,11 @@ def install_models(plugin_dir: Path, plugin_name: str):
     target = ROOT / "backend/app/models.py"
     content = src.read_text().strip()
 
-    # Strip import lines from the snippet — they likely duplicate what's in models.py
-    body_lines = [
-        line for line in content.splitlines()
-        if not (line.startswith("from ") or line.startswith("import "))
-    ]
-    body = "\n".join(body_lines).strip()
+    # Keep all content including imports. Aliased imports (import X as Y) and
+    # imports of plugin-specific names must not be stripped — doing so breaks
+    # any code that references those names. Python handles duplicate imports fine.
     separator = f"\n\n# ── Plugin: {plugin_name} {'─' * max(0, 40 - len(plugin_name))}\n"
-    append_to_file(target, separator + body + "\n", f"append {plugin_name} models")
+    append_to_file(target, separator + content + "\n", f"append {plugin_name} models")
 
 
 def install_migration(plugin_dir: Path, plugin_name: str):
