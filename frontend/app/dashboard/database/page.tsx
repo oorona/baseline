@@ -3,7 +3,8 @@
 import { useEffect, useState, useCallback, Component, ReactNode } from 'react';
 import {
   Database, RefreshCw, Play, CheckCircle2, XCircle, AlertTriangle,
-  ArrowUpCircle, Activity, Layers, TestTube2, Eye, EyeOff, ChevronDown, ChevronRight
+  ArrowUpCircle, Activity, Layers, TestTube2, Eye, EyeOff, ChevronDown, ChevronRight,
+  Puzzle
 } from 'lucide-react';
 import { apiClient } from '@/app/api-client';
 import { withPermission } from '@/lib/components/with-permission';
@@ -48,6 +49,15 @@ class PageErrorBoundary extends Component<{ children: ReactNode }, EBState> {
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+interface PluginMigrationEntry {
+  plugin: string;
+  version: string;
+  description: string;
+  revisions: string[];
+  head_revision: string;
+  already_applied?: boolean;
+}
+
 interface DbInfo {
   framework_version: string;
   required_db_revision: string;
@@ -55,6 +65,7 @@ interface DbInfo {
   schema_match: boolean;
   upgrade_needed: boolean;
   revision_history: Record<string, string>;
+  plugin_migrations: PluginMigrationEntry[];
   postgres: {
     status: string;
     version?: string;
@@ -90,6 +101,7 @@ interface MigrationInfo {
   schema_up_to_date: boolean;
   changelog: ChangelogEntry[];
   pending_versions: ChangelogEntry[];
+  plugin_migrations: PluginMigrationEntry[];
 }
 
 interface ValidationResult {
@@ -148,7 +160,8 @@ function InfoRow({ label, value }: { label: string; value?: string | number | nu
 // Tabs
 // ---------------------------------------------------------------------------
 
-function OverviewTab({ info, onRefresh }: { info: DbInfo; onRefresh: () => void }) {
+function OverviewTab({ info, onRefresh: _ }: { info: DbInfo; onRefresh: () => void }) {
+  const plugin = info.plugin_migrations?.[0] ?? null;
   return (
     <div className="space-y-6">
       {/* Version status banner */}
@@ -252,6 +265,25 @@ function OverviewTab({ info, onRefresh }: { info: DbInfo; onRefresh: () => void 
             ))}
           </div>
         </div>
+
+        {/* Plugin */}
+        {plugin && (
+          <div className="bg-card border border-border rounded-xl p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-foreground flex items-center gap-2">
+                <Puzzle size={16} className="text-violet-400" />
+                Plugin — {plugin.plugin}
+              </h3>
+              {plugin.already_applied === true
+                ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-green-500/10 text-green-400 border border-green-500/20">Migration applied</span>
+                : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-amber-500/10 text-amber-400 border border-amber-500/20">Migration pending</span>
+              }
+            </div>
+            <InfoRow label="Version"       value={plugin.version} />
+            <InfoRow label="Head Revision" value={plugin.head_revision} />
+            <p className="text-xs text-muted-foreground mt-2">{plugin.description}</p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -426,7 +458,8 @@ function MigrationsTab() {
   if (loading) return <div className="text-muted-foreground text-sm py-8 text-center">Loading migration history…</div>;
   if (!data) return <div className="text-red-400 text-sm py-8 text-center">Failed to load migrations.</div>;
 
-  const needsUpgrade = !data.schema_up_to_date;
+  const pluginPending  = data.plugin_migrations?.some(p => !p.already_applied) ?? false;
+  const needsUpgrade   = !data.schema_up_to_date || pluginPending;
 
   return (
     <div className="space-y-6">
@@ -436,17 +469,19 @@ function MigrationsTab() {
           {needsUpgrade ? (
             <div className="flex items-center gap-2 text-amber-400">
               <AlertTriangle size={16} />
-              <span className="font-medium">Schema upgrade required</span>
+              <span className="font-medium">
+                {!data.schema_up_to_date ? 'Framework schema upgrade required' : 'Plugin migration pending'}
+              </span>
             </div>
           ) : (
             <div className="flex items-center gap-2 text-green-400">
               <CheckCircle2 size={16} />
-              <span className="font-medium">Database schema is current</span>
+              <span className="font-medium">All migrations applied</span>
             </div>
           )}
           <p className="text-xs text-muted-foreground mt-1">
             Current: <code className="font-mono">{data.current_revision ?? 'none'}</code>
-            {' '} · Head: <code className="font-mono">{data.head_revision}</code>
+            {' '} · Framework head: <code className="font-mono">{data.head_revision}</code>
           </p>
         </div>
 
@@ -457,7 +492,7 @@ function MigrationsTab() {
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-500 text-white hover:bg-amber-500/90 text-sm font-medium transition-colors disabled:opacity-50"
           >
             <ArrowUpCircle size={14} className={applying ? 'animate-bounce' : ''} />
-            {applying ? 'Applying…' : 'Apply Migrations (upgrade head)'}
+            {applying ? 'Applying…' : 'Apply All Pending Migrations'}
           </button>
         )}
       </div>
@@ -475,10 +510,11 @@ function MigrationsTab() {
         </div>
       )}
 
-      {/* Changelog */}
+      {/* Framework changelog */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-border">
-          <h3 className="font-semibold text-foreground">Migration Changelog</h3>
+        <div className="px-6 py-4 border-b border-border flex items-center gap-2">
+          <Layers size={15} className="text-indigo-400" />
+          <h3 className="font-semibold text-foreground">Framework Migrations</h3>
         </div>
         <div className="divide-y divide-border/50">
           {data.changelog.map((entry, idx) => (
@@ -506,6 +542,39 @@ function MigrationsTab() {
           )}
         </div>
       </div>
+
+      {/* Plugin migrations */}
+      {data.plugin_migrations?.length > 0 && (
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="px-6 py-4 border-b border-border flex items-center gap-2">
+            <Puzzle size={15} className="text-violet-400" />
+            <h3 className="font-semibold text-foreground">Plugin Migrations</h3>
+            <span className="text-xs text-muted-foreground ml-1">Independent of framework versioning</span>
+          </div>
+          <div className="divide-y divide-border/50">
+            {data.plugin_migrations.map((entry, idx) => (
+              <div key={idx} className="px-6 py-4">
+                <div className="flex items-center gap-3 mb-1 flex-wrap">
+                  <code className="text-xs font-mono font-semibold text-foreground">
+                    {entry.plugin} v{entry.version}
+                  </code>
+                  {entry.already_applied ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-green-500/10 text-green-400 border border-green-500/20">
+                      <CheckCircle2 size={10} /> Applied
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                      <AlertTriangle size={10} /> Pending
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">{entry.description}</p>
+                <p className="text-xs font-mono text-muted-foreground/60 mt-1">head: {entry.head_revision}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -671,6 +740,12 @@ function DatabaseManagementPage() {
           <StatusPill ok={info.postgres.status === 'connected'} label={`PostgreSQL: ${info.postgres.status}`} />
           <StatusPill ok={info.redis.status === 'connected'} label={`Redis: ${info.redis.status}`} />
           <StatusPill ok={info.schema_match} label={info.schema_match ? 'Schema: current' : 'Schema: upgrade needed'} />
+          {info.plugin_migrations?.length > 0 && (
+            <StatusPill
+              ok={info.plugin_migrations.every(p => p.already_applied !== false)}
+              label={info.plugin_migrations.every(p => p.already_applied !== false) ? 'Plugin: applied' : 'Plugin: migration pending'}
+            />
+          )}
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">
             <Layers size={11} />
             Framework {info.framework_version}

@@ -132,7 +132,7 @@ docker compose exec backend alembic revision --autogenerate -m "add_polls_table"
 docker compose exec backend alembic upgrade head
 ```
 
-Bump `FRAMEWORK_VERSION` and add to `MIGRATION_CHANGELOG` in `backend/app/core/version.py`.
+`install_plugin.sh` writes the plugin migration entry to `backend/migration_inventory.json` automatically. Only manual step: `docker compose exec backend alembic upgrade head`.
 
 → Full guide: [DEVELOPER_MANUAL.md §6](../DEVELOPER_MANUAL.md#6-database-architecture-and-extension-guide)
 

@@ -131,7 +131,47 @@ def install_migration(plugin_dir: Path, plugin_name: str):
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     dst = ROOT / f"backend/alembic/versions/{ts}_{plugin_name}.py"
     copy_file(src, dst)
-    print(f"  [!]  Migration installed → run: cd backend && alembic upgrade head")
+    print(f"  [!]  Migration installed → run: alembic upgrade head")
+    _register_plugin_in_inventory(src, plugin_name, plugin_dir)
+
+
+def _register_plugin_in_inventory(migration_src: Path, plugin_name: str, plugin_dir: Path):
+    """Write the plugin migration entry into backend/migration_inventory.json."""
+    import re as _re
+
+    # Extract revision ID from the migration file
+    migration_text = migration_src.read_text()
+    m = _re.search(r"^revision(?:\s*:\s*str)?\s*=\s*['\"]([a-f0-9]+)['\"]", migration_text, _re.MULTILINE)
+    if not m:
+        print(f"  [WARN] Could not find revision ID in migration.py — add to migration_inventory.json manually")
+        return
+
+    revision_id    = m.group(1)
+    plugin_version = plugin_dir and json.loads((plugin_dir / "plugin.json").read_text()).get("version", "1.0.0")
+    description    = plugin_dir and json.loads((plugin_dir / "plugin.json").read_text()).get("description", f"{plugin_name} plugin tables")
+
+    inventory_path = ROOT / "backend/migration_inventory.json"
+    log(f"WRITE  backend/migration_inventory.json — register {plugin_name} plugin migration")
+
+    if DRY_RUN:
+        return
+
+    inventory = json.loads(inventory_path.read_text())
+
+    # Replace any existing entry for this plugin (re-install scenario)
+    inventory["plugin_migrations"] = [
+        e for e in inventory.get("plugin_migrations", [])
+        if e.get("plugin") != plugin_name
+    ]
+    inventory["plugin_migrations"].append({
+        "plugin":        plugin_name,
+        "version":       plugin_version,
+        "description":   description,
+        "revisions":     [revision_id],
+        "head_revision": revision_id,
+    })
+
+    inventory_path.write_text(json.dumps(inventory, indent=2) + "\n")
 
 
 def install_frontend(plugin_dir: Path, plugin_name: str):
@@ -239,10 +279,10 @@ def print_manual_steps(manifest: dict, components: dict):
     steps = []
 
     if components.get("migration"):
-        steps.append("Run migrations:\n     cd backend && alembic upgrade head")
+        steps.append("Apply the database migration:\n     docker compose exec backend alembic upgrade head\n     (or: cd backend && alembic upgrade head)\n     The DB Management page will then show the plugin migration as applied.")
 
     if steps:
-        print(f"\nManual steps required:")
+        print(f"\nManual step required:")
         for i, step in enumerate(steps, 1):
             print(f"  {i}. {step}")
 

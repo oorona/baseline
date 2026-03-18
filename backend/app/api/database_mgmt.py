@@ -27,11 +27,13 @@ from app.models import DbMigrationHistory
 from app.core.version import (
     FRAMEWORK_VERSION,
     MIGRATION_CHANGELOG,
+    PLUGIN_MIGRATIONS,
     REQUIRED_DB_REVISION,
     _version_key,
     get_app_version_for_revision,
     get_changelog_entry,
     get_upgrade_path,
+    is_plugin_revision,
 )
 from app.core.config import settings
 from app.db.redis import get_redis
@@ -261,10 +263,17 @@ async def get_database_info(
         redis_status = {"status": "error", "error": str(exc)}
 
     # ── Version comparison ────────────────────────────────────────────────────
+    # schema_match: framework migrations are applied.  A plugin revision sitting
+    # on top of REQUIRED_DB_REVISION is still a match — plugins do not change
+    # the framework version.
     current_db_version = get_app_version_for_revision(current_revision)
-    schema_match       = current_revision == REQUIRED_DB_REVISION
-    upgrade_needed     = not schema_match and current_revision is not None
-    upgrade_path       = get_upgrade_path(current_revision) if upgrade_needed else []
+    framework_applied  = (
+        current_revision == REQUIRED_DB_REVISION
+        or is_plugin_revision(current_revision)
+    )
+    schema_match   = framework_applied
+    upgrade_needed = not framework_applied and current_revision is not None
+    upgrade_path   = get_upgrade_path(current_revision) if upgrade_needed else []
 
     revision_history = {
         entry["version"]: entry["head_revision"]
@@ -280,6 +289,7 @@ async def get_database_info(
         "upgrade_needed":       upgrade_needed,
         "upgrade_path":         upgrade_path,
         "revision_history":     revision_history,
+        "plugin_migrations":    PLUGIN_MIGRATIONS,
         "postgres":             pg_status,
         "redis":                redis_status,
     }
@@ -320,14 +330,23 @@ async def list_migrations(
 
     pending_versions = [e for e in upgrade_path if not e.get("already_applied")]
 
+    # Annotate plugin migrations with whether they've been applied.
+    # With a linear Alembic chain, the plugin migration is applied iff
+    # its head_revision is the current revision.
+    plugin_changelog = [
+        {**entry, "already_applied": entry["head_revision"] == current_revision}
+        for entry in PLUGIN_MIGRATIONS
+    ]
+
     return {
         "current_revision":   current_revision,
         "current_db_version": current_db_version,
         "framework_version":  FRAMEWORK_VERSION,
         "head_revision":      REQUIRED_DB_REVISION,
-        "schema_up_to_date":  current_revision == REQUIRED_DB_REVISION,
+        "schema_up_to_date":  current_revision == REQUIRED_DB_REVISION or is_plugin_revision(current_revision),
         "changelog":          changelog,
         "pending_versions":   pending_versions,
+        "plugin_migrations":  plugin_changelog,
     }
 
 
@@ -569,17 +588,24 @@ async def validate_database(
 
     # ── 3. Alembic version check ──────────────────────────────────────────────
     current_revision = await _get_alembic_current(db)
-    version_match    = current_revision == REQUIRED_DB_REVISION
+    # Pass if at exact framework revision OR at a known plugin revision
+    # (plugin migrations chain off REQUIRED_DB_REVISION, so its presence
+    # implies the framework schema was applied first).
+    framework_ok = (
+        current_revision == REQUIRED_DB_REVISION
+        or is_plugin_revision(current_revision)
+    )
+    plugin_suffix = " (+ plugin migrations)" if is_plugin_revision(current_revision) else ""
     results.append({
         "check":  "Alembic schema version",
-        "passed": version_match,
+        "passed": framework_ok,
         "detail": (
-            f"OK — revision {current_revision}"
-            if version_match
+            f"OK — framework revision {REQUIRED_DB_REVISION}{plugin_suffix}"
+            if framework_ok
             else f"Expected {REQUIRED_DB_REVISION}, got {current_revision}"
         ),
     })
-    if not version_match:
+    if not framework_ok:
         overall_pass = False
 
     # ── 4. Catalog / seeded row-count checks ─────────────────────────────────

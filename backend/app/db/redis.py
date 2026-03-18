@@ -22,7 +22,7 @@ async def get_redis():
     try:
         yield client
     finally:
-        await client.close()
+        await client.aclose()
 
 
 async def get_redis_optional():
@@ -35,4 +35,4 @@ async def get_redis_optional():
     try:
         yield client
     finally:
-        await client.close()
+        await client.aclose()

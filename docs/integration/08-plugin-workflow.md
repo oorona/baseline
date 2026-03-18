@@ -236,16 +236,21 @@ Pass `--strict` to promote warnings to errors (useful in CI):
 
 ## Step 3 — What the Installer Does
 
-**What the installer does:**
+**What the installer does automatically:**
 
 | Action | Result |
 |---|---|
 | Copies `cog.py` | `bot/cogs/event_logging.py` |
 | Copies `api.py` | `backend/app/api/event_logging.py` |
 | Patches `backend/main.py` | Adds `from app.api.event_logging import router ...` + `app.include_router(...)` |
+| Appends `models.py` | Appends model classes to `backend/app/models.py` |
+| Copies `migration.py` | `backend/alembic/versions/<timestamp>_event_logging.py` |
 | Copies `page.tsx` | `frontend/app/dashboard/[guildId]/event_logging/page.tsx` (dir created) |
+| Inserts nav card | Patches `frontend/app/page.tsx` with the card object + icon import |
 | Merges `translations/en.ts` | Injects `eventLogging: { ... }` into `frontend/lib/i18n/translations/en.ts` |
 | Merges `translations/es.ts` | Same for Spanish |
+
+> The nav card is auto-inserted using an anchor comment in `page.tsx`. If the anchor is missing the installer prints the card object to paste manually.
 
 ---
 
@@ -253,13 +258,21 @@ Pass `--strict` to promote warnings to errors (useful in CI):
 
 The installer prints these at the end, but they always apply:
 
-### 4a. If the plugin added database tables — run migrations
+### 4a. If the plugin added database tables — run the migration
 
 ```bash
 docker compose exec backend alembic upgrade head
 ```
 
-Also bump `FRAMEWORK_VERSION` and append to `MIGRATION_CHANGELOG` in `backend/app/core/version.py`.
+That's it. The installer already:
+- Copied the migration file to `backend/alembic/versions/`
+- Read the revision ID from `migration.py` and wrote a plugin entry to `backend/migration_inventory.json`
+
+After `alembic upgrade head`, the DB Management page will show the plugin migration as **Applied**.
+
+> **Never edit `version.py`** — it is pure logic and contains no hardcoded data.
+> All version data lives in `backend/migration_inventory.json`.
+> For framework releases (not plugin work), a developer bumps `framework_version` and appends to `framework_migrations` in that JSON file.
 
 ---
 

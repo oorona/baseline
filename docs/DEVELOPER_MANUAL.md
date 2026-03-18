@@ -648,38 +648,34 @@ def downgrade() -> None:
     op.drop_table("tickets")
 ```
 
-#### Step 3 — Register the new version in `version.py`
+#### Step 3 — Register the new version in `migration_inventory.json`
 
-Open `backend/app/core/version.py` and make three changes:
+Open `backend/migration_inventory.json` — this is the single source of truth for all version data. `version.py` is read-only logic that loads from it; never edit `version.py` directly.
 
-```python
-# 1. Bump the framework version
-FRAMEWORK_VERSION: str = "1.1.0"
+Make two changes:
 
-# 2. Add the new version → revision mapping
-VERSION_REVISIONS: dict[str, str] = {
-    "1.0.0": "c8d4e5f6a7b9",
-    "1.1.0": "a1b2c3d4e5f6",   # ← your new revision ID
+```json
+{
+  "framework_version": "1.1.0",
+  "framework_migrations": [
+    {
+      "version": "1.0.0",
+      "description": "Initial schema — users, guilds, permissions, audit log, LLM tracking, app config",
+      "revisions": ["c8d4e5f6a7b9"],
+      "head_revision": "c8d4e5f6a7b9"
+    },
+    {
+      "version": "1.1.0",
+      "description": "Add my_feature table",
+      "revisions": ["a1b2c3d4e5f6"],
+      "head_revision": "a1b2c3d4e5f6"
+    }
+  ],
+  "plugin_migrations": []
 }
-
-# 3. Append an entry to MIGRATION_CHANGELOG (keep chronological order)
-MIGRATION_CHANGELOG: list[dict] = [
-    {
-        "version":       "1.0.0",
-        "description":   "Initial schema — users, guilds, permissions, audit log, LLM tracking, app config",
-        "revisions":     ["c8d4e5f6a7b9"],
-        "head_revision": "c8d4e5f6a7b9",
-    },
-    {
-        "version":       "1.1.0",
-        "description":   "Add my_feature table",
-        "revisions":     ["a1b2c3d4e5f6"],
-        "head_revision": "a1b2c3d4e5f6",
-    },
-]
 ```
 
-Once committed, the **Database Management** page in the admin dashboard will automatically detect that the live database is behind, display the upgrade path version-by-version, and allow the operator to apply the new migration through the UI or via `alembic upgrade head`.
+Once committed, the **Database Management** page will automatically detect that the live database is behind, display the upgrade path version-by-version, and allow the operator to apply the migration through the UI or via `alembic upgrade head`.
 
 #### Step 4 — Use the model in your endpoint
 
@@ -710,9 +706,9 @@ async def list_tickets(
 | **Never edit an existing migration file** | Other deployments may already have applied it; changing it breaks their `alembic_version` checksum |
 | **Never hardcode schema names** in migrations | `search_path` is set by `alembic/env.py`; unqualified names always resolve correctly |
 | **Never create objects in `public`** | `REVOKE CREATE ON SCHEMA public` is enforced at the Postgres role level |
-| **Always bump `FRAMEWORK_VERSION`** when adding migrations | Required for the DB Management UI to show the upgrade path correctly |
-| **Always add to `MIGRATION_CHANGELOG`** | Required for version-aware upgrades |
-| **One `MIGRATION_CHANGELOG` list for all features** | Framework tables and extension tables share the same `alembic_version` tracking |
+| **Always bump `FRAMEWORK_VERSION`** when adding framework migrations | Required for the DB Management UI to show the framework upgrade path correctly |
+| **Always add to `MIGRATION_CHANGELOG`** for framework changes | Required for version-aware framework upgrades |
+| **Never edit `version.py`** — it is read-only logic | All version data lives in `backend/migration_inventory.json`; plugins write it automatically, framework releases update it manually |
 
 ---
 

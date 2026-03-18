@@ -66,7 +66,7 @@ The validator enforces all five golden rules automatically and will reject code 
 - [ ] **Frontend**: export page as `withPermission(Page, PermissionLevel.X)`
 - [ ] **Frontend**: add a navigation card in `frontend/app/page.tsx` if the feature needs its own page
 - [ ] **i18n**: add all user-visible strings to `en.ts` **and** `es.ts` — never hardcode text
-- [ ] **DB**: if adding tables, `alembic revision --autogenerate`, add RLS block if guild-scoped, bump `FRAMEWORK_VERSION` in `version.py`, append to `MIGRATION_CHANGELOG`
+- [ ] **DB**: if adding tables, `alembic revision --autogenerate`, add RLS block if guild-scoped — `install_plugin.sh` writes the migration entry to `backend/migration_inventory.json` automatically; only manual step is `alembic upgrade head`
 
 ## Bot Service Access Patterns
 

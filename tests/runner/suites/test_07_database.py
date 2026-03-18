@@ -179,6 +179,18 @@ class TestDatabaseInfo:
                 f"revision_history[{version!r}] is empty or not a string: {revision!r}"
             )
 
+    def test_info_has_plugin_migrations(self):
+        """plugin_migrations must be present and be a list.
+        Empty on a baseline deployment with no plugin installed."""
+        r, _ = _get("/info", _auth())
+        data = r.json()
+        assert "plugin_migrations" in data, (
+            f"Missing 'plugin_migrations' in /database/info response: {list(data.keys())}"
+        )
+        assert isinstance(data["plugin_migrations"], list), (
+            f"plugin_migrations must be a list, got {type(data['plugin_migrations'])}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # 3 — Migration changelog (authenticated)
@@ -259,6 +271,25 @@ class TestDatabaseMigrations:
         assert "1.0.0" in versions, (
             f"Initial version '1.0.0' not in changelog: {versions}"
         )
+
+    def test_migrations_has_plugin_migrations(self):
+        """plugin_migrations must be present and be a list.
+        Empty on a baseline deployment with no plugin installed.
+        When a plugin is installed, each entry must have the required shape."""
+        r, _ = _get("/migrations", _auth())
+        data = r.json()
+        assert "plugin_migrations" in data, (
+            f"Missing 'plugin_migrations' in /database/migrations response: {list(data.keys())}"
+        )
+        assert isinstance(data["plugin_migrations"], list), (
+            f"plugin_migrations must be a list, got {type(data['plugin_migrations'])}"
+        )
+        for entry in data["plugin_migrations"]:
+            for field in ("plugin", "version", "description", "revisions",
+                          "head_revision", "already_applied"):
+                assert field in entry, (
+                    f"plugin_migrations entry missing field '{field}': {entry}"
+                )
 
 
 # ---------------------------------------------------------------------------

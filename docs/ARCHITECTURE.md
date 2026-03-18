@@ -350,7 +350,7 @@ export default withPermission(WarningsPage, PermissionLevel.AUTHORIZED);
 | **Models** | `backend/app/models.py` | Add database models |
 | **Schemas** | `backend/app/schemas.py` | Add Pydantic validation schemas |
 | **Migrations** | `backend/alembic/versions/` | Add DB migrations (auto-generate with alembic) |
-| **Version tracking** | `backend/app/core/version.py` | Bump `FRAMEWORK_VERSION`, update `MIGRATION_CHANGELOG` |
+| **Migration inventory** | `backend/migration_inventory.json` | Single source of truth for all version data; written by `install_plugin.sh` (plugins) and developers (framework releases) |
 
 ### Frontend Extensions
 

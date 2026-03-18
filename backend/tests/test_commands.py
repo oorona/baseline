@@ -290,7 +290,9 @@ async def test_refresh_commands_success():
 
     mock_redis = AsyncMock()
     mock_db = AsyncMock()
-    mock_db.execute.return_value.fetchall.return_value = []
+    mock_db_result = MagicMock()
+    mock_db_result.fetchall.return_value = []
+    mock_db.execute.return_value = mock_db_result
     mock_admin_user = {"user_id": "999", "username": "admin"}
 
     with patch("app.api.commands._fetch_discord_commands", return_value=discord_payload):
@@ -338,7 +340,9 @@ async def test_refresh_commands_no_cogs_is_success():
 
     mock_redis = AsyncMock()
     mock_db = AsyncMock()
-    mock_db.execute.return_value.fetchall.return_value = []
+    mock_db_result = MagicMock()
+    mock_db_result.fetchall.return_value = []
+    mock_db.execute.return_value = mock_db_result
     mock_admin_user = {"user_id": "999"}
 
     with patch("app.api.commands._fetch_discord_commands", return_value=[]):

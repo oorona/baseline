@@ -41,7 +41,7 @@ When a plugin requires sophisticated data persistence beyond simple key-value `S
     *   Must use the core framework `Base` model.
     *   Must inherit from `GuildScopedMixin` if the data belongs to a specific Discord server.
     *   New database tables must be delivered via incremental Alembic migrations (`alembic revision --autogenerate`), NEVER by modifying existing baseline core migrations.
-    *   The framework schema version in `version.py` must be updated, appending to the `MIGRATION_CHANGELOG`.
+    *   After install, run `alembic upgrade head`. The installer automatically writes the plugin migration entry to `backend/migration_inventory.json` — no edits to `version.py` or any Python file required. `version.py` is read-only logic; all version data lives in the inventory file.
 
 ---
 
