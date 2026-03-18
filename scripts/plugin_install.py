@@ -10,6 +10,7 @@ Usage:
     python scripts/plugin_install.py plugins/<plugin_name> --force   # skip validator
 """
 
+import itertools
 import json
 import re
 import shutil
@@ -251,7 +252,11 @@ def install_translations(plugin_dir: Path, plugin_name: str):
             sys.exit(1)
 
         dst = ROOT / f"frontend/lib/i18n/translations/{lang}.ts"
-        snippet = src.read_text().strip()
+        # Strip leading comment lines — they are guidance for the plugin developer,
+        # not content that belongs in the project's translation files.
+        raw_lines = src.read_text().strip().splitlines()
+        code_lines = list(itertools.dropwhile(lambda l: l.strip().startswith("//"), raw_lines))
+        snippet = "\n".join(code_lines).strip()
         log(f"MERGE  translations/{lang}.ts ← {plugin_name} namespace")
 
         if DRY_RUN:
