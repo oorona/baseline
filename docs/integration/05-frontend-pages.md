@@ -127,6 +127,18 @@ await apiClient.put<void>(`/guilds/${guildId}/myplugin/items/123`, payload);
 await apiClient.delete<void>(`/guilds/${guildId}/myplugin/items/123`);
 ```
 
+> **The base URL already includes `/api/v1`.** Do NOT write `/api/v1/guilds/...` — that produces a double-prefix (`/api/v1/api/v1/guilds/...`) and every request will 404.
+>
+> ```typescript
+> // ✅ Correct
+> apiClient.get<T>(`/guilds/${guildId}/myplugin/settings`)
+>
+> // ❌ Wrong — double /api/v1/
+> apiClient.get<T>(`/api/v1/guilds/${guildId}/myplugin/settings`)
+> ```
+>
+> The validator will reject any path starting with `/api/`.
+
 All four methods route through the shared auth interceptor (Bearer token + 401/403 handling). Never use raw `fetch()` or `axios` directly — the validator will reject them. Untyped calls (no `<T>`) will also be rejected by the validator.
 
 ## Step 3: Register the Navigation Card

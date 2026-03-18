@@ -102,6 +102,39 @@ async def setup(bot):
 
 > The `SETTINGS_SCHEMA` is the only thing needed to get a settings form in the dashboard — no frontend code required for simple configuration.
 
+**`SETTINGS_SCHEMA` required structure:**
+
+```python
+SETTINGS_SCHEMA = {
+    "id": "my_plugin",       # REQUIRED — must be a unique snake_case identifier
+    "label": "My Plugin",    # REQUIRED — displayed as the section heading
+    "fields": [              # REQUIRED — list of field dicts (may be empty)
+        {
+            "key":     "field_name",   # snake_case key stored in guild settings JSON
+            "type":    "boolean",      # see valid types below
+            "label":   "Display Name", # shown next to the input
+            "default": False,          # optional — used when key is absent
+        },
+    ],
+}
+```
+
+**Valid `type` values — only these are supported:**
+
+| Type | Renders as |
+|---|---|
+| `boolean` | Toggle switch (on/off) |
+| `text` | Single-line text input |
+| `number` | Numeric input |
+| `channel_select` | Dropdown of the guild's channels |
+| `multiselect` | Multi-value selection list |
+
+> **Common mistakes the validator will reject:**
+> - `"integer"` → use `"number"`
+> - `"string"` → use `"text"`
+> - `"bool"` → use `"boolean"`
+> - Missing `"id"`, `"label"`, or `"fields"` keys at the top level
+
 ### `api.py` → `backend/app/api/<name>.py`
 
 REST endpoints for reading/writing plugin data. Key rules:
@@ -318,6 +351,33 @@ After generation, always run `plugin_validate.py` before installing.
 | `Page not wrapped with withPermission()` | Change `export default function Page` to `export default withPermission(Page, PermissionLevel.X)` |
 | `Hardcoded hex color in className` | Replace `#3b82f6` with `text-primary` or other semantic token |
 | `translations/es.ts missing` | Create the file mirroring `en.ts` with translated values |
+| `Non-idempotent CREATE TYPE detected` | Wrap enum creation in a `DO $$ BEGIN IF NOT EXISTS ... END $$;` guard (see below) |
+| `SETTINGS_SCHEMA field type 'integer'` | Use `"number"` — valid types: `boolean`, `text`, `number`, `channel_select`, `multiselect` |
+| `SETTINGS_SCHEMA field type 'string'` | Use `"text"` — `"string"` is not a valid field type |
+| `SETTINGS_SCHEMA missing required key 'id'` | Top-level schema must have `"id"`, `"label"`, and `"fields"` keys |
+| `apiClient path starts with /api/` | Remove the prefix — `apiClient` base URL already includes `/api/v1`. Use `/guilds/${guildId}/...` |
+
+### Safe CREATE TYPE pattern
+
+`CREATE TYPE ... AS ENUM` fails on retry if the type already exists (e.g. after a partial migration). Always guard it:
+
+```python
+def upgrade():
+    op.execute("""
+        DO $$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ticketstatus') THEN
+                CREATE TYPE ticketstatus AS ENUM ('OPEN', 'CLOSED');
+            END IF;
+        END $$;
+    """)
+    op.create_table('tickets', ...)
+
+def downgrade():
+    op.drop_table('tickets')
+    op.execute("DROP TYPE IF EXISTS ticketstatus")
+```
+
+The validator rejects any `CREATE TYPE ... AS ENUM` not wrapped in a `DO $$` or `IF NOT EXISTS` guard.
 
 ---
 

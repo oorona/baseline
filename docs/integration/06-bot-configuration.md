@@ -80,6 +80,55 @@ class MyCog(commands.Cog):
 
 Best for: Per-server configuration that users can change
 
+### `SETTINGS_SCHEMA` — Auto-Generated Settings Form
+
+Declare `SETTINGS_SCHEMA` as a class attribute on your cog. The dashboard Settings page reads it and renders the form automatically — no frontend code needed.
+
+```python
+class MyCog(commands.Cog):
+    SETTINGS_SCHEMA = {
+        "id":    "my_plugin",   # unique snake_case identifier
+        "label": "My Plugin",   # section heading in the Settings page
+        "fields": [
+            {
+                "key":     "enabled",
+                "type":    "boolean",
+                "label":   "Enable feature",
+                "default": False,
+            },
+            {
+                "key":   "log_channel_id",
+                "type":  "channel_select",
+                "label": "Log channel",
+            },
+            {
+                "key":     "welcome_message",
+                "type":    "text",
+                "label":   "Welcome message",
+                "default": "Welcome!",
+            },
+            {
+                "key":     "max_warnings",
+                "type":    "number",
+                "label":   "Maximum warnings before ban",
+                "default": 3,
+            },
+        ],
+    }
+```
+
+**Valid `type` values:**
+
+| Type | Renders as |
+|---|---|
+| `boolean` | Toggle switch |
+| `text` | Single-line text input |
+| `number` | Numeric input |
+| `channel_select` | Dropdown of guild channels |
+| `multiselect` | Multi-value selection list |
+
+> **Do not use `"string"`, `"integer"`, `"bool"`, etc.** — those are not valid types and the validator will reject them.
+
 ```python
 import structlog
 

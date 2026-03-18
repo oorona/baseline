@@ -175,6 +175,7 @@ def validate_cog(cog_path: Path):
         )
     elif "SETTINGS_SCHEMA" in src:
         ok("SETTINGS_SCHEMA declared")
+        _validate_settings_schema_in_cog(tree)
 
     # setup() entrypoint
     if "async def setup(" not in src:
@@ -199,6 +200,58 @@ def _decorator_has_kwarg(decorator, kwarg: str) -> bool:
     if isinstance(decorator, ast.Call):
         return any(kw.arg == kwarg for kw in decorator.keywords)
     return False
+
+
+_VALID_FIELD_TYPES = {"boolean", "channel_select", "multiselect", "text", "number"}
+
+
+def _validate_settings_schema_in_cog(tree: ast.AST):
+    """Validate SETTINGS_SCHEMA structure and field types via AST."""
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        targets = [t for t in node.targets if isinstance(t, ast.Name) and t.id == "SETTINGS_SCHEMA"]
+        if not targets:
+            continue
+
+        schema = node.value
+        if not isinstance(schema, ast.Dict):
+            warn("SETTINGS_SCHEMA is not a dict literal — cannot validate structure")
+            return
+
+        top_keys = {
+            k.value for k in schema.keys
+            if isinstance(k, ast.Constant) and isinstance(k.value, str)
+        }
+
+        for required in ("id", "label", "fields"):
+            if required not in top_keys:
+                err(
+                    f"SETTINGS_SCHEMA missing required key '{required}' — "
+                    "structure must be: {\"id\": \"...\", \"label\": \"...\", \"fields\": [...]}"
+                )
+
+        # Validate field types
+        for key, value in zip(schema.keys, schema.values):
+            if not (isinstance(key, ast.Constant) and key.value == "fields"):
+                continue
+            if not isinstance(value, ast.List):
+                warn("SETTINGS_SCHEMA 'fields' should be a list of dicts")
+                continue
+            for item in value.elts:
+                if not isinstance(item, ast.Dict):
+                    continue
+                for fk, fv in zip(item.keys, item.values):
+                    if not (isinstance(fk, ast.Constant) and fk.value == "type"):
+                        continue
+                    if isinstance(fv, ast.Constant) and isinstance(fv.value, str):
+                        ftype = fv.value
+                        if ftype not in _VALID_FIELD_TYPES:
+                            err(
+                                f"SETTINGS_SCHEMA field type '{ftype}' is invalid. "
+                                f"Valid types: {', '.join(sorted(_VALID_FIELD_TYPES))}"
+                            )
+        return  # only validate the first SETTINGS_SCHEMA found
 
 
 # ── API Router ────────────────────────────────────────────────────────────────
@@ -320,6 +373,12 @@ def validate_frontend(page_path: Path):
         ok("No hardcoded colors detected")
 
     # API call patterns — must use apiClient, not raw fetch/axios
+    if re.search(r"""apiClient\.\w+\s*(?:<[^>]*>)?\s*\(\s*['\"`]/api/""", src):
+        err(
+            "apiClient path starts with /api/ — the base URL already includes /api/v1. "
+            "Use paths relative to the base: apiClient.get('/guilds/${guildId}/...')"
+        )
+
     if re.search(r"\bfetch\s*\(", src):
         err(
             "Raw fetch() call detected — use apiClient.get/post/put/delete() instead. "
@@ -394,6 +453,32 @@ def _to_camel_case(snake: str) -> str:
     return parts[0] + "".join(p.capitalize() for p in parts[1:])
 
 
+# ── Migration ────────────────────────────────────────────────────────────────
+
+def _validate_migration(migration_path: Path):
+    print("\n[migration.py]")
+    src = migration_path.read_text()
+
+    # revision ID must be present so the installer can register it
+    if not re.search(r"^revision(?:\s*:\s*str)?\s*=\s*['\"][a-f0-9]+['\"]", src, re.MULTILINE):
+        err("No revision ID found — migration.py must define: revision = 'abcdef123456'")
+    else:
+        ok("revision ID present")
+
+    # CREATE TYPE without IF NOT EXISTS / DO $$ guard is not idempotent —
+    # if the migration fails mid-run and is retried, the type already exists.
+    unsafe = re.findall(r"CREATE\s+TYPE\s+\w+\s+AS\s+ENUM", src, re.IGNORECASE)
+    safe   = re.findall(r"IF\s+NOT\s+EXISTS|DO\s+\$\$", src, re.IGNORECASE)
+    if unsafe and not safe:
+        err(
+            f"Non-idempotent CREATE TYPE detected ({len(unsafe)} occurrence(s)). "
+            "Wrap in a DO $$ BEGIN IF NOT EXISTS ... END $$; block so retries do not fail. "
+            "See docs/integration/08-plugin-workflow.md for the safe pattern."
+        )
+    elif unsafe:
+        ok("CREATE TYPE uses idempotent guard")
+
+
 # ── Undeclared file detection ─────────────────────────────────────────────────
 
 def check_undeclared_files(plugin_dir: Path, components: dict):
@@ -464,6 +549,7 @@ def main():
             err("migration.py declared in components but file not found")
         else:
             ok("migration.py present")
+            _validate_migration(p)
 
     if components.get("frontend"):
         p = plugin_dir / "page.tsx"
