@@ -160,6 +160,25 @@ class TestDatabaseInfo:
             f"run --rm test-runner  after applying migrations."
         )
 
+    def test_info_has_revision_history(self):
+        """revision_history must be present — the frontend Overview tab uses it to
+        render the Framework ↔ DB Version History panel.  A missing key causes a
+        client-side crash (Object.entries(undefined) throws TypeError)."""
+        r, _ = _get("/info", _auth())
+        data = r.json()
+        assert "revision_history" in data, (
+            f"Missing 'revision_history' in /database/info response: {list(data.keys())}"
+        )
+        rh = data["revision_history"]
+        assert isinstance(rh, dict), f"revision_history must be a dict, got {type(rh)}"
+        assert len(rh) >= 1, "revision_history must contain at least one version entry"
+        # Values should be revision strings (non-empty)
+        for version, revision in rh.items():
+            assert isinstance(version, str) and version, f"Invalid version key: {version!r}"
+            assert isinstance(revision, str) and revision, (
+                f"revision_history[{version!r}] is empty or not a string: {revision!r}"
+            )
+
 
 # ---------------------------------------------------------------------------
 # 3 — Migration changelog (authenticated)
@@ -202,6 +221,20 @@ class TestDatabaseMigrations:
         data = r.json()
         assert "schema_up_to_date" in data, f"Missing 'schema_up_to_date': {data}"
         assert isinstance(data["schema_up_to_date"], bool)
+
+    def test_migrations_does_not_have_stale_field_history(self):
+        """'history' was a wrong field name that caused .map() crash — must not appear."""
+        r, _ = _get("/migrations", _auth())
+        assert "history" not in r.json(), (
+            "'history' must not be in /database/migrations (correct field is 'changelog')"
+        )
+
+    def test_migrations_does_not_have_stale_field_needs_upgrade(self):
+        """'needs_upgrade' was a wrong field name — must not appear."""
+        r, _ = _get("/migrations", _auth())
+        assert "needs_upgrade" not in r.json(), (
+            "'needs_upgrade' must not be in /database/migrations (correct field is 'schema_up_to_date')"
+        )
 
     def test_migrations_schema_up_to_date_on_fresh_deployment(self):
         """After a complete migration, schema_up_to_date must be True."""

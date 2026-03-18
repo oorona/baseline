@@ -40,11 +40,12 @@ export function usePermissions(guildId?: string) {
         if (!guild) return PermissionLevel.PUBLIC;
 
         // Map backend string to Level
-        // Backend returns: "owner", "ADMIN", "USER", "LEVEL_2"
+        // Backend returns: "owner", "administrator", "ADMIN", "USER", "LEVEL_2"
         const pLevel = (guild as any).permission_level;
 
         if (pLevel === 'owner') return PermissionLevel.OWNER;
-        if (pLevel === 'admin' || pLevel === 'ADMIN') return PermissionLevel.AUTHORIZED;
+        if (pLevel === 'administrator') return PermissionLevel.ADMINISTRATOR;
+        if (pLevel === 'admin' || pLevel === 'ADMIN') return PermissionLevel.ADMINISTRATOR;
         if (pLevel === 'user' || pLevel === 'USER') return PermissionLevel.USER;
         if (pLevel === 'level_2' || pLevel === 'LEVEL_2') return PermissionLevel.USER;
 

@@ -266,6 +266,11 @@ async def get_database_info(
     upgrade_needed     = not schema_match and current_revision is not None
     upgrade_path       = get_upgrade_path(current_revision) if upgrade_needed else []
 
+    revision_history = {
+        entry["version"]: entry["head_revision"]
+        for entry in MIGRATION_CHANGELOG
+    }
+
     return {
         "framework_version":    FRAMEWORK_VERSION,
         "current_db_version":   current_db_version,
@@ -274,6 +279,7 @@ async def get_database_info(
         "schema_match":         schema_match,
         "upgrade_needed":       upgrade_needed,
         "upgrade_path":         upgrade_path,
+        "revision_history":     revision_history,
         "postgres":             pg_status,
         "redis":                redis_status,
     }

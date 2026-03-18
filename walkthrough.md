@@ -32,7 +32,7 @@ Traffic flows: `Internet → nginx → Backend ← Bot / Frontend (intranet)`
 - PostgreSQL with **Row-Level Security** — guild data is strictly isolated
 - Guild sync: bot registers guilds in the database on join/leave
 - Audit log for every settings mutation
-- 6-tier permission model (L0 Public → L5 Developer)
+- 7-tier permission model (L0 Public → L6 Developer)
 - Full Gemini AI API surface (text, images, TTS, embeddings, RAG, function calling, caching)
 - LLM usage tracking per guild and per user
 

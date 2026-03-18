@@ -133,7 +133,7 @@ Query params: `limit`, `offset`, `action` (filter by action type)
 
 ## Config — `/api/v1/config`
 
-Platform-level configuration. **L5 Developer access required** for write operations.
+Platform-level configuration. **L6 Developer access required** for write operations.
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -150,7 +150,7 @@ Platform-level configuration. **L5 Developer access required** for write operati
 
 ## Database Management — `/api/v1/database`
 
-**L5 Developer access required** for all write operations.
+**L6 Developer access required** for all write operations.
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -291,22 +291,22 @@ All frontend routes are served by Next.js from `/dashboard/`:
 | `/` | Public | Home / landing page |
 | `/dashboard` | L2 User | Dashboard home (guild picker) |
 | `/dashboard/account` | L2 User | User account and preferences |
-| `/dashboard/status` | L4 Owner | Shard monitor |
-| `/dashboard/platform` | L5 Developer | Platform management |
-| `/dashboard/config` | L5 Developer | Platform config editor |
-| `/dashboard/database` | L5 Developer | Database management |
-| `/dashboard/developer` | L5 Developer | Developer tools |
-| `/dashboard/instrumentation` | L5 Developer | Metrics and observability |
-| `/dashboard/ai-analytics` | L4 Owner | LLM usage analytics |
-| `/dashboard/llm-configs` | L5 Developer | LLM provider configuration |
-| `/dashboard/bot-health` | L4 Owner | Bot health dashboard |
+| `/dashboard/status` | L5 Owner | Shard monitor |
+| `/dashboard/platform` | L6 Developer | Platform management |
+| `/dashboard/config` | L6 Developer | Platform config editor |
+| `/dashboard/database` | L6 Developer | Database management |
+| `/dashboard/developer` | L6 Developer | Developer tools |
+| `/dashboard/instrumentation` | L6 Developer | Metrics and observability |
+| `/dashboard/ai-analytics` | L5 Owner | LLM usage analytics |
+| `/dashboard/llm-configs` | L6 Developer | LLM provider configuration |
+| `/dashboard/bot-health` | L5 Owner | Bot health dashboard |
 
 ### Per-Guild Dashboard
 
 | Route | Permission | Description |
 |-------|-----------|-------------|
 | `/dashboard/[guildId]/settings` | L3 Authorized | Guild settings |
-| `/dashboard/[guildId]/permissions` | L4 Owner | Authorized users and roles |
+| `/dashboard/[guildId]/permissions` | L4 Administrator | Authorized users and roles |
 | `/dashboard/[guildId]/audit-logs` | L3 Authorized | Audit log viewer |
 | `/dashboard/[guildId]/plugins` | L3 Authorized | Plugin / cog management |
 | `/dashboard/[guildId]/card-visibility` | L3 Authorized | Dashboard card visibility settings |

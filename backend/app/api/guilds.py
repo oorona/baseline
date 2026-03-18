@@ -194,16 +194,22 @@ async def get_guild_settings(
     settings = settings_result.scalar_one_or_none()
     
     if not settings:
-        # Create default settings
+        # Create default settings. flush() sends the INSERT and populates
+        # server-generated columns (updated_at) via asyncpg RETURNING.
+        # We capture the value before commit; commit() then persists the row.
+        # We must NOT access settings.updated_at after commit because
+        # onupdate/server_default columns are re-expired even with
+        # expire_on_commit=False in some SQLAlchemy versions.
         settings = GuildSettings(guild_id=guild_id, settings_json={})
         db.add(settings)
-        await db.commit()
-        # Re-query after commit to avoid SQLAlchemy async refresh issues
-        settings_result = await db.execute(
-            select(GuildSettings).where(GuildSettings.guild_id == guild_id)
-        )
-        settings = settings_result.scalar_one()
-    
+        await db.flush()
+
+    # Capture these before any commit so we don't trigger lazy-reload in
+    # async context (MissingGreenlet) if the column is expired post-commit.
+    settings_json = settings.settings_json or {}
+    updated_at = settings.updated_at
+    await db.commit()
+
     # Determine Level 3 access (Developer Only)
     can_modify_level_3 = False
     dev_guild_id = app_settings.DISCORD_GUILD_ID
@@ -215,7 +221,7 @@ async def get_guild_settings(
             dev_guild = await discord_client.get_guild(str(dev_guild_id))
             if str(user_id) == dev_guild.get("owner_id"):
                 can_modify_level_3 = True
-            
+
             # Check user's roles in the Developer Guild (if not already owner)
             if not can_modify_level_3 and dev_role_id:
                 member_data = await discord_client.get_guild_member(str(dev_guild_id), str(user_id))
@@ -227,8 +233,8 @@ async def get_guild_settings(
 
     return {
         "guild_id": guild_id,
-        "settings": settings.settings_json,
-        "updated_at": settings.updated_at,
+        "settings": settings_json,
+        "updated_at": updated_at,
         "can_modify_level_3": can_modify_level_3
     }
 
@@ -354,17 +360,22 @@ async def update_guild_settings(
     )
     db.add(log)
 
+    # flush() sends all pending SQL and fetches server-generated values
+    # (updated_at via asyncpg RETURNING) while the transaction stays open.
+    # We capture the values before commit because onupdate/server_default
+    # columns can be re-expired post-commit, triggering MissingGreenlet in
+    # async context even with expire_on_commit=False.
+    await db.flush()
+    result_settings = settings.settings_json or {}
+    result_updated_at = settings.updated_at
+
+    # commit() persists both the settings update and the audit log.
     await db.commit()
-    # Re-query after commit to avoid SQLAlchemy async refresh issues
-    settings_result = await db.execute(
-        select(GuildSettings).where(GuildSettings.guild_id == guild_id)
-    )
-    settings = settings_result.scalar_one()
 
     return {
         "guild_id": guild_id,
-        "settings": settings.settings_json,
-        "updated_at": settings.updated_at
+        "settings": result_settings,
+        "updated_at": result_updated_at,
     }
 
 @router.get("/{guild_id}/authorized-users")
@@ -487,7 +498,7 @@ async def add_authorized_user(
     
     if existing:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_409_CONFLICT,
             detail="User is already authorized for this guild"
         )
     
@@ -711,7 +722,7 @@ async def add_authorized_role(
     )
     if existing_result.scalar_one_or_none():
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_409_CONFLICT,
             detail="Role is already authorized"
         )
     

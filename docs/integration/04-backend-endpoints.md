@@ -22,8 +22,9 @@ The backend uses FastAPI with:
 | **L0/L1 Public** | No auth dependency | Read-only public data (no PII, no guild data) |
 | **L2 User** | `Depends(get_current_user)` | Any authenticated user; still check guild membership |
 | **L3 Authorized** | `Depends(get_current_user)` + guild auth check | Write operations, bot settings |
-| **L4 Owner** | `Depends(get_current_user)` + owner check | Destructive / billing / permission management |
-| **L5 Developer** | `Depends(verify_platform_admin)` | Cross-guild platform operations |
+| **L4 Administrator** | `Depends(get_current_user)` + admin check | Add/remove authorized users and roles |
+| **L5 Owner** | `Depends(get_current_user)` + owner check | Destructive / billing / permission management |
+| **L6 Developer** | `Depends(verify_platform_admin)` | Cross-guild platform operations |
 
 > **Default to L3 when unsure.** It is easier to relax security than to tighten it after data has been exposed.
 
@@ -222,7 +223,7 @@ Every router file must declare the security level of each route in its module do
 """
 GET  /guilds/{guild_id}/features    L2 — User: read-only, any authenticated user
 POST /guilds/{guild_id}/features    L3 — Authorized: guild owner or admin
-DELETE /guilds/{guild_id}/features  L4 — Owner: guild owner only
+DELETE /guilds/{guild_id}/features  L5 — Owner: guild owner only
 """
 ```
 
@@ -366,7 +367,7 @@ async def public_info(guild_id: int):
 |-----------|-------------|
 | `get_db` | Non-guild tables: users, shards, platform config |
 | `get_guild_db` | Any endpoint with a `guild_id` parameter |
-| `get_admin_db` | Cross-guild platform admin endpoints (L5 only) |
+| `get_admin_db` | Cross-guild platform admin endpoints (L6 only) |
 | `get_redis` | Caching, session lookup, pub/sub |
 
 ---

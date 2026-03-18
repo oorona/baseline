@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, Component, ReactNode } from 'react';
 import {
   Database, RefreshCw, Play, CheckCircle2, XCircle, AlertTriangle,
   ArrowUpCircle, Activity, Layers, TestTube2, Eye, EyeOff, ChevronDown, ChevronRight
@@ -9,6 +9,41 @@ import { apiClient } from '@/app/api-client';
 import { withPermission } from '@/lib/components/with-permission';
 import { PermissionLevel } from '@/lib/permissions';
 import { DATABASE_SETTINGS, DB_CATEGORIES } from '@/config/settings-definitions';
+
+// ---------------------------------------------------------------------------
+// Error boundary — catches render errors and logs them to the console so
+// "see the browser console" actually has something useful in it.
+// ---------------------------------------------------------------------------
+interface EBState { error: Error | null }
+class PageErrorBoundary extends Component<{ children: ReactNode }, EBState> {
+  state: EBState = { error: null };
+
+  static getDerivedStateFromError(error: Error): EBState {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: { componentStack: string }) {
+    // Next.js swallows this in its own boundary; log explicitly so the
+    // browser console always shows the real stack trace.
+    console.error('[DatabaseManagementPage] render error:', error, info.componentStack);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="max-w-5xl mx-auto p-8 space-y-4">
+          <div className="p-4 rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 text-sm">
+            <p className="font-semibold mb-1">Page render error</p>
+            <pre className="text-xs font-mono whitespace-pre-wrap opacity-80">
+              {this.state.error.message}
+            </pre>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -38,11 +73,23 @@ interface DbInfo {
   };
 }
 
+interface ChangelogEntry {
+  version: string;
+  description: string;
+  revisions: string[];
+  head_revision: string;
+  is_current: boolean;
+  already_applied: boolean;
+}
+
 interface MigrationInfo {
   current_revision: string | null;
+  current_db_version: string | null;
   head_revision: string;
-  history: Array<{ line: string; is_current: boolean }>;
-  needs_upgrade: boolean;
+  framework_version: string;
+  schema_up_to_date: boolean;
+  changelog: ChangelogEntry[];
+  pending_versions: ChangelogEntry[];
 }
 
 interface ValidationResult {
@@ -379,12 +426,14 @@ function MigrationsTab() {
   if (loading) return <div className="text-muted-foreground text-sm py-8 text-center">Loading migration history…</div>;
   if (!data) return <div className="text-red-400 text-sm py-8 text-center">Failed to load migrations.</div>;
 
+  const needsUpgrade = !data.schema_up_to_date;
+
   return (
     <div className="space-y-6">
       {/* Status + action */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          {data.needs_upgrade ? (
+          {needsUpgrade ? (
             <div className="flex items-center gap-2 text-amber-400">
               <AlertTriangle size={16} />
               <span className="font-medium">Schema upgrade required</span>
@@ -401,7 +450,7 @@ function MigrationsTab() {
           </p>
         </div>
 
-        {data.needs_upgrade && (
+        {needsUpgrade && (
           <button
             onClick={handleUpgrade}
             disabled={applying}
@@ -426,25 +475,33 @@ function MigrationsTab() {
         </div>
       )}
 
-      {/* History */}
+      {/* Changelog */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">
         <div className="px-6 py-4 border-b border-border">
-          <h3 className="font-semibold text-foreground">Migration History</h3>
+          <h3 className="font-semibold text-foreground">Migration Changelog</h3>
         </div>
         <div className="divide-y divide-border/50">
-          {data.history.map((item, idx) => (
-            <div key={idx} className={`px-6 py-3 flex items-center gap-3 ${item.is_current ? 'bg-primary/5' : ''}`}>
-              <code className={`text-xs font-mono flex-1 ${item.is_current ? 'text-primary' : 'text-muted-foreground'}`}>
-                {item.line}
-              </code>
-              {item.is_current && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-primary/10 text-primary border border-primary/20">
-                  Current
-                </span>
-              )}
+          {data.changelog.map((entry, idx) => (
+            <div key={idx} className={`px-6 py-4 ${entry.is_current ? 'bg-primary/5' : ''}`}>
+              <div className="flex items-center gap-3 mb-1 flex-wrap">
+                <code className={`text-xs font-mono font-semibold ${entry.is_current ? 'text-primary' : 'text-foreground'}`}>
+                  v{entry.version}
+                </code>
+                {entry.is_current && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-primary/10 text-primary border border-primary/20">Current</span>
+                )}
+                {entry.already_applied && !entry.is_current && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-green-500/10 text-green-400 border border-green-500/20">Applied</span>
+                )}
+                {!entry.already_applied && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-amber-500/10 text-amber-400 border border-amber-500/20">Pending</span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">{entry.description}</p>
+              <p className="text-xs font-mono text-muted-foreground/60 mt-1">head: {entry.head_revision}</p>
             </div>
           ))}
-          {data.history.length === 0 && (
+          {data.changelog.length === 0 && (
             <div className="px-6 py-4 text-sm text-muted-foreground">No migration history available.</div>
           )}
         </div>
@@ -665,4 +722,12 @@ function DatabaseManagementPage() {
   );
 }
 
-export default withPermission(DatabaseManagementPage, PermissionLevel.DEVELOPER);
+function DatabaseManagementPageWithBoundary(props: object) {
+  return (
+    <PageErrorBoundary>
+      <DatabaseManagementPage {...(props as any)} />
+    </PageErrorBoundary>
+  );
+}
+
+export default withPermission(DatabaseManagementPageWithBoundary, PermissionLevel.DEVELOPER);

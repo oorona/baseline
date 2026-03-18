@@ -40,9 +40,10 @@ SUITE_LABELS=(
     "03 · Authentication"
     "04 · Security Levels"
     "05 · Rate Limits"
-    "06 · Backwards Compatibility"
     "07 · Database"
     "08 · LLM Endpoints"
+    "09 · Audit Log"
+    "10 · Instrumentation"
 )
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -225,18 +226,31 @@ run_integration() {
         return
     fi
 
+    # Auto-load .env.test.local if present (gitignored — holds tokens/IDs)
+    local env_file="$SCRIPT_DIR/.env.test.local"
+    if [[ -f "$env_file" ]]; then
+        # Source it so variables are available for the -e flags below,
+        # and also pass --env-file so docker compose interpolates ${VAR} in
+        # docker-compose.test.yml from the file.
+        set -a; source "$env_file"; set +a
+    fi
+
     # Build docker compose command
     local compose_cmd=("docker" "compose"
         "-f" "$SCRIPT_DIR/docker-compose.yml"
         "-f" "$SCRIPT_DIR/docker-compose.test.yml"
-        "run" "--rm"
     )
+    [[ -f "$env_file" ]] && compose_cmd+=("--env-file" "$env_file")
+    compose_cmd+=("run" "--rm")
 
-    # Pass env vars
-    [[ -n "${TEST_API_TOKEN:-}" ]] && compose_cmd+=("-e" "TEST_API_TOKEN=$TEST_API_TOKEN")
-    [[ -n "${GATEWAY_URL:-}" ]]    && compose_cmd+=("-e" "GATEWAY_URL=$GATEWAY_URL")
-    [[ -n "${BACKEND_URL:-}" ]]    && compose_cmd+=("-e" "BACKEND_URL=$BACKEND_URL")
-    [[ -n "$suites_filter" ]]      && compose_cmd+=("-e" "TEST_SUITES=$suites_filter")
+    # Pass env vars (shell env takes precedence over .env.test.local values)
+    [[ -n "${TEST_API_TOKEN:-}" ]]  && compose_cmd+=("-e" "TEST_API_TOKEN=$TEST_API_TOKEN")
+    [[ -n "${TEST_GUILD_ID:-}" ]]   && compose_cmd+=("-e" "TEST_GUILD_ID=$TEST_GUILD_ID")
+    [[ -n "${TEST_USER_ID:-}" ]]    && compose_cmd+=("-e" "TEST_USER_ID=$TEST_USER_ID")
+    [[ -n "${TEST_ROLE_ID:-}" ]]    && compose_cmd+=("-e" "TEST_ROLE_ID=$TEST_ROLE_ID")
+    [[ -n "${GATEWAY_URL:-}" ]]     && compose_cmd+=("-e" "GATEWAY_URL=$GATEWAY_URL")
+    [[ -n "${BACKEND_URL:-}" ]]     && compose_cmd+=("-e" "BACKEND_URL=$BACKEND_URL")
+    [[ -n "$suites_filter" ]]       && compose_cmd+=("-e" "TEST_SUITES=$suites_filter")
 
     compose_cmd+=("test-runner")
 
@@ -445,9 +459,18 @@ print_banner() {
     echo -e "${BOLD_CYAN}  │${BOLD_WHITE}        Baseline Framework — Test Runner                  ${BOLD_CYAN}│${RESET}"
     echo -e "${BOLD_CYAN}  └─────────────────────────────────────────────────────────┘${RESET}"
     echo
+    # Load .env.test.local early so banner reflects its values
+    local env_file="$SCRIPT_DIR/.env.test.local"
+    [[ -f "$env_file" ]] && { set -a; source "$env_file"; set +a; }
+
     [[ -n "${TEST_API_TOKEN:-}" ]] \
-        && echo -e "  ${DIM}Token:${RESET}  ${GREEN}provided (authenticated tests enabled)${RESET}" \
-        || echo -e "  ${DIM}Token:${RESET}  ${YELLOW}not set — integration L2+ tests will be skipped${RESET}"
+        && echo -e "  ${DIM}Token:${RESET}   ${GREEN}provided (authenticated tests enabled)${RESET}" \
+        || echo -e "  ${DIM}Token:${RESET}   ${YELLOW}not set — L2+ tests will be skipped  (add to .env.test.local)${RESET}"
+    [[ -n "${TEST_GUILD_ID:-}" ]] \
+        && echo -e "  ${DIM}Guild:${RESET}   ${GREEN}${TEST_GUILD_ID}${RESET}" \
+        || echo -e "  ${DIM}Guild:${RESET}   ${YELLOW}not set — guild-scoped tests will be skipped${RESET}"
+    [[ -n "${TEST_USER_ID:-}" ]]  && echo -e "  ${DIM}User:${RESET}    ${GREEN}${TEST_USER_ID}${RESET}"
+    [[ -n "${TEST_ROLE_ID:-}" ]]  && echo -e "  ${DIM}Role:${RESET}    ${GREEN}${TEST_ROLE_ID}${RESET}"
     echo -e "  ${DIM}Gateway:${RESET} ${CYAN}${GATEWAY_URL:-http://localhost}${RESET}"
     echo
 }

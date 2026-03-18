@@ -19,7 +19,7 @@ from typing import Optional
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel
-from sqlalchemy import func, select, text
+from sqlalchemy import Float, Integer, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, verify_platform_admin
@@ -212,8 +212,8 @@ async def get_instrumentation_stats(
         BotCommandMetrics.cog,
         func.count().label("count"),
         func.avg(BotCommandMetrics.duration_ms).label("avg_ms"),
-        func.percentile_cont(0.95).within_group(BotCommandMetrics.duration_ms).label("p95_ms"),
-        func.avg(BotCommandMetrics.success.cast(type_=None)).label("success_rate"),
+        func.percentile_cont(0.95).within_group(BotCommandMetrics.duration_ms.asc()).label("p95_ms"),
+        func.avg(BotCommandMetrics.success.cast(Integer)).label("success_rate"),
     ).where(BotCommandMetrics.timestamp >= cutoff)
 
     if guild_id:
@@ -238,9 +238,9 @@ async def get_instrumentation_stats(
         RequestMetrics.path,
         RequestMetrics.method,
         func.count().label("count"),
-        func.percentile_cont(0.50).within_group(RequestMetrics.duration_ms).label("p50_ms"),
-        func.percentile_cont(0.95).within_group(RequestMetrics.duration_ms).label("p95_ms"),
-        func.percentile_cont(0.99).within_group(RequestMetrics.duration_ms).label("p99_ms"),
+        func.percentile_cont(0.50).within_group(RequestMetrics.duration_ms.asc()).label("p50_ms"),
+        func.percentile_cont(0.95).within_group(RequestMetrics.duration_ms.asc()).label("p95_ms"),
+        func.percentile_cont(0.99).within_group(RequestMetrics.duration_ms.asc()).label("p99_ms"),
     ).where(RequestMetrics.timestamp >= cutoff).group_by(
         RequestMetrics.path, RequestMetrics.method
     ).order_by(func.count().desc()).limit(100)

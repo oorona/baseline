@@ -93,7 +93,7 @@ class MyCog(commands.Cog):
 
 ```python
 from app.db.guild_session import get_guild_db   # For /{guild_id}/ endpoints — RLS active
-from app.db.guild_session import get_admin_db   # For L5 cross-guild endpoints — RLS bypassed
+from app.db.guild_session import get_admin_db   # For L6 cross-guild endpoints — RLS bypassed
 from app.db.session import get_db               # For global tables only (users, shards, etc.)
 ```
 

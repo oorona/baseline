@@ -6,11 +6,14 @@
 #   # 1. Start the main stack first:
 #   docker compose up -d
 #
-#   # 2. Run the tests (one-shot):
+#   # 2. Run the tests (one-shot, no auth):
 #   docker compose -f docker-compose.yml -f docker-compose.test.yml run --rm test-runner
 #
-#   # 3. Run with an authenticated token (for L2+ tests):
-#   TEST_API_TOKEN=your_token docker compose -f docker-compose.yml -f docker-compose.test.yml run --rm test-runner
+#   # 3. Run with secrets from .env.test.local (recommended — file is gitignored):
+#   cp .env.test.local.example .env.test.local   # first time only
+#   # edit .env.test.local with real values, then:
+#   docker compose -f docker-compose.yml -f docker-compose.test.yml \
+#     --env-file .env.test.local run --rm test-runner
 #
 #   # 4. Watch mode — continuously re-runs on file change (requires watchdog):
 #   docker compose -f docker-compose.yml -f docker-compose.test.yml up test-runner
@@ -39,6 +42,18 @@ services:
       # Generate one by logging into the frontend, then paste the token from
       # localStorage key 'access_token'.
       TEST_API_TOKEN: "${TEST_API_TOKEN:-}"
+
+      # Optional: Discord guild ID the test token has owner/admin access to.
+      # Enables guild-settings shape tests and audit log mutation tests.
+      TEST_GUILD_ID: "${TEST_GUILD_ID:-}"
+
+      # Optional: a Discord user ID that can be added/removed as authorized user
+      # in TEST_GUILD_ID.  Enables authorized-user audit log tests.
+      TEST_USER_ID: "${TEST_USER_ID:-}"
+
+      # Optional: a Discord role ID in TEST_GUILD_ID that can be added/removed.
+      # Enables authorized-role audit log tests.
+      TEST_ROLE_ID: "${TEST_ROLE_ID:-}"
 
       # How many requests to send in rate limit burst tests.
       RATE_LIMIT_BURST_SIZE: "${RATE_LIMIT_BURST_SIZE:-20}"

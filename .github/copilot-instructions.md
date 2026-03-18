@@ -52,7 +52,7 @@ async def setup(bot):
 - Use `@app_commands.checks.cooldown(...)` for rate limiting slash commands — `@commands.cooldown` is for prefix commands only
 
 ### Frontend Pages (Adding Dashboard Pages)
-Pages use a **6-tier permission system**. Wrap with `withPermission` and use `t()` for all strings:
+Pages use a **7-tier permission system**. Wrap with `withPermission` and use `t()` for all strings:
 
 ```tsx
 // frontend/app/dashboard/[guildId]/my-page/page.tsx

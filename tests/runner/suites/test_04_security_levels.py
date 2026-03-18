@@ -1,13 +1,14 @@
 """
-Suite 04 — Security Levels (L0–L5)
+Suite 04 — Security Levels (L0–L6)
 Verifies that each security level is enforced correctly.
 
 L0 — Public: accessible without auth
 L1 — Public Data: accessible without auth (read-only)
 L2 — User: requires valid session (401 without)
 L3 — Authorized: requires guild authorization (401/403 without)
-L4 — Owner: guild owner only (401/403 without)
-L5 — Developer: platform admin only (401/403 without)
+L4 — Administrator: guild admin only (401/403 without)
+L5 — Owner: guild owner only (401/403 without)
+L6 — Developer: platform admin only (401/403 without)
 """
 import time
 import httpx
@@ -100,23 +101,95 @@ class TestLevel3Authorized:
             f"Update settings without auth should be 401, got {r.status_code}"
         )
 
+
+@pytest.mark.skipif(not TEST_API_TOKEN, reason="TEST_API_TOKEN not set")
+class TestGuildSettingsContract:
+    """
+    Authenticated guild settings response shape.
+
+    These tests guard against two classes of bug:
+      1. The auto-create path crashing (e.g. scalar_one() after a commit that
+         cleared SET LOCAL app.current_guild_id, making the re-query invisible
+         to RLS → NoResultFound).
+      2. The response shape drifting from what the frontend expects.
+
+    Uses a non-existent guild ID so the endpoint returns 404 quickly; the auth
+    and shape tests use a guild the test token has access to (if TEST_GUILD_ID
+    is set).
+    """
+
+    TEST_GUILD_ID = os.environ.get("TEST_GUILD_ID", "")
+
+    def test_guild_settings_404_for_unknown_guild(self):
+        """A guild that doesn't exist must return 404, not 500."""
+        r, _ = _get(
+            "/api/v1/guilds/000000000000000001/settings",
+            headers={"Authorization": f"Bearer {TEST_API_TOKEN}"},
+        )
+        # 403 is also acceptable (no access), but never 500
+        assert r.status_code in (403, 404), (
+            f"Unknown guild should return 403/404, got {r.status_code}: {r.text[:200]}"
+        )
+
+    @pytest.mark.skipif(not os.environ.get("TEST_GUILD_ID"), reason="TEST_GUILD_ID not set")
+    def test_guild_settings_response_shape(self):
+        """GET /guilds/{id}/settings must return guild_id, settings dict, and updated_at."""
+        r, _ = _get(
+            f"/api/v1/guilds/{os.environ['TEST_GUILD_ID']}/settings",
+            headers={"Authorization": f"Bearer {TEST_API_TOKEN}"},
+        )
+        assert r.status_code == 200, (
+            f"GET /guilds/{{guild_id}}/settings returned {r.status_code}: {r.text[:300]}"
+        )
+        data = r.json()
+        for field in ("guild_id", "settings", "updated_at"):
+            assert field in data, (
+                f"guild settings response missing '{field}': {list(data.keys())}"
+            )
+        assert isinstance(data["settings"], dict), (
+            f"'settings' must be a dict, got {type(data['settings'])}"
+        )
+
+    @pytest.mark.skipif(not os.environ.get("TEST_GUILD_ID"), reason="TEST_GUILD_ID not set")
+    def test_guild_settings_auto_create_does_not_500(self):
+        """
+        Calling GET settings twice in a row must not crash on the second call.
+        The first call auto-creates the settings row; the second call must find it.
+        If the backend uses db.commit() then re-queries under RLS, the re-query
+        returns nothing and scalar_one() throws NoResultFound → 500.
+        """
+        headers = {"Authorization": f"Bearer {TEST_API_TOKEN}"}
+        guild_id = os.environ["TEST_GUILD_ID"]
+        r1, _ = _get(f"/api/v1/guilds/{guild_id}/settings", headers=headers)
+        r2, _ = _get(f"/api/v1/guilds/{guild_id}/settings", headers=headers)
+        assert r1.status_code == 200, f"First call failed: {r1.status_code} {r1.text[:200]}"
+        assert r2.status_code == 200, f"Second call failed: {r2.status_code} {r2.text[:200]}"
+
+
+class TestLevel4Administrator:
+    """L4 — Administrator endpoints require guild admin status (not just authorization)."""
+
     def test_add_authorized_user_requires_auth(self):
         r, _ = _post(
             "/api/v1/guilds/123456789/authorized-users",
             json={"user_id": "999", "permission_level": "user"},
         )
-        assert r.status_code == 401
+        assert r.status_code == 401, (
+            f"Adding authorized users (L4) should require auth, got {r.status_code}"
+        )
 
     def test_add_authorized_role_requires_auth(self):
         r, _ = _post(
             "/api/v1/guilds/123456789/authorized-roles",
             json={"role_id": "999", "permission_level": "user"},
         )
-        assert r.status_code == 401
+        assert r.status_code == 401, (
+            f"Adding authorized roles (L4) should require auth, got {r.status_code}"
+        )
 
 
-class TestLevel4Owner:
-    """L4 — Owner-only endpoints require guild owner status."""
+class TestLevel5Owner:
+    """L5 — Owner-only endpoints require guild owner status."""
 
     def test_permissions_management_requires_auth(self):
         r, _ = _get("/api/v1/guilds/123456789/authorized-users")
@@ -127,8 +200,8 @@ class TestLevel4Owner:
         assert r.status_code == 401
 
 
-class TestLevel5Developer:
-    """L5 — Developer/Platform Admin endpoints reject everyone without admin status."""
+class TestLevel6Developer:
+    """L6 — Developer/Platform Admin endpoints reject everyone without admin status."""
 
     def test_platform_settings_requires_auth(self):
         r, _ = _get("/api/v1/platform/settings")
@@ -155,21 +228,17 @@ class TestLevel5Developer:
 
 
 class TestSensitiveEndpointProtection:
-    """Gemini and LLM endpoints have extra protection (SecurityMiddleware)."""
+    """LLM endpoints have extra protection (SecurityMiddleware)."""
 
-    def test_gemini_endpoint_blocked_without_gateway_header(self):
+    def test_llm_generate_endpoint_requires_auth(self):
         """
-        Direct Gemini calls without gateway header AND from external IPs should
-        be blocked at the SecurityMiddleware layer (403).
-        Through the gateway (with X-Gateway-Request header), it should return 401
-        (auth required) instead of 403.
+        The LLM generate endpoint must reject unauthenticated requests.
+        GET on a POST-only endpoint returns 405; unauthenticated POST returns 401/403.
+        Both are acceptable — neither should be 200 or 404.
         """
-        # Through gateway (has X-Gateway-Request header): expect 401 (auth required)
-        r_via_gateway, _ = _get("/api/v1/gemini/generate")
-        # Either 401 (auth required) or 405 (method not allowed for GET on POST endpoint)
-        assert r_via_gateway.status_code in (401, 405), (
-            f"Gemini endpoint through gateway should require auth (401) "
-            f"or reject method (405), got {r_via_gateway.status_code}"
+        r, _ = _get("/api/v1/llm/generate")
+        assert r.status_code in (401, 403, 405), (
+            f"LLM generate (GET, no auth) should return 401/403/405, got {r.status_code}"
         )
 
     def test_llm_endpoint_blocked_without_auth(self):

@@ -10,7 +10,7 @@ export default defineConfig({
         setupFiles: [],
         include: ['**/*.test.{ts,tsx}'],
         alias: {
-            '@': path.resolve(__dirname, './app'),
+            '@': path.resolve(__dirname, '.'),
         },
     },
 })

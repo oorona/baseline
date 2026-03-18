@@ -131,7 +131,7 @@ See [LLM_USAGE_GUIDE.md](LLM_USAGE_GUIDE.md) for the full usage guide.
 
 ## 3. Security Architecture (Permission Levels)
 
-The framework enforces a strict 6-tier security model. **All new pages and API endpoints MUST adhere to this.**
+The framework enforces a strict 7-tier security model. **All new pages and API endpoints MUST adhere to this.**
 
 | Level | Name | Description | Example Usage |
 | :--- | :--- | :--- | :--- |
@@ -139,8 +139,9 @@ The framework enforces a strict 6-tier security model. **All new pages and API e
 | **1** | **Public Data** | Read-only public API data. No login required. | Leaderboards, Server Stats. |
 | **2** | **User (Login Required)** | Requires login. Access determined by Guild Settings (Default: Everyone allowed). | Basic Dashboard, Leaderboards. |
 | **3** | **Authorized** | **Strictly Controlled**. Requires specific Authorization (Role or User). | Bot Settings, Moderation Tools. |
-| **4** | **Owner** | Guild Owner only. | Permission Management, Sensitive Config. |
-| **5** | **Developer** | Platform Administrators. Full access to everything. | Platform Debug, AI Analytics. |
+| **4** | **Administrator** | Guild administrators (Discord admin permission). | Add/Remove Authorized Users and Roles. |
+| **5** | **Owner** | Guild Owner only. | Permission Management, Destructive Config, Billing. |
+| **6** | **Developer** | Platform Administrators. Full cross-guild access. | Platform Debug, LLM Analytics, Config. |
 
 ### Security Best Practices
 - **Default to Strict**: If unsure, use **Level 3 (Authorized)**.
@@ -152,7 +153,7 @@ The framework enforces a strict 6-tier security model. **All new pages and API e
 *   **Backend**: Use dependencies `Depends(get_current_user)` and check privileges.
 *   **Navigation**: Set the `level` property in `frontend/app/page.tsx` card definitions to auto-hide them.
 
-> **Full security reference with code examples for all 6 levels:** [docs/SECURITY.md](SECURITY.md)
+> **Full security reference with code examples for all 7 levels:** [docs/SECURITY.md](SECURITY.md)
 
 ### Rate Limiting
 Be aware that the API implements rate limiting. If your bot or frontend receives `429 Too Many Requests`, back off and retry.
@@ -495,7 +496,7 @@ Choose the session dependency based on what your endpoint accesses:
 | Dependency | Import | When to use |
 | :--- | :--- | :--- |
 | `get_guild_db` | `app.db.guild_session` | Any endpoint under `/{guild_id}/`. RLS **active** — only that guild's rows are visible or writable. |
-| `get_admin_db` | `app.db.guild_session` | L5 admin endpoints needing cross-guild or global data. RLS bypassed. Requires platform admin automatically. |
+| `get_admin_db` | `app.db.guild_session` | L6 admin endpoints needing cross-guild or global data. RLS bypassed. Requires platform admin automatically. |
 | `get_db` | `app.db.session` | Endpoints that only touch non-guild tables (`users`, `shards`, `app_config`, etc.). RLS bypassed. |
 
 #### Guild-Scoped Endpoints — always use `get_guild_db`
@@ -537,7 +538,7 @@ from app.db.guild_session import get_admin_db
 
 @router.get("/admin/all-tickets")
 async def admin_list_all_tickets(
-    db: AsyncSession = Depends(get_admin_db),  # bypass + L5 auth built in
+    db: AsyncSession = Depends(get_admin_db),  # bypass + L6 auth built in
 ):
     result = await db.execute(select(Ticket))  # sees ALL guilds
     return result.scalars().all()
@@ -856,7 +857,7 @@ Use the following prompts with an AI assistant to generate correct framework-com
 > Generate all files for the following feature:
 >
 > **Feature:** [describe your feature here]
-> **Permission level:** [L2 User / L3 Authorized / L4 Owner]
+> **Permission level:** [L2 User / L3 Authorized / L4 Administrator / L5 Owner / L6 Developer]
 > **Needs persistent storage:** [yes/no — if yes, describe the data]
 >
 > Output the following files, in order:

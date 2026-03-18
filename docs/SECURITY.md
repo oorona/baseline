@@ -6,7 +6,7 @@
 
 ## Table of Contents
 
-1. [Security Levels (L0–L5)](#1-security-levels-l0l5)
+1. [Security Levels (L0–L6)](#1-security-levels-l0l6)
 2. [Implementing Security on Every Layer](#2-implementing-security-on-every-layer)
 3. [Authentication Architecture](#3-authentication-architecture)
 4. [Defense-in-Depth Layers](#4-defense-in-depth-layers)
@@ -19,9 +19,9 @@
 
 ---
 
-## 1. Security Levels (L0–L5)
+## 1. Security Levels (L0–L6)
 
-The framework enforces a **6-tier permission model**. Every page, endpoint, and bot command **must be explicitly assigned a level**. There is no implicit security — default to L3 when unsure.
+The framework enforces a **7-tier permission model**. Every page, endpoint, and bot command **must be explicitly assigned a level**. There is no implicit security — default to L3 when unsure.
 
 | Level | Name | Who Can Access | Typical Use |
 |-------|------|---------------|-------------|
@@ -29,8 +29,9 @@ The framework enforces a **6-tier permission model**. Every page, endpoint, and 
 | **L1** | **Public Data** | Anyone, no auth | Read-only stats, command list (no PII) |
 | **L2** | **User** | Any logged-in user (configurable via guild roles) | Dashboard home, read-only guild stats |
 | **L3** | **Authorized** | Explicitly authorized users/roles per guild | Bot settings, moderation commands |
-| **L4** | **Owner** | Guild owner only | Permission management, billing, destructive config |
-| **L5** | **Developer** | Platform administrators only | Platform debug, LLM analytics, all-guild access |
+| **L4** | **Administrator** | Guild administrators (Discord admin permission) | Add/remove authorized users and roles |
+| **L5** | **Owner** | Guild owner only | Permission management, billing, destructive config |
+| **L6** | **Developer** | Platform administrators only | Platform debug, LLM analytics, all-guild access |
 
 > **When in doubt, use L3.** It is always easier to relax security than to tighten it after data has been exposed.
 
@@ -150,7 +151,37 @@ async def update_settings(
 
 ---
 
-#### L4 — Owner
+#### L4 — Administrator
+Guild administrators (users with Discord's Administrator permission in the guild, but not the guild owner). Used for managing who can access the bot — adding/removing authorized users and roles.
+
+```typescript
+// Frontend
+export default withPermission(PermissionsPage, PermissionLevel.ADMINISTRATOR);
+```
+
+```python
+# Backend: check guild admin status
+# Security: L4 — Guild administrator only
+@router.post("/guilds/{guild_id}/authorized-users")
+async def add_authorized_user(
+    guild_id: int,
+    data: AuthorizedUserCreate,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_guild_db)
+):
+    user_id = int(current_user["user_id"])
+    guild = await db.get(Guild, guild_id)
+    if not guild:
+        raise HTTPException(status_code=404)
+    # L4: guild admin or owner required
+    if guild.owner_id != user_id and not await _is_guild_admin(guild_id, user_id, db):
+        raise HTTPException(status_code=403, detail="Guild administrator only")
+    ...
+```
+
+---
+
+#### L5 — Owner
 Guild owner only. For destructive or irreversible actions: deleting the bot from a guild, managing who has admin access, sensitive configuration.
 
 ```typescript
@@ -160,12 +191,12 @@ export default withPermission(PermissionsPage, PermissionLevel.OWNER);
 
 ```python
 # Backend: check guild owner
-# Security: L4 — Guild owner only
+# Security: L5 — Guild owner only
 @router.delete("/guilds/{guild_id}/authorized-users/{user_id}")
 async def remove_authorized_user(
     guild_id: int, user_id: int,
     current_user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_guild_db)
 ):
     guild = await db.get(Guild, guild_id)
     if not guild:
@@ -177,8 +208,10 @@ async def remove_authorized_user(
 
 ---
 
-#### L5 — Developer (Platform Admin)
+#### L6 — Developer (Platform Admin)
 Platform administrators only. Full access across all guilds. Determined by Discord guild membership in the developer guild (`DISCORD_GUILD_ID`) with the developer role (`DEVELOPER_ROLE_ID`), or by bot token auth.
+
+> **Implementation note:** Developer access is already a separate check path on both layers — `user.is_admin` on the frontend and `verify_platform_admin()` on the backend. The numeric level (6) exists only to satisfy the `hasAccess()` comparison in the permission hook; guild users can never reach it through normal guild-membership checks.
 
 ```typescript
 // Frontend
@@ -187,7 +220,7 @@ export default withPermission(PlatformPage, PermissionLevel.DEVELOPER);
 
 ```python
 # Backend: use verify_platform_admin dependency — never implement this check manually
-# Security: L5 — Platform admin only
+# Security: L6 — Platform admin only
 from app.api.deps import verify_platform_admin
 
 @router.get("/platform/settings")
@@ -222,7 +255,7 @@ Before implementing any backend endpoint, choose the correct session dependency.
 | Use | When |
 |---|---|
 | `Depends(get_guild_db)` | **Any endpoint under `/{guild_id}/`** — enables RLS; only that guild's rows are visible |
-| `Depends(get_admin_db)` | L5 cross-guild endpoints — RLS bypassed, platform admin auth enforced |
+| `Depends(get_admin_db)` | L6 cross-guild endpoints — RLS bypassed, platform admin auth enforced |
 | `Depends(get_db)` | Global tables only (`users`, `shards`, `app_config`) — never for guild data |
 
 > **The code examples in the sections below use `get_db` for brevity to focus on the permission pattern.** In real endpoints that access guild-scoped tables (`guilds`, `guild_settings`, `authorized_users`, `audit_logs`, `llm_usage`, etc.), you must use `get_guild_db` instead. See [DEVELOPER_MANUAL.md §6.3](DEVELOPER_MANUAL.md#63-guild-isolation--row-level-security-rls) for the complete reference.
@@ -292,7 +325,8 @@ Set the `level` property on navigation cards so they are hidden from users who c
 const navItems = [
     { label: "Stats",       href: "/stats",       level: PermissionLevel.USER },
     { label: "Settings",    href: "/settings",    level: PermissionLevel.AUTHORIZED },
-    { label: "Permissions", href: "/permissions", level: PermissionLevel.OWNER },
+    { label: "Permissions", href: "/permissions", level: PermissionLevel.ADMINISTRATOR },
+    { label: "Owner Panel", href: "/owner",       level: PermissionLevel.OWNER },
     { label: "Platform",    href: "/platform",    level: PermissionLevel.DEVELOPER },
 ];
 ```
@@ -429,10 +463,10 @@ All registered endpoints and their security level. Use this as a reference when 
 | `/{guild_id}/authorized-users` | GET | L3 | List authorized users |
 | `/{guild_id}/authorized-roles` | GET | L3 | List authorized roles |
 | `/{guild_id}/audit-logs` | GET | L3 | View audit log |
-| `/{guild_id}/authorized-users` | POST | L4 | Add authorized user |
-| `/{guild_id}/authorized-users/{id}` | DELETE | L4 | Remove authorized user |
-| `/{guild_id}/authorized-roles` | POST | L4 | Add authorized role |
-| `/{guild_id}/authorized-roles/{id}` | DELETE | L4 | Remove authorized role |
+| `/{guild_id}/authorized-users` | POST | L4 | Add authorized user (guild admin+) |
+| `/{guild_id}/authorized-users/{id}` | DELETE | L5 | Remove authorized user (owner only) |
+| `/{guild_id}/authorized-roles` | POST | L4 | Add authorized role (guild admin+) |
+| `/{guild_id}/authorized-roles/{id}` | DELETE | L5 | Remove authorized role (owner only) |
 | `/` | POST | Internal | Create guild — bot-only, no user auth |
 
 ### Bot Info (`/api/v1/bot-info/`)
@@ -442,14 +476,14 @@ All registered endpoints and their security level. Use this as a reference when 
 | `/public` | GET | L0 | Bot name, tagline, logo, invite URL |
 | `/settings-schema` | GET | L1 | Form schema declarations from cogs — no values |
 | `/report` | POST | Internal | Bot pushes introspection data; Docker network trust |
-| `/report` | GET | L5 | Platform admin reads introspection data |
+| `/report` | GET | L6 | Platform admin reads introspection data |
 
 ### Commands (`/api/v1/commands/`)
 
 | Endpoint | Method | Level | Notes |
 |----------|--------|-------|-------|
 | `/` | GET | L1 | Public command list |
-| `/refresh` | POST | L5 | Re-fetch from Discord API |
+| `/refresh` | POST | L6 | Re-fetch from Discord API |
 
 ### Instrumentation (`/api/v1/instrumentation/`)
 
@@ -458,7 +492,7 @@ All registered endpoints and their security level. Use this as a reference when 
 | `/card-click` | POST | L2 | Authenticated analytics event |
 | `/bot-command` | POST | Internal | Bot records command metrics; Docker network trust |
 | `/guild-event` | POST | Internal | Bot records guild join/leave; Docker network trust |
-| `/stats` | GET | L5 | Aggregated analytics for platform admin |
+| `/stats` | GET | L6 | Aggregated analytics for platform admin |
 | `/metrics` | GET | Internal | Prometheus text-format scrape; IP-restricted |
 
 ### LLM (`/api/v1/llm/`) — Network-isolated (SecurityMiddleware)
@@ -469,11 +503,11 @@ All registered endpoints and their security level. Use this as a reference when 
 | `/chat` | POST | L2 | Multi-turn chat |
 | `/structured` | POST | L2 | Structured JSON output |
 | `/tools` | POST | L2 | Function calling |
-| `/stats` | GET | L5 | LLM usage cost analytics |
+| `/stats` | GET | L6 | LLM usage cost analytics |
 
 ### Platform, Config, Database (`/api/v1/platform/`, `/api/v1/config/`, `/api/v1/database/`)
 
-All endpoints in these routers are **L5 — Platform Admin only**, except:
+All endpoints in these routers are **L6 — Platform Admin only**, except:
 
 | Endpoint | Method | Level | Notes |
 |----------|--------|-------|-------|
@@ -911,8 +945,10 @@ If you are unsure what level a page or endpoint should be, use `PermissionLevel.
 ### Rule 3: Read = L2, Write = L3
 - Displaying guild data to authenticated users → L2 (User)
 - Modifying any configuration or data → L3 (Authorized) minimum
-- Destructive actions → L4 (Owner)
-- Cross-guild or platform operations → L5 (Developer)
+- Destructive actions → L5 (Owner)
+- Admin-level guild management → L4 (Administrator)
+- Destructive guild actions → L5 (Owner)
+- Cross-guild or platform operations → L6 (Developer)
 
 ### Rule 4: Always validate guild membership
 When an endpoint takes a `guild_id` parameter, always verify the requesting user has access to that guild. Never trust the `guild_id` in the URL alone — any logged-in user could enumerate guild IDs.

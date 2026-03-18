@@ -3,7 +3,7 @@ Bot command reference API.
 
 Security levels (see docs/SECURITY.md):
   GET  /api/v1/commands/         L1 — Public Data: no auth required (command list is public info)
-  POST /api/v1/commands/refresh  L5 — Developer:   platform admin only
+  POST /api/v1/commands/refresh  L6 — Developer:   platform admin only
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status

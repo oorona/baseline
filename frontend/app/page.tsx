@@ -142,7 +142,7 @@ function DashboardContent() {
       description: t('dashboard.cardBotSettingsDesc'),
       icon: Settings,
       href: `/dashboard/${activeGuildId}/settings`,
-      level: PermissionLevel.AUTHORIZED,
+      level: PermissionLevel.ADMINISTRATOR,
       color: 'text-blue-500',
       bgColor: 'bg-blue-500/10',
       borderColor: 'group-hover:border-blue-500/50',
@@ -202,7 +202,7 @@ function DashboardContent() {
       description: t('dashboard.cardAuditLogsDesc'),
       icon: FileText,
       href: `/dashboard/${activeGuildId}/audit-logs`,
-      level: PermissionLevel.AUTHORIZED,
+      level: PermissionLevel.ADMINISTRATOR,
       color: 'text-orange-500',
       bgColor: 'bg-orange-500/10',
       borderColor: 'group-hover:border-orange-500/50',
@@ -310,8 +310,9 @@ function DashboardContent() {
             <span className="font-semibold text-foreground">
               {user.is_admin ? t('dashboard.permDeveloper') :
                 permissionLevel === PermissionLevel.OWNER ? t('dashboard.permOwner') :
-                  permissionLevel === PermissionLevel.AUTHORIZED ? t('dashboard.permAuthorized') :
-                    permissionLevel === PermissionLevel.USER ? t('dashboard.permUser') : t('dashboard.permGuest')
+                  permissionLevel === PermissionLevel.ADMINISTRATOR ? t('dashboard.permAdministrator') :
+                    permissionLevel === PermissionLevel.AUTHORIZED ? t('dashboard.permAuthorized') :
+                      permissionLevel === PermissionLevel.USER ? t('dashboard.permUser') : t('dashboard.permGuest')
               }
             </span>
           </div>
@@ -325,9 +326,10 @@ function DashboardContent() {
           0: { label: t('dashboard.sectionPublicLabel'),     description: t('dashboard.sectionPublicDesc'),     accentText: 'text-slate-400',   borderAccent: 'border-slate-500/50',   sectionBg: 'bg-slate-500/5',   badge: 'bg-slate-500/20 text-slate-300' },
           1: { label: t('dashboard.sectionPublicDataLabel'), description: t('dashboard.sectionPublicDataDesc'), accentText: 'text-sky-400',     borderAccent: 'border-sky-500/50',     sectionBg: 'bg-sky-500/5',     badge: 'bg-sky-500/20 text-sky-300' },
           2: { label: t('dashboard.sectionUserLabel'),       description: t('dashboard.sectionUserDesc'),       accentText: 'text-emerald-400', borderAccent: 'border-emerald-500/50', sectionBg: 'bg-emerald-500/5', badge: 'bg-emerald-500/20 text-emerald-300' },
-          3: { label: t('dashboard.sectionAuthorizedLabel'), description: t('dashboard.sectionAuthorizedDesc'), accentText: 'text-blue-400',    borderAccent: 'border-blue-500/50',    sectionBg: 'bg-blue-500/5',    badge: 'bg-blue-500/20 text-blue-300' },
-          4: { label: t('dashboard.sectionOwnerLabel'),      description: t('dashboard.sectionOwnerDesc'),      accentText: 'text-amber-400',   borderAccent: 'border-amber-500/50',   sectionBg: 'bg-amber-500/5',   badge: 'bg-amber-500/20 text-amber-300' },
-          5: { label: t('dashboard.sectionDeveloperLabel'),  description: t('dashboard.sectionDeveloperDesc'),  accentText: 'text-red-400',     borderAccent: 'border-red-500/50',     sectionBg: 'bg-red-500/5',     badge: 'bg-red-500/20 text-red-300' },
+          3: { label: t('dashboard.sectionAuthorizedLabel'),     description: t('dashboard.sectionAuthorizedDesc'),     accentText: 'text-blue-400',    borderAccent: 'border-blue-500/50',    sectionBg: 'bg-blue-500/5',    badge: 'bg-blue-500/20 text-blue-300' },
+          4: { label: t('dashboard.sectionAdministratorLabel'), description: t('dashboard.sectionAdministratorDesc'), accentText: 'text-purple-400',  borderAccent: 'border-purple-500/50',  sectionBg: 'bg-purple-500/5',  badge: 'bg-purple-500/20 text-purple-300' },
+          5: { label: t('dashboard.sectionOwnerLabel'),          description: t('dashboard.sectionOwnerDesc'),          accentText: 'text-amber-400',   borderAccent: 'border-amber-500/50',   sectionBg: 'bg-amber-500/5',   badge: 'bg-amber-500/20 text-amber-300' },
+          6: { label: t('dashboard.sectionDeveloperLabel'),      description: t('dashboard.sectionDeveloperDesc'),      accentText: 'text-red-400',     borderAccent: 'border-red-500/50',     sectionBg: 'bg-red-500/5',     badge: 'bg-red-500/20 text-red-300' },
         };
 
         const cardsByLevel = visibleCards.reduce((acc, card) => {

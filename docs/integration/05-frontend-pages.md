@@ -288,8 +288,9 @@ Common layout patterns:
 | 1 | PUBLIC_DATA | Read-only public data, no login needed |
 | 2 | USER | Any logged-in member |
 | 3 | AUTHORIZED | Write actions, moderation (default choice) |
-| 4 | OWNER | Guild owner only |
-| 5 | DEVELOPER | Platform admin — full access |
+| 4 | ADMINISTRATOR | Add/remove authorized users/roles (guild admin+) |
+| 5 | OWNER | Guild owner only — destructive config, billing |
+| 6 | DEVELOPER | Platform admin — full cross-guild access |
 
 **Default to Level 3 (AUTHORIZED) when in doubt.**
 
