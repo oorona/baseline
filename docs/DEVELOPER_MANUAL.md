@@ -311,12 +311,11 @@ class MusicCog(commands.Cog):
 | `type` | Rendered as | `default` |
 |---|---|---|
 | `"boolean"` | Toggle switch | `False` |
-| `"string"` | Single-line text input | `""` or `None` |
-| `"text"` | Multi-line textarea | `""` or `None` |
-| `"integer"` | Number input | `0` or `None` |
-| `"channel_select"` | Discord channel dropdown | `None` |
-| `"role_select"` | Discord role dropdown | `None` |
-| `"select"` | Dropdown from fixed options — add `"options": [{"value": "x", "label": "X"}]` | first option or `None` |
+| `"text"` | Single-line text input | `""` or `None` |
+| `"number"` | Number input | `0` or `None` |
+| `"channel_select"` | Discord channel dropdown (populated from API) | `None` |
+| `"role_select"` | Discord role dropdown (populated from API) | `None` |
+| `"multiselect"` | Multi-checkbox from fixed options — add `"choices": [{"value": "x", "label": "X"}]` | `[]` or `None` |
 
 ```python
     SETTINGS_SCHEMA = {

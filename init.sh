@@ -6,8 +6,9 @@
 # It write-protects core framework files so accidental edits are caught
 # immediately rather than silently breaking the framework contract.
 #
-# This script also removes all staged demo plugins from plugins/ so the
-# project starts completely clean. Build your own plugins from _template.
+# This script also removes all plugins from plugins/ (except _template and
+# other _* scaffolding folders) so the project starts completely clean.
+# Build your own plugins from _template.
 #
 # Usage:
 #   chmod +x init.sh
@@ -58,9 +59,9 @@ if [ -d "backend/alembic/versions" ]; then
     echo -e "  ${GREEN}✓${RESET}  protected  backend/alembic/versions/*.py"
 fi
 
-# ── Remove demo plugins ───────────────────────────────────────────────────────
+# ── Remove all plugins ────────────────────────────────────────────────────────
 echo
-echo -e "${BOLD}Removing demo plugins${RESET}"
+echo -e "${BOLD}Removing all plugins${RESET}"
 
 for d in "$SCRIPT_DIR/plugins"/*/; do
     name="$(basename "$d")"

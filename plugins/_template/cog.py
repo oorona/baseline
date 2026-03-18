@@ -11,18 +11,38 @@ class MyPlugin(commands.Cog):
     """My Plugin cog — brief description."""
 
     # Declare settings fields that the dashboard Settings page will render automatically.
-    # Remove this if the plugin has no configurable settings.
+    # Remove this block entirely if the plugin has no configurable settings.
+    #
+    # Required top-level keys: "id" (unique snake_case), "label" (display name),
+    #   "description" (optional), "fields" (list of field dicts).
+    # Each field requires: "key" (unique snake_case), "type", "label", "default".
+    #
+    # Valid "type" values:
+    #   "boolean"       — toggle switch
+    #   "text"          — single-line text input
+    #   "number"        — numeric input
+    #   "channel_select"— Discord channel dropdown (populated from API automatically)
+    #   "role_select"   — Discord role dropdown (populated from API automatically)
+    #   "multiselect"   — multi-checkbox; also add "choices": [{"value":"x","label":"X"}]
     SETTINGS_SCHEMA = {
-        "enabled": {
-            "type": "boolean",
-            "label": "Enable My Plugin",
-            "default": True,
-        },
-        "channel_id": {
-            "type": "channel_select",
-            "label": "Target Channel",
-            "required": False,
-        },
+        "id": "my_plugin",
+        "label": "My Plugin",
+        "description": "Configure My Plugin settings.",
+        "fields": [
+            {
+                "key": "enabled",
+                "type": "boolean",
+                "label": "Enable My Plugin",
+                "default": True,
+            },
+            {
+                "key": "channel_id",
+                "type": "channel_select",
+                "label": "Target Channel",
+                "description": "Channel where the plugin posts messages.",
+                "default": None,
+            },
+        ],
     }
 
     def __init__(self, bot: commands.Bot):
@@ -45,11 +65,12 @@ class MyPlugin(commands.Cog):
             return
 
         # Use the shared LLM service for inference.
-        response = await self.llm.complete(
-            prompt=query,
-            system="You are a helpful assistant.",
+        response = await self.llm.chat(
+            user_id=interaction.user.id,
+            message=query,
+            guild_id=interaction.guild_id,
         )
-        await interaction.followup.send(response.text)
+        await interaction.followup.send(response)
 
     # ── Settings helper ──────────────────────────────────────────────────────
 

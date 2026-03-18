@@ -52,12 +52,37 @@ SETTINGS_SCHEMA = {
     "id": "my_cog",
     "label": "My Cog",
     "fields": [
-        {"key": "enabled", "type": "boolean", "label": "Enabled", "default": True},
-        {"key": "channel", "type": "channel_select", "label": "Channel"},
-        {"key": "tags",    "type": "multiselect", "label": "Tags", "default": []},
-        {"key": "prefix",  "type": "text",    "label": "Prefix", "default": "!"},
-        {"key": "limit",   "type": "number",  "label": "Limit",  "default": 5},
+        {"key": "enabled",    "type": "boolean",        "label": "Enabled",  "default": True},
+        {"key": "channel",    "type": "channel_select", "label": "Channel",  "default": None},
+        {"key": "role",       "type": "role_select",    "label": "Role",     "default": None},
+        {"key": "tags",       "type": "multiselect",    "label": "Tags",     "default": []},
+        {"key": "prefix",     "type": "text",           "label": "Prefix",   "default": "!"},
+        {"key": "limit",      "type": "number",         "label": "Limit",    "default": 5},
     ],
+}
+"""
+        pv._validate_settings_schema_in_cog(_parse(src))
+        assert pv.ERRORS == []
+
+    def test_channel_select_valid(self, load_and_reset_validator):
+        """channel_select must be accepted — populated from API, no manual choices needed."""
+        pv = load_and_reset_validator
+        src = """
+SETTINGS_SCHEMA = {
+    "id": "x", "label": "X",
+    "fields": [{"key": "ch", "type": "channel_select", "label": "Channel", "default": None}],
+}
+"""
+        pv._validate_settings_schema_in_cog(_parse(src))
+        assert pv.ERRORS == []
+
+    def test_role_select_valid(self, load_and_reset_validator):
+        """role_select must be accepted — populated from API, no manual choices needed."""
+        pv = load_and_reset_validator
+        src = """
+SETTINGS_SCHEMA = {
+    "id": "x", "label": "X",
+    "fields": [{"key": "r", "type": "role_select", "label": "Role", "default": None}],
 }
 """
         pv._validate_settings_schema_in_cog(_parse(src))
@@ -96,16 +121,17 @@ SETTINGS_SCHEMA = {
         pv._validate_settings_schema_in_cog(_parse(src))
         assert any("bool" in e for e in pv.ERRORS)
 
-    def test_invalid_type_role_select(self, load_and_reset_validator):
+    def test_invalid_type_select(self, load_and_reset_validator):
+        """'select' is not a valid type — the correct type is 'multiselect'."""
         pv = load_and_reset_validator
         src = """
 SETTINGS_SCHEMA = {
     "id": "x", "label": "X",
-    "fields": [{"key": "r", "type": "role_select", "label": "Role"}],
+    "fields": [{"key": "s", "type": "select", "label": "S", "choices": []}],
 }
 """
         pv._validate_settings_schema_in_cog(_parse(src))
-        assert any("role_select" in e for e in pv.ERRORS)
+        assert any("select" in e for e in pv.ERRORS)
 
     def test_missing_id_key(self, load_and_reset_validator):
         pv = load_and_reset_validator

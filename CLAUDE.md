@@ -13,7 +13,26 @@ Every piece of code you generate must follow all five of these rules:
 1. **`bot.services.llm`** — the LLM service is always accessed as `bot.services.llm` (never `bot.llm_service` or any other path)
 2. **`get_guild_db` for guild data** — endpoints that touch guild-scoped tables use `Depends(get_guild_db)`, not `Depends(get_db)`. Using `get_db` silently bypasses Row-Level Security and can leak cross-guild data
 3. **`withPermission` on every frontend page** — every `page.tsx` under `dashboard/` must be exported as `withPermission(Page, PermissionLevel.X)`. A bare `export default function` has no auth guard and no breadcrumb
-4. **`SETTINGS_SCHEMA` for configurable cogs** — any cog that reads guild settings declares a `SETTINGS_SCHEMA` class attribute; the dashboard Settings page renders the form automatically with no frontend code needed
+4. **`SETTINGS_SCHEMA` for configurable cogs** — any cog that reads guild settings declares a `SETTINGS_SCHEMA` class attribute; the dashboard Settings page renders the form automatically with no frontend code needed. The schema **must** use the nested structure below — a flat dict of field names is invalid and will be rejected by the validator:
+
+```python
+SETTINGS_SCHEMA = {
+    "id": "my_plugin",          # unique snake_case identifier
+    "label": "My Plugin",       # display name in dashboard
+    "description": "...",       # optional subtitle
+    "fields": [
+        {"key": "enabled",    "type": "boolean",        "label": "Enable",          "default": True},
+        {"key": "channel_id", "type": "channel_select", "label": "Channel",         "default": None},
+        {"key": "role_id",    "type": "role_select",    "label": "Role",            "default": None},
+        {"key": "prefix",     "type": "text",           "label": "Prefix",          "default": "!"},
+        {"key": "limit",      "type": "number",         "label": "Max Items",       "default": 10},
+        {"key": "modes",      "type": "multiselect",    "label": "Modes",           "default": [],
+         "choices": [{"value": "a", "label": "Mode A"}, {"value": "b", "label": "Mode B"}]},
+    ],
+}
+```
+
+Valid `"type"` values: `"boolean"`, `"text"`, `"number"`, `"channel_select"`, `"role_select"`, `"multiselect"`. **Never use** `"string"`, `"integer"`, or `"select"` — the validator will reject them. `channel_select` and `role_select` dropdowns are populated automatically from the Discord API; you do not provide `choices` for them.
 5. **`AuditLog` on every settings mutation** — every backend endpoint that modifies settings must write an `AuditLog` entry; this is a hard framework contract
 
 ## How to Build a Feature (Plugin Workflow)

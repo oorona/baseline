@@ -15,6 +15,7 @@ interface FieldProps {
     onChange: (key: string, value: any) => void;
     disabled: boolean;
     channels: { id: string; name: string }[];
+    roles: { id: string; name: string; color: number }[];
 }
 
 function BooleanField({ field, value, onChange, disabled }: FieldProps) {
@@ -56,6 +57,28 @@ function ChannelSelectField({ field, value, onChange, disabled, channels }: Fiel
                 <option value="">Select a channel…</option>
                 {channels.map((ch) => (
                     <option key={ch.id} value={ch.id}>#{ch.name}</option>
+                ))}
+            </select>
+        </div>
+    );
+}
+
+function RoleSelectField({ field, value, onChange, disabled, roles }: FieldProps) {
+    return (
+        <div className="space-y-1">
+            <label className="block text-sm font-medium">{field.label}</label>
+            {field.description && (
+                <p className="text-xs text-muted-foreground">{field.description}</p>
+            )}
+            <select
+                value={value ?? ''}
+                onChange={(e) => onChange(field.key, e.target.value || null)}
+                disabled={disabled}
+                className="w-full px-4 py-2 bg-background border border-input rounded-lg focus:ring-2 focus:ring-ring outline-none transition-shadow disabled:opacity-50"
+            >
+                <option value="">Select a role…</option>
+                {roles.map((r) => (
+                    <option key={r.id} value={r.id}>@{r.name}</option>
                 ))}
             </select>
         </div>
@@ -123,10 +146,11 @@ function TextField({ field, value, onChange, disabled }: FieldProps) {
 
 function SchemaField(props: FieldProps) {
     switch (props.field.type) {
-        case 'boolean':       return <BooleanField {...props} />;
+        case 'boolean':        return <BooleanField {...props} />;
         case 'channel_select': return <ChannelSelectField {...props} />;
-        case 'multiselect':   return <MultiselectField {...props} />;
-        default:              return <TextField {...props} />;
+        case 'role_select':    return <RoleSelectField {...props} />;
+        case 'multiselect':    return <MultiselectField {...props} />;
+        default:               return <TextField {...props} />;
     }
 }
 
@@ -139,6 +163,7 @@ function GuildSettingsPage() {
     const [schemas, setSchemas] = useState<SettingsSchema[]>([]);
     const [settings, setSettings] = useState<Record<string, any>>({});
     const [channels, setChannels] = useState<{ id: string; name: string }[]>([]);
+    const [roles, setRoles] = useState<{ id: string; name: string; color: number }[]>([]);
     const [canModify, setCanModify] = useState(false);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -148,10 +173,11 @@ function GuildSettingsPage() {
         const fetchData = async () => {
             if (!guildId) return;
             try {
-                const [settingsData, guildData, channelsData, schemaData] = await Promise.all([
+                const [settingsData, guildData, channelsData, rolesData, schemaData] = await Promise.all([
                     apiClient.getGuildSettings(guildId),
                     apiClient.getGuild(guildId),
                     apiClient.getGuildChannels(guildId),
+                    apiClient.getGuildRoles(guildId),
                     apiClient.getSettingsSchema(),
                 ]);
 
@@ -163,6 +189,11 @@ function GuildSettingsPage() {
                     channelsData
                         .filter((c: any) => c.type === 0)
                         .map((c: any) => ({ id: String(c.id), name: c.name }))
+                );
+                setRoles(
+                    (rolesData ?? [])
+                        .filter((r: any) => r.name !== '@everyone')
+                        .map((r: any) => ({ id: String(r.id), name: r.name, color: r.color ?? 0 }))
                 );
                 setSchemas(schemaData.schemas || []);
             } catch (err) {
@@ -229,6 +260,7 @@ function GuildSettingsPage() {
                                 onChange={handleChange}
                                 disabled={isReadOnly}
                                 channels={channels}
+                                roles={roles}
                             />
                         ))}
                     </div>

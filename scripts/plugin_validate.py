@@ -202,7 +202,7 @@ def _decorator_has_kwarg(decorator, kwarg: str) -> bool:
     return False
 
 
-_VALID_FIELD_TYPES = {"boolean", "channel_select", "multiselect", "text", "number"}
+_VALID_FIELD_TYPES = {"boolean", "channel_select", "role_select", "multiselect", "text", "number"}
 
 
 def _validate_settings_schema_in_cog(tree: ast.AST):

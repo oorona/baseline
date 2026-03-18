@@ -66,14 +66,13 @@ class MyCog(commands.Cog):
     @app_commands.describe(text="Text to analyze")
     async def analyze(self, interaction: discord.Interaction, text: str):
         await interaction.response.defer()
-        # Structured output via system prompt or generate_structured()
-        response = await self.llm.chat(
-            message=f"Analyze sentiment of: {text}",
+        # For structured output use generate_structured(); chat() returns plain str
+        result = await self.llm.generate_structured(
+            prompt=f"Analyze sentiment of: {text}",
+            schema={"type": "object", "properties": {"sentiment": {"type": "string"}, "score": {"type": "number"}}},
             system_prompt='Output JSON: {"sentiment": "positive|negative", "score": 0.0-1.0}',
-            guild_id=interaction.guild_id,
-            user_id=interaction.user.id,
         )
-        await interaction.followup.send(response)
+        await interaction.followup.send(str(result))
 ```
 
 ### Context B: The Backend (`backend/app/api/*.py`)
@@ -141,15 +140,13 @@ Image generation is fully implemented via the Gemini service. Use `self.llm.gene
 
 ```python
 import io
+import base64
 import discord
 
-result = await self.llm.generate_image(
-    prompt="A futuristic city at sunset",
-    guild_id=interaction.guild_id,
-    user_id=interaction.user.id,
-)
-if result["images"]:
-    file = discord.File(io.BytesIO(result["images"][0]), filename="generated.png")
+# generate_image() returns List[str] of base64-encoded image bytes
+images = await self.llm.generate_image(prompt="A futuristic city at sunset")
+if images:
+    file = discord.File(io.BytesIO(base64.b64decode(images[0])), filename="generated.png")
     await interaction.followup.send(file=file)
 ```
 

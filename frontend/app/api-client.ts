@@ -44,7 +44,7 @@ export interface SettingsFieldChoice {
 
 export interface SettingsField {
     key: string;
-    type: 'boolean' | 'channel_select' | 'multiselect' | 'text' | 'number';
+    type: 'boolean' | 'channel_select' | 'role_select' | 'multiselect' | 'text' | 'number';
     label: string;
     description?: string;
     default: boolean | string | number | string[] | null;
