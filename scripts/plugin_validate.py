@@ -330,6 +330,12 @@ def validate_frontend(page_path: Path):
             "Direct axios call detected — use apiClient.get/post/put/delete() instead. "
             "Direct axios calls bypass the auth interceptor."
         )
+    # Untyped apiClient generic calls — returns unknown, accessing properties will fail tsc
+    if re.search(r"\bapiClient\.(get|post|put|delete)\s*\(", src):
+        err(
+            "Untyped apiClient call — TypeScript will infer 'unknown' and reject property access. "
+            "Always provide a type parameter: apiClient.get<{ tickets: Ticket[] }>(...)"
+        )
 
     # Bare 'use client' safety check
     if "'use client'" not in src and '"use client"' not in src:

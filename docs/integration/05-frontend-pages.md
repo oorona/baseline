@@ -111,20 +111,23 @@ Use the generic methods on `apiClient` — **do not add named methods to `api-cl
 ```typescript
 import { apiClient } from '@/app/api-client';
 
+// Always provide a type parameter — omitting it gives `unknown` and TypeScript
+// will reject any property access on the result.
+
 // GET
-const data = await apiClient.get(`/guilds/${guildId}/myplugin/settings`);
+const data = await apiClient.get<{ items: MyItem[] }>(`/guilds/${guildId}/myplugin/items`);
 
 // POST
-await apiClient.post(`/guilds/${guildId}/myplugin/settings`, { key: value });
+const result = await apiClient.post<{ id: string }>(`/guilds/${guildId}/myplugin/items`, payload);
 
 // PUT
-await apiClient.put(`/guilds/${guildId}/myplugin/item/123`, payload);
+await apiClient.put<void>(`/guilds/${guildId}/myplugin/items/123`, payload);
 
 // DELETE
-await apiClient.delete(`/guilds/${guildId}/myplugin/item/123`);
+await apiClient.delete<void>(`/guilds/${guildId}/myplugin/items/123`);
 ```
 
-All four methods route through the shared auth interceptor (Bearer token + 401/403 handling). Never use raw `fetch()` or `axios` directly — the validator will reject them.
+All four methods route through the shared auth interceptor (Bearer token + 401/403 handling). Never use raw `fetch()` or `axios` directly — the validator will reject them. Untyped calls (no `<T>`) will also be rejected by the validator.
 
 ## Step 3: Register the Navigation Card
 
