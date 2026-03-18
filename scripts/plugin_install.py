@@ -267,11 +267,22 @@ def install_translations(plugin_dir: Path, plugin_name: str):
             f"\n\n  {marker} {'─' * max(0, 38 - len(plugin_name))}\n"
             f"  {snippet.rstrip(',')},\n"
         )
-        patched = re.sub(r"\n\} as const;", injected + "\n} as const;", target_src)
-        if patched == target_src:
-            print(f"  [ERROR] Could not find '}} as const;' anchor in {lang}.ts — merge failed.")
+        # Match the final closing brace — en.ts uses `} as const;`, es.ts uses `};`
+        closing = re.compile(r"\n\}( as const)?;")
+        last_match = None
+        for last_match in closing.finditer(target_src):
+            pass
+        if last_match is None:
+            print(f"  [ERROR] Could not find closing '}}' anchor in {lang}.ts — merge failed.")
             print(f"         Install aborted. No files were written. Check the translation file structure.")
             sys.exit(1)
+        suffix = last_match.group(1) or ""
+        patched = (
+            target_src[:last_match.start()]
+            + injected
+            + f"\n}}{suffix};"
+            + target_src[last_match.end():]
+        )
 
         pending.append((dst, patched))
 

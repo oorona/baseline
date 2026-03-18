@@ -167,11 +167,11 @@ def remove_translations(plugin_name: str):
         if DRY_RUN:
             continue
         src = target.read_text()
-        # The installer injected the block just before \n} as const;
-        # Remove everything from the plugin marker to (but not including) that closing line.
+        # The installer injected the block just before the closing brace.
+        # en.ts uses `} as const;`, es.ts uses `};` — match both.
         pattern = (
             rf"\n\n  // ── Plugin: {re.escape(plugin_name)}[^\n]*\n"
-            rf".*?(?=\n\}} as const;)"
+            rf".*?(?=\n\}}(?: as const)?;)"
         )
         new_src = re.sub(pattern, "", src, count=1, flags=re.DOTALL)
         if new_src == src:
