@@ -102,8 +102,7 @@ async def report_bot_info(
     """
     try:
         await redis.set("bot:introspection", report.model_dump_json())
-        if report.settings_schemas:
-            await redis.set(SETTINGS_SCHEMA_KEY, json.dumps(report.settings_schemas))
+        await redis.set(SETTINGS_SCHEMA_KEY, json.dumps(report.settings_schemas))
         logger.info("Received and stored bot introspection report")
         return {"status": "ok"}
     except Exception as e:
