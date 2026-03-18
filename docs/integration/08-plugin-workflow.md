@@ -245,6 +245,7 @@ Pass `--strict` to promote warnings to errors (useful in CI):
 | Patches `backend/main.py` | Adds `from app.api.event_logging import router ...` + `app.include_router(...)` |
 | Appends `models.py` | Appends model classes to `backend/app/models.py` |
 | Copies `migration.py` | `backend/alembic/versions/<timestamp>_event_logging.py` |
+| Writes `migration_inventory.json` | Registers plugin name, version, and revision ID — no manual edits needed |
 | Copies `page.tsx` | `frontend/app/dashboard/[guildId]/event_logging/page.tsx` (dir created) |
 | Inserts nav card | Patches `frontend/app/page.tsx` with the card object + icon import |
 | Merges `translations/en.ts` | Injects `eventLogging: { ... }` into `frontend/lib/i18n/translations/en.ts` |
@@ -254,35 +255,27 @@ Pass `--strict` to promote warnings to errors (useful in CI):
 
 ---
 
-## Step 4 — Manual Steps After Install
-
-The installer prints these at the end, but they always apply:
-
-### 4a. If the plugin added database tables — run the migration
+## Step 4 — Restart Services
 
 ```bash
-docker compose exec backend alembic upgrade head
+docker compose restart backend bot frontend
 ```
 
-That's it. The installer already:
-- Copied the migration file to `backend/alembic/versions/`
-- Read the revision ID from `migration.py` and wrote a plugin entry to `backend/migration_inventory.json`
+`backend` must restart to reload `migration_inventory.json` (loaded once at startup by `version.py`). The bot will pick up the new cog, introspect its `SETTINGS_SCHEMA`, and sync the settings form to the database. The frontend will show the new dashboard page.
 
-After `alembic upgrade head`, the DB Management page will show the plugin migration as **Applied**.
+---
+
+## Step 5 — Apply the Database Migration (if plugin has tables)
+
+Open the **DB Management** page. The plugin migration will appear in the plugin section. Click **Apply** — same as you would for a framework migration.
+
+The installer already handled everything else:
+- Copied the migration file to `backend/alembic/versions/`
+- Wrote the plugin entry to `backend/migration_inventory.json`
 
 > **Never edit `version.py`** — it is pure logic and contains no hardcoded data.
 > All version data lives in `backend/migration_inventory.json`.
 > For framework releases (not plugin work), a developer bumps `framework_version` and appends to `framework_migrations` in that JSON file.
-
----
-
-## Step 5 — Restart Services
-
-```bash
-docker compose restart bot frontend
-```
-
-The bot will pick up the new cog, introspect its `SETTINGS_SCHEMA`, and sync the settings form to the database. The frontend will show the new dashboard page.
 
 ---
 

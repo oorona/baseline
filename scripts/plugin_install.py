@@ -131,7 +131,6 @@ def install_migration(plugin_dir: Path, plugin_name: str):
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     dst = ROOT / f"backend/alembic/versions/{ts}_{plugin_name}.py"
     copy_file(src, dst)
-    print(f"  [!]  Migration installed → run: alembic upgrade head")
     _register_plugin_in_inventory(src, plugin_name, plugin_dir)
 
 
@@ -276,15 +275,9 @@ def install_translations(plugin_dir: Path, plugin_name: str):
 # ── Post-install guidance ─────────────────────────────────────────────────────
 
 def print_manual_steps(manifest: dict, components: dict):
-    steps = []
-
     if components.get("migration"):
-        steps.append("Apply the database migration:\n     docker compose exec backend alembic upgrade head\n     (or: cd backend && alembic upgrade head)\n     The DB Management page will then show the plugin migration as applied.")
-
-    if steps:
-        print(f"\nManual step required:")
-        for i, step in enumerate(steps, 1):
-            print(f"  {i}. {step}")
+        print("\n  [!]  Plugin migration registered. After restarting services, open the")
+        print("       DB Management page and apply the plugin migration from there.")
 
 
 def _to_camel_case(snake: str) -> str:

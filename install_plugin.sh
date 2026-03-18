@@ -96,10 +96,10 @@ echo
 "$PYTHON" "$SCRIPT_DIR/scripts/plugin_install.py" "plugins/$PLUGIN_NAME" "${EXTRA_ARGS[@]}"
 
 STATUS=$?
-if [[ $STATUS -eq 0 ]]; then
+if [[ $STATUS -eq 0 ]] && [[ ! " ${EXTRA_ARGS[*]} " =~ " --dry-run " ]]; then
     echo
-    echo -e "${GREEN}Restart the bot and frontend to apply:${RESET}"
-    echo -e "  docker compose restart bot frontend"
+    echo -e "${GREEN}Restart services to apply:${RESET}"
+    echo -e "  docker compose restart backend bot frontend"
     echo
 fi
 exit $STATUS

@@ -18,8 +18,8 @@ This documentation is the **authoritative source** for developers and AI Agents 
 | Adding new API routers in `backend/app/api/` | Modify `backend/app/api/auth.py` or `deps.py` |
 | Adding new pages in `frontend/app/dashboard/[guildId]/` | Modify `frontend/lib/auth-context.tsx` |
 | Adding new Alembic migrations | Edit existing migration files |
-| Appending entries to `MIGRATION_CHANGELOG` in `version.py` | Change existing `MIGRATION_CHANGELOG` entries |
-| Bumping `FRAMEWORK_VERSION` for schema changes | Change `REQUIRED_DB_REVISION` manually |
+| Appending entries to `framework_migrations` in `migration_inventory.json` | Edit `version.py` — it is read-only logic |
+| Bumping `framework_version` in `migration_inventory.json` for schema changes | Hardcode anything in `version.py` |
 
 ---
 
