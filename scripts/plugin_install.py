@@ -129,7 +129,47 @@ def install_migration(plugin_dir: Path, plugin_name: str):
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     dst = ROOT / f"backend/alembic/versions/{ts}_{plugin_name}.py"
     copy_file(src, dst)
+    if not DRY_RUN:
+        _patch_migration_branch(dst, plugin_name)
     _register_plugin_in_inventory(src, plugin_name, plugin_dir)
+
+
+def _patch_migration_branch(migration_path: Path, plugin_name: str):
+    """Convert a plugin migration to an independent Alembic branch.
+
+    Plugin migrations must NOT chain off the framework — they create their own
+    tables and have no dependency on the framework's migration chain.  Setting
+    down_revision = None and assigning a branch label keeps plugin and framework
+    branches completely separate.  `alembic upgrade <revision>` works for both;
+    `alembic upgrade heads` applies all branches at once.
+    """
+    src = migration_path.read_text()
+
+    # Set down_revision = None (remove any link to the framework chain)
+    src = re.sub(
+        r"(down_revision\s*(?::\s*\S+\s*)?)=\s*(?:None|['\"][^'\"]*['\"])",
+        r"\1= None",
+        src, count=1,
+    )
+
+    # Set branch_labels to the plugin's named branch
+    branch_value = f"['{plugin_name}']"
+    if re.search(r"branch_labels\s*=", src):
+        src = re.sub(
+            r"branch_labels\s*=\s*(?:None|\[.*?\])",
+            f"branch_labels = {branch_value}",
+            src, count=1,
+        )
+    else:
+        # Insert after the revision line
+        src = re.sub(
+            r"(revision\s*(?::\s*\S+\s*)?=\s*['\"][^'\"]+['\"])",
+            f"\\1\nbranch_labels = {branch_value}",
+            src, count=1,
+        )
+
+    migration_path.write_text(src)
+    log(f"PATCH  {_rel(migration_path)} — set independent branch (down_revision=None, branch_labels={branch_value})")
 
 
 def _register_plugin_in_inventory(migration_src: Path, plugin_name: str, plugin_dir: Path):

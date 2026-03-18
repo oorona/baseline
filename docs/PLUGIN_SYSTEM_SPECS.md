@@ -24,7 +24,7 @@ A plugin\'s core execution logic lives in a `discord.py` Cog inside the `bot/cog
 Plugins can securely expose configurable options to the server administrator via the frontend Dashboard without requiring the developer to write custom React code.
 *   The Cog declares a static `SETTINGS_SCHEMA` dictionary specifying its required settings fields (e.g., toggles, text inputs, Discord channel/role dropdowns).
 *   During `on_ready`, the framework introspects this schema and automatically dynamically renders the "Bot Settings" page on the frontend.
-*   Supported field types include: `boolean`, `string`, `text`, `integer`, `channel_select`, `role_select`, and `select`.
+*   Supported field types: `boolean`, `text`, `number`, `channel_select`, `multiselect`. Common mistakes: do not use `"string"` (use `"text"`), `"integer"` (use `"number"`), `"bool"` (use `"boolean"`), `"role_select"` or `"select"` (not supported). The validator enforces these types and will reject the plugin if they are wrong.
 
 ---
 
@@ -41,7 +41,7 @@ When a plugin requires sophisticated data persistence beyond simple key-value `S
     *   Must use the core framework `Base` model.
     *   Must inherit from `GuildScopedMixin` if the data belongs to a specific Discord server.
     *   New database tables must be delivered via incremental Alembic migrations (`alembic revision --autogenerate`), NEVER by modifying existing baseline core migrations.
-    *   After install, run `alembic upgrade head`. The installer automatically writes the plugin migration entry to `backend/migration_inventory.json` — no edits to `version.py` or any Python file required. `version.py` is read-only logic; all version data lives in the inventory file.
+    *   The installer automatically writes the plugin migration entry to `backend/migration_inventory.json` and patches the migration file to use an **independent Alembic branch** (`down_revision = None`, `branch_labels = ['plugin_name']`). Plugin migrations never chain off the framework — they own their own tables and run in a separate branch. To apply the migration, open the **DB Management** page in the dashboard and click **Apply** next to the plugin. No manual `alembic upgrade head` is required.
 
 ---
 
@@ -115,11 +115,7 @@ plugins/
 - Patches `backend/main.py` to import and register the new router
 - Copies `page.tsx` → `frontend/app/dashboard/[guildId]/<name>/page.tsx` (creates directory)
 - Merges translation snippets into `en.ts` and `es.ts`
-- Copies migration file to `backend/alembic/versions/<timestamp>_<name>.py`
-
-### What Still Requires a Manual Step
-
-1. **Database migrations** — run `cd backend && alembic upgrade head` after install
+- Copies migration file to `backend/alembic/versions/<timestamp>_<name>.py` and patches it to an independent Alembic branch (`down_revision = None`, `branch_labels = ['plugin_name']`)
 
 > See `docs/integration/08-plugin-workflow.md` for a step-by-step walkthrough using the Event Logging plugin as a worked example.
 
@@ -128,5 +124,5 @@ plugins/
 ## Summary of the Plugin Installation Flow
 1. **Stage:** The developer (or LLM) creates the plugin files in `plugins/<plugin_name>/`.
 2. **Validate + Install:** Run `./install_plugin.sh <plugin_name>` — the validator runs first and aborts on any error before any files are touched.
-4. **Migrate:** Run `alembic upgrade head` if the plugin added database tables.
-5. **Boot:** The bot connects, the introspection framework reads the new Cog\'s `SETTINGS_SCHEMA`, syncs with the Database, and dynamically updates the UI. No core infrastructure overrides were necessary.
+3. **Migrate (if needed):** If the plugin added database tables, open the **DB Management** page in the dashboard and click **Apply** next to the plugin in the Plugin Migrations section. The installer has already registered the migration and patched it to an independent branch.
+4. **Boot:** The bot connects, the introspection framework reads the new Cog's `SETTINGS_SCHEMA`, syncs with the Database, and dynamically updates the UI. No core infrastructure overrides were necessary.

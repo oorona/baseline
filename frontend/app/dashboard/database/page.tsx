@@ -99,6 +99,7 @@ interface MigrationInfo {
   head_revision: string;
   framework_version: string;
   schema_up_to_date: boolean;
+  is_plugin_revision_current: boolean;
   changelog: ChangelogEntry[];
   pending_versions: ChangelogEntry[];
   plugin_migrations: PluginMigrationEntry[];
@@ -421,11 +422,14 @@ function ConnectionTab() {
   );
 }
 
+interface ApplyResult { success: boolean; stdout: string; stderr: string; label: string }
+
 function MigrationsTab() {
-  const [data, setData]         = useState<MigrationInfo | null>(null);
-  const [loading, setLoading]   = useState(true);
-  const [applying, setApplying] = useState(false);
-  const [result, setResult]     = useState<{ success: boolean; stdout: string; stderr: string } | null>(null);
+  const [data, setData]                   = useState<MigrationInfo | null>(null);
+  const [loading, setLoading]             = useState(true);
+  const [applyingFw, setApplyingFw]       = useState(false);
+  const [applyingPlugin, setApplyingPlugin] = useState<string | null>(null);
+  const [result, setResult]               = useState<ApplyResult | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -441,115 +445,195 @@ function MigrationsTab() {
 
   useEffect(() => { load(); }, [load]);
 
-  const handleUpgrade = async () => {
-    setApplying(true);
+  const handleUpgradeFramework = async () => {
+    setApplyingFw(true);
     setResult(null);
     try {
-      const res = await apiClient.applyDatabaseMigrations();
-      setResult(res);
+      const res = await apiClient.upgradeFrameworkSchema();
+      setResult({ ...res, label: `Framework v${data?.framework_version}` });
       await load();
     } catch {
-      setResult({ success: false, stdout: '', stderr: 'Request failed' });
+      setResult({ success: false, stdout: '', stderr: 'Request failed', label: 'Framework upgrade' });
     } finally {
-      setApplying(false);
+      setApplyingFw(false);
     }
   };
 
-  if (loading) return <div className="text-muted-foreground text-sm py-8 text-center">Loading migration history…</div>;
-  if (!data) return <div className="text-red-400 text-sm py-8 text-center">Failed to load migrations.</div>;
+  const handleApplyPlugin = async (pluginName: string) => {
+    setApplyingPlugin(pluginName);
+    setResult(null);
+    try {
+      const res = await apiClient.applyPluginMigration(pluginName);
+      setResult({ ...res, label: `Plugin: ${pluginName}` });
+      await load();
+    } catch {
+      setResult({ success: false, stdout: '', stderr: 'Request failed', label: `Plugin: ${pluginName}` });
+    } finally {
+      setApplyingPlugin(null);
+    }
+  };
 
-  const pluginPending  = data.plugin_migrations?.some(p => !p.already_applied) ?? false;
-  const needsUpgrade   = !data.schema_up_to_date || pluginPending;
+  if (loading) return <div className="text-muted-foreground text-sm py-8 text-center">Loading migration status…</div>;
+  if (!data)   return <div className="text-red-400 text-sm py-8 text-center">Failed to load migrations.</div>;
+
+  const frameworkPending = !data.schema_up_to_date;
+  const pendingPlugins   = data.plugin_migrations?.filter(p => !p.already_applied) ?? [];
+  const busy             = applyingFw || !!applyingPlugin;
 
   return (
     <div className="space-y-6">
-      {/* Status + action */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          {needsUpgrade ? (
-            <div className="flex items-center gap-2 text-amber-400">
-              <AlertTriangle size={16} />
-              <span className="font-medium">
-                {!data.schema_up_to_date ? 'Framework schema upgrade required' : 'Plugin migration pending'}
-              </span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 text-green-400">
-              <CheckCircle2 size={16} />
-              <span className="font-medium">All migrations applied</span>
-            </div>
-          )}
-          <p className="text-xs text-muted-foreground mt-1">
-            Current: <code className="font-mono">{data.current_revision ?? 'none'}</code>
-            {' '} · Framework head: <code className="font-mono">{data.head_revision}</code>
+
+      {/* ── Action cards ─────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+        {/* Framework card */}
+        <div className={`rounded-xl border p-5 space-y-3 ${
+          frameworkPending ? 'border-amber-500/30 bg-amber-500/5' : 'border-border bg-card'
+        }`}>
+          <div className="flex items-center gap-2">
+            <Layers size={15} className={frameworkPending ? 'text-amber-400' : 'text-indigo-400'} />
+            <h3 className="font-semibold text-sm text-foreground">Framework Schema</h3>
+            {frameworkPending
+              ? <span className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                  <AlertTriangle size={10} /> {data.pending_versions.length} version(s) pending
+                </span>
+              : <span className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-green-500/10 text-green-400 border border-green-500/20">
+                  <CheckCircle2 size={10} /> Up to date
+                </span>
+            }
+          </div>
+          <p className="text-xs text-muted-foreground">
+            v{data.framework_version} · head: <code className="font-mono">{data.head_revision}</code>
           </p>
+          {frameworkPending && (
+            <button
+              onClick={handleUpgradeFramework}
+              disabled={busy}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-amber-500 text-white hover:bg-amber-500/90 text-sm font-medium transition-colors disabled:opacity-50"
+            >
+              <ArrowUpCircle size={14} className={applyingFw ? 'animate-bounce' : ''} />
+              {applyingFw ? 'Upgrading…' : `Upgrade to v${data.framework_version}`}
+            </button>
+          )}
         </div>
 
-        {needsUpgrade && (
-          <button
-            onClick={handleUpgrade}
-            disabled={applying}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-500 text-white hover:bg-amber-500/90 text-sm font-medium transition-colors disabled:opacity-50"
-          >
-            <ArrowUpCircle size={14} className={applying ? 'animate-bounce' : ''} />
-            {applying ? 'Applying…' : 'Apply All Pending Migrations'}
-          </button>
-        )}
+        {/* Plugin card */}
+        <div className={`rounded-xl border p-5 space-y-3 ${
+          pendingPlugins.length > 0 ? 'border-violet-500/30 bg-violet-500/5' : 'border-border bg-card'
+        }`}>
+          <div className="flex items-center gap-2">
+            <Puzzle size={15} className={pendingPlugins.length > 0 ? 'text-violet-400' : 'text-green-400'} />
+            <h3 className="font-semibold text-sm text-foreground">Plugin Migrations</h3>
+            {pendingPlugins.length > 0
+              ? <span className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-violet-500/10 text-violet-400 border border-violet-500/20">
+                  <AlertTriangle size={10} /> {pendingPlugins.length} pending
+                </span>
+              : <span className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-green-500/10 text-green-400 border border-green-500/20">
+                  <CheckCircle2 size={10} /> {data.plugin_migrations?.length ? 'All applied' : 'None installed'}
+                </span>
+            }
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Independent branches — do not affect framework versioning
+          </p>
+          {data.plugin_migrations?.length === 0 && (
+            <p className="text-xs text-muted-foreground/60">Install a plugin with a migration component to see it here.</p>
+          )}
+          {(data.plugin_migrations?.length ?? 0) > 0 && (
+            <div className="space-y-2">
+              {data.plugin_migrations.map(p => (
+                <div key={p.plugin} className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <code className="text-xs font-mono text-foreground">{p.plugin}</code>
+                    <span className="text-xs text-muted-foreground ml-1.5">v{p.version}</span>
+                  </div>
+                  {p.already_applied ? (
+                    <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-green-500/10 text-green-400 border border-green-500/20">
+                      <CheckCircle2 size={10} /> Applied
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => handleApplyPlugin(p.plugin)}
+                      disabled={busy || frameworkPending}
+                      title={frameworkPending ? 'Apply framework migrations first' : undefined}
+                      className="shrink-0 flex items-center gap-1.5 px-3 py-1 rounded text-xs bg-violet-600 text-white hover:bg-violet-600/90 disabled:opacity-50 transition-colors"
+                    >
+                      <ArrowUpCircle size={11} className={applyingPlugin === p.plugin ? 'animate-bounce' : ''} />
+                      {applyingPlugin === p.plugin ? 'Applying…' : 'Apply'}
+                    </button>
+                  )}
+                </div>
+              ))}
+              {frameworkPending && pendingPlugins.length > 0 && (
+                <p className="text-xs text-amber-400 pt-1">
+                  ⚠ Apply framework upgrade first — plugin buttons are disabled until then.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Migration result */}
+      {/* ── Result output ─────────────────────────────────────────────────── */}
       {result && (
         <div className={`p-4 rounded-lg border text-xs font-mono whitespace-pre-wrap ${
           result.success
             ? 'bg-green-500/10 border-green-500/30 text-green-300'
             : 'bg-red-500/10 border-red-500/30 text-red-300'
         }`}>
-          {result.success ? '✓ Upgrade successful\n' : '✗ Upgrade failed\n'}
+          {result.success ? `✓ ${result.label} — applied\n` : `✗ ${result.label} — failed\n`}
           {result.stdout}
           {result.stderr}
         </div>
       )}
 
-      {/* Framework changelog */}
+      {/* ── Framework changelog ───────────────────────────────────────────── */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">
         <div className="px-6 py-4 border-b border-border flex items-center gap-2">
           <Layers size={15} className="text-indigo-400" />
-          <h3 className="font-semibold text-foreground">Framework Migrations</h3>
+          <h3 className="font-semibold text-foreground">Framework Migration History</h3>
         </div>
         <div className="divide-y divide-border/50">
-          {data.changelog.map((entry, idx) => (
-            <div key={idx} className={`px-6 py-4 ${entry.is_current ? 'bg-primary/5' : ''}`}>
-              <div className="flex items-center gap-3 mb-1 flex-wrap">
-                <code className={`text-xs font-mono font-semibold ${entry.is_current ? 'text-primary' : 'text-foreground'}`}>
-                  v{entry.version}
-                </code>
-                {entry.is_current && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-primary/10 text-primary border border-primary/20">Current</span>
-                )}
-                {entry.already_applied && !entry.is_current && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-green-500/10 text-green-400 border border-green-500/20">Applied</span>
-                )}
-                {!entry.already_applied && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-amber-500/10 text-amber-400 border border-amber-500/20">Pending</span>
-                )}
+          {data.changelog.map((entry, idx) => {
+            // When a plugin is the current revision, the framework head entry
+            // is still fully applied — mark it as the framework's current state.
+            const isFwHead = entry.head_revision === data.head_revision && data.is_plugin_revision_current;
+            return (
+              <div key={idx} className={`px-6 py-4 ${entry.is_current || isFwHead ? 'bg-primary/5' : ''}`}>
+                <div className="flex items-center gap-3 mb-1 flex-wrap">
+                  <code className={`text-xs font-mono font-semibold ${entry.is_current || isFwHead ? 'text-primary' : 'text-foreground'}`}>
+                    v{entry.version}
+                  </code>
+                  {(entry.is_current || isFwHead) && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-primary/10 text-primary border border-primary/20">
+                      Framework head
+                    </span>
+                  )}
+                  {entry.already_applied && !entry.is_current && !isFwHead && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-green-500/10 text-green-400 border border-green-500/20">Applied</span>
+                  )}
+                  {!entry.already_applied && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-amber-500/10 text-amber-400 border border-amber-500/20">Pending</span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">{entry.description}</p>
+                <p className="text-xs font-mono text-muted-foreground/60 mt-1">head: {entry.head_revision}</p>
               </div>
-              <p className="text-xs text-muted-foreground">{entry.description}</p>
-              <p className="text-xs font-mono text-muted-foreground/60 mt-1">head: {entry.head_revision}</p>
-            </div>
-          ))}
+            );
+          })}
           {data.changelog.length === 0 && (
             <div className="px-6 py-4 text-sm text-muted-foreground">No migration history available.</div>
           )}
         </div>
       </div>
 
-      {/* Plugin migrations */}
-      {data.plugin_migrations?.length > 0 && (
+      {/* ── Plugin migration history ──────────────────────────────────────── */}
+      {(data.plugin_migrations?.length ?? 0) > 0 && (
         <div className="bg-card border border-border rounded-xl overflow-hidden">
           <div className="px-6 py-4 border-b border-border flex items-center gap-2">
             <Puzzle size={15} className="text-violet-400" />
-            <h3 className="font-semibold text-foreground">Plugin Migrations</h3>
-            <span className="text-xs text-muted-foreground ml-1">Independent of framework versioning</span>
+            <h3 className="font-semibold text-foreground">Plugin Migration History</h3>
+            <span className="text-xs text-muted-foreground ml-1">Each plugin is an independent Alembic branch</span>
           </div>
           <div className="divide-y divide-border/50">
             {data.plugin_migrations.map((entry, idx) => (
@@ -563,13 +647,13 @@ function MigrationsTab() {
                       <CheckCircle2 size={10} /> Applied
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-violet-500/10 text-violet-400 border border-violet-500/20">
                       <AlertTriangle size={10} /> Pending
                     </span>
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">{entry.description}</p>
-                <p className="text-xs font-mono text-muted-foreground/60 mt-1">head: {entry.head_revision}</p>
+                <p className="text-xs font-mono text-muted-foreground/60 mt-1">branch head: {entry.head_revision}</p>
               </div>
             ))}
           </div>

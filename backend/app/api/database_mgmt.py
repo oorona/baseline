@@ -32,6 +32,7 @@ from app.core.version import (
     _version_key,
     get_app_version_for_revision,
     get_changelog_entry,
+    get_plugin_migration,
     get_upgrade_path,
     is_plugin_revision,
 )
@@ -63,14 +64,42 @@ def _run_alembic(*args: str) -> subprocess.CompletedProcess:
     )
 
 
-async def _get_alembic_current(db: AsyncSession) -> Optional[str]:
-    """Read the current Alembic revision from the alembic_version table."""
+async def _get_alembic_revisions(db: AsyncSession) -> set[str]:
+    """Return ALL current Alembic revision IDs.
+
+    With independent plugin branches each installed plugin adds its own row to
+    alembic_version.  The framework head is always a separate row from any
+    plugin revision.  Old linear-chain plugins produce only one row.
+    """
     try:
-        result = await db.execute(text("SELECT version_num FROM alembic_version LIMIT 1"))
-        row = result.fetchone()
-        return row[0] if row else None
+        result = await db.execute(text("SELECT version_num FROM alembic_version"))
+        return {row[0] for row in result.fetchall()}
     except Exception:
+        return set()
+
+
+async def _get_alembic_current(db: AsyncSession) -> Optional[str]:
+    """Return the current Alembic revision for the framework branch.
+
+    With independent plugin branches, alembic_version may have several rows.
+    We return the framework head if it is present.  Fallback: for legacy
+    linear-chain installs (plugin revision is the only row), we return that
+    single revision so the rest of the logic can handle it as before.
+    """
+    revisions = await _get_alembic_revisions(db)
+    if not revisions:
         return None
+    if REQUIRED_DB_REVISION in revisions:
+        return REQUIRED_DB_REVISION
+    # Legacy single-revision case (linear chain or framework not at head)
+    if len(revisions) == 1:
+        return next(iter(revisions))
+    # Multiple revisions but framework head not present — return the most
+    # recent framework revision that is applied
+    for entry in reversed(MIGRATION_CHANGELOG):
+        if entry["head_revision"] in revisions:
+            return entry["head_revision"]
+    return next(iter(revisions))
 
 
 async def _get_alembic_history() -> List[Dict[str, str]]:
@@ -311,6 +340,7 @@ async def list_migrations(
     ``pending_versions`` is the subset of changelog entries not yet applied.
     """
     current_revision   = await _get_alembic_current(db)
+    applied_revisions  = await _get_alembic_revisions(db)
     current_db_version = get_app_version_for_revision(current_revision)
     upgrade_path       = get_upgrade_path(current_revision)
 
@@ -324,29 +354,34 @@ async def list_migrations(
         )
         changelog.append({
             **entry,
-            "is_current":    is_current,
+            "is_current":      is_current,
             "already_applied": is_applied,
         })
 
     pending_versions = [e for e in upgrade_path if not e.get("already_applied")]
 
-    # Annotate plugin migrations with whether they've been applied.
-    # With a linear Alembic chain, the plugin migration is applied iff
-    # its head_revision is the current revision.
+    # Plugin migrations are independent Alembic branches — each plugin's
+    # head_revision appears as its own row in alembic_version when applied.
+    # For legacy linear-chain installs the revision set check still works
+    # because the plugin revision IS in the set.
     plugin_changelog = [
-        {**entry, "already_applied": entry["head_revision"] == current_revision}
+        {**entry, "already_applied": entry["head_revision"] in applied_revisions}
         for entry in PLUGIN_MIGRATIONS
     ]
 
+    framework_applied       = REQUIRED_DB_REVISION in applied_revisions or is_plugin_revision(current_revision)
+    any_plugin_applied      = any(is_plugin_revision(r) for r in applied_revisions)
+
     return {
-        "current_revision":   current_revision,
-        "current_db_version": current_db_version,
-        "framework_version":  FRAMEWORK_VERSION,
-        "head_revision":      REQUIRED_DB_REVISION,
-        "schema_up_to_date":  current_revision == REQUIRED_DB_REVISION or is_plugin_revision(current_revision),
-        "changelog":          changelog,
-        "pending_versions":   pending_versions,
-        "plugin_migrations":  plugin_changelog,
+        "current_revision":           current_revision,
+        "current_db_version":         current_db_version,
+        "framework_version":          FRAMEWORK_VERSION,
+        "head_revision":              REQUIRED_DB_REVISION,
+        "schema_up_to_date":          framework_applied,
+        "is_plugin_revision_current": any_plugin_applied,
+        "changelog":                  changelog,
+        "pending_versions":           pending_versions,
+        "plugin_migrations":          plugin_changelog,
     }
 
 
@@ -466,6 +501,120 @@ async def upgrade_to_version(
         "stdout":           proc.stdout,
         "stderr":           proc.stderr,
         "return_code":      proc.returncode,
+    }
+
+
+@router.post("/migrations/framework/upgrade")
+async def upgrade_framework_schema(
+    db: AsyncSession = Depends(get_db),
+    _admin: dict = Depends(verify_platform_admin),
+):
+    """
+    Apply all pending framework migrations up to REQUIRED_DB_REVISION.
+
+    Plugin migrations are on independent branches and are NOT affected by this
+    endpoint.  Use POST /migrations/plugins/{name}/apply for plugins.
+    """
+    from_revision = await _get_alembic_current(db)
+    from_version  = get_app_version_for_revision(from_revision)
+
+    start_ms = time.monotonic()
+    proc = await asyncio.get_event_loop().run_in_executor(
+        None, lambda: _run_alembic("upgrade", REQUIRED_DB_REVISION)
+    )
+    duration_ms = int((time.monotonic() - start_ms) * 1000)
+
+    success     = proc.returncode == 0
+    to_revision = await _get_alembic_current(db)
+    to_version  = get_app_version_for_revision(to_revision)
+
+    record = DbMigrationHistory(
+        from_revision = from_revision,
+        to_revision   = to_revision or REQUIRED_DB_REVISION,
+        from_version  = from_version,
+        to_version    = to_version,
+        applied_by    = int(_admin["user_id"]),
+        duration_ms   = duration_ms,
+        status        = "success" if success else "failure",
+        error         = proc.stderr if not success else None,
+    )
+    db.add(record)
+    await db.commit()
+
+    if success:
+        logger.info("framework_schema_upgraded", admin_id=_admin.get("user_id"),
+                    from_revision=from_revision, to_revision=to_revision)
+    else:
+        logger.error("framework_schema_upgrade_failed", stderr=proc.stderr)
+    return {
+        "success":     success,
+        "stdout":      proc.stdout,
+        "stderr":      proc.stderr,
+        "return_code": proc.returncode,
+    }
+
+
+@router.post("/migrations/plugins/{plugin_name}/apply")
+async def apply_plugin_migration(
+    plugin_name: str,
+    db: AsyncSession = Depends(get_db),
+    _admin: dict = Depends(verify_platform_admin),
+):
+    """
+    Apply the migration for a specific plugin.
+
+    Plugin migrations are independent Alembic branches — this runs
+    `alembic upgrade <plugin_head_revision>` which only touches the
+    plugin's branch and never the framework chain.
+    """
+    entry = get_plugin_migration(plugin_name)
+    if entry is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Plugin '{plugin_name}' not found in migration_inventory.json.",
+        )
+
+    target_revision = entry.get("head_revision")
+    if not target_revision:
+        raise HTTPException(status_code=422, detail=f"Plugin '{plugin_name}' has no head_revision.")
+
+    from_revision = await _get_alembic_current(db)
+    from_version  = get_app_version_for_revision(from_revision)
+
+    start_ms = time.monotonic()
+    proc = await asyncio.get_event_loop().run_in_executor(
+        None, lambda: _run_alembic("upgrade", target_revision)
+    )
+    duration_ms = int((time.monotonic() - start_ms) * 1000)
+
+    success     = proc.returncode == 0
+    to_revision = await _get_alembic_current(db)
+
+    record = DbMigrationHistory(
+        from_revision = from_revision,
+        to_revision   = to_revision or target_revision,
+        from_version  = from_version,
+        to_version    = f"plugin:{plugin_name}@{entry.get('version', '?')}",
+        applied_by    = int(_admin["user_id"]),
+        duration_ms   = duration_ms,
+        status        = "success" if success else "failure",
+        error         = proc.stderr if not success else None,
+    )
+    db.add(record)
+    await db.commit()
+
+    if success:
+        logger.info("plugin_migration_applied", plugin=plugin_name,
+                    revision=target_revision, admin_id=_admin.get("user_id"))
+    else:
+        logger.error("plugin_migration_failed", plugin=plugin_name, stderr=proc.stderr)
+    return {
+        "success":     success,
+        "plugin":      plugin_name,
+        "revision":    target_revision,
+        "stdout":      proc.stdout,
+        "stderr":      proc.stderr,
+        "return_code": proc.returncode,
     }
 
 

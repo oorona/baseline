@@ -69,13 +69,21 @@ def get_version_order() -> list[str]:
 def get_app_version_for_revision(revision: Optional[str]) -> Optional[str]:
     """
     Return the framework version whose HEAD revision matches *revision*.
-    Returns None if *revision* is None or not found in VERSION_REVISIONS.
+
+    If *revision* belongs to a plugin, returns FRAMEWORK_VERSION — plugin
+    migrations always chain off the framework head, so all framework migrations
+    are implicitly applied when a plugin revision is current.
+
+    Returns None if *revision* is None or completely unrecognised.
     """
     if not revision:
         return None
     for version, rev in VERSION_REVISIONS.items():
         if rev == revision:
             return version
+    # Plugin revision → framework is fully applied
+    if is_plugin_revision(revision):
+        return FRAMEWORK_VERSION
     return None
 
 

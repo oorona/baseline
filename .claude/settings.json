@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import ast; import sys; sys.path.insert\\(0, ''../scripts''\\); import plugin_validate; print\\(''validator imports OK''\\)\")"
+    ]
+  }
+}

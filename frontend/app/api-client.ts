@@ -1351,6 +1351,18 @@ class APIClient {
         return response.data;
     }
 
+    /** Apply only pending framework migrations (up to REQUIRED_DB_REVISION). Plugin branches are unaffected. */
+    async upgradeFrameworkSchema() {
+        const response = await this.client.post('/database/migrations/framework/upgrade');
+        return response.data;
+    }
+
+    /** Apply the migration for a specific plugin (independent Alembic branch). */
+    async applyPluginMigration(pluginName: string) {
+        const response = await this.client.post(`/database/migrations/plugins/${pluginName}/apply`);
+        return response.data;
+    }
+
     /** Test that the currently configured PostgreSQL and Redis connections are healthy. */
     async testDatabaseConnection() {
         const response = await this.client.post('/database/test-connection');
