@@ -322,16 +322,18 @@ The installer already handled everything else:
 
 When asking Claude (or any LLM) to generate a plugin, provide this context:
 
-1. **`CLAUDE.md`** — the five golden rules and file locations
-2. **`docs/PLUGIN_SYSTEM_SPECS.md`** — full specifications for each layer
+1. **`CLAUDE.md`** — the five golden rules, file locations, and the authoritative `SETTINGS_SCHEMA` reference (Golden Rule 4)
+2. **This file** (`docs/integration/08-plugin-workflow.md`) — the step-by-step guide for each component
 3. **`plugins/_template/`** — the blank template as a structural reference
 4. **The staging target path** — `plugins/<plugin_name>/`
 5. **The functional requirements** — what the plugin should do
 
+> **Do not** include `docs/PLUGIN_SYSTEM_SPECS.md` in the LLM context as a substitute for the above — it is an architectural overview document, not a build guide, and overlaps with `CLAUDE.md` in ways that can cause contradictions.
+
 Example prompt pattern:
 
 ```
-Using the Baseline framework (see CLAUDE.md and docs/PLUGIN_SYSTEM_SPECS.md),
+Using the Baseline framework (see CLAUDE.md and docs/integration/08-plugin-workflow.md),
 build a complete plugin in plugins/welcome_message/ that:
 - Sends a configurable welcome DM when a member joins the server
 - Has a settings form for the message text and an enable/disable toggle
@@ -358,7 +360,7 @@ After generation, always run `plugin_validate.py` before installing.
 | `Hardcoded hex color in className` | Replace `#3b82f6` with `text-primary` or other semantic token |
 | `translations/es.ts missing` | Create the file mirroring `en.ts` with translated values |
 | `Non-idempotent CREATE TYPE detected` | Wrap enum creation in a `DO $$ BEGIN IF NOT EXISTS ... END $$;` guard (see below) |
-| `SETTINGS_SCHEMA field type 'integer'` | Use `"number"` — valid types: `boolean`, `text`, `number`, `channel_select`, `multiselect` |
+| `SETTINGS_SCHEMA field type 'integer'` | Use `"number"` — valid types: `boolean`, `text`, `number`, `channel_select`, `role_select`, `multiselect` |
 | `SETTINGS_SCHEMA field type 'string'` | Use `"text"` — `"string"` is not a valid field type |
 | `SETTINGS_SCHEMA missing required key 'id'` | Top-level schema must have `"id"`, `"label"`, and `"fields"` keys |
 | `apiClient path starts with /api/` | Remove the prefix — `apiClient` base URL already includes `/api/v1`. Use `/guilds/${guildId}/...` |

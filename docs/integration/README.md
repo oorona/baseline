@@ -2,18 +2,30 @@
 
 **For AI Assistants and Developers**: These guides explain how to extend the Baseline framework with custom functionality.
 
-## Quick Start
+---
 
-If you're an **LLM/AI assistant** helping to extend this framework, start here:
+## Building a Plugin? Start Here
 
-1. [Adding Bot Cogs](01-adding-cogs.md) - Add Discord commands
-2. [LLM Integration](02-llm-integration.md) - Use AI features
-3. [Logging & Environment](03-logging-environment.md) - Configuration and logging
-4. [Backend Endpoints](04-backend-endpoints.md) - Add REST APIs
-5. [Frontend Pages](05-frontend-pages.md) - Add web UI
-6. [Bot Configuration](06-bot-configuration.md) - Load bot-specific config
-7. [Observability](07-observability.md) - Prometheus, Grafana & Loki
-8. **[Plugin Staging Workflow](08-plugin-workflow.md)** - Build, validate, and install plugins safely
+If you are writing new functionality for this framework — a cog, API route, frontend page, or any combination — the **plugin staging workflow is the correct path**:
+
+1. Read **`CLAUDE.md`** (project root) — five golden rules and key file locations. This is the authoritative reference for all framework contracts.
+2. Read **[Plugin Staging Workflow](08-plugin-workflow.md)** — the complete, step-by-step guide: template setup, all five component files, `SETTINGS_SCHEMA` reference, validation, and install.
+3. Copy `plugins/_template/` to start your plugin.
+
+**Do not** read `docs/PLUGIN_SYSTEM_SPECS.md` or `docs/integration/06-bot-configuration.md` as a substitute — those documents are supplementary references, not the plugin guide, and overlap with `08-plugin-workflow.md`.
+
+---
+
+## All Guides
+
+1. [Adding Bot Cogs](01-adding-cogs.md) — Cog structure, command descriptions, logging
+2. [LLM Integration](02-llm-integration.md) — Using `bot.services.llm`
+3. [Logging & Environment](03-logging-environment.md) — Structured logging, environment variables
+4. [Backend Endpoints](04-backend-endpoints.md) — FastAPI routers, RLS, audit log, security rules
+5. [Frontend Pages](05-frontend-pages.md) — Next.js pages, `withPermission`, `apiClient`, design tokens
+6. [Bot Configuration](06-bot-configuration.md) — Guild settings, secrets, caching (core framework reference; for plugins use `08`)
+7. [Observability](07-observability.md) — Prometheus, Grafana & Loki
+8. **[Plugin Staging Workflow](08-plugin-workflow.md)** — **Primary guide for all plugin development**
 
 ## Architecture
 

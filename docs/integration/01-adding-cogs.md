@@ -97,7 +97,7 @@ class MyCog(commands.Cog):
         self.my_api_key = bot.services.config.my_api_key  # or however it is named
 ```
 
-For **guild-specific settings** (per-guild configuration that guild owners can change), fetch them from the backend at command time — see [Bot Configuration](06-bot-configuration.md) for the full `SETTINGS_SCHEMA` pattern.
+For **guild-specific settings** (per-guild configuration that guild owners can change), declare a `SETTINGS_SCHEMA` on your cog class — see [Plugin Staging Workflow](08-plugin-workflow.md) for the full `SETTINGS_SCHEMA` reference and the pattern for fetching settings at command time.
 
 `os.getenv()` is acceptable only for **non-sensitive operational variables** (e.g. `MAX_RETRIES=3`, `DEBUG_MODE=false`) that do not contain credentials. Never use it for tokens, API keys, or secrets.
 

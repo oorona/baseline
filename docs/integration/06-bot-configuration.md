@@ -1,5 +1,7 @@
 # Loading Bot-Specific Configuration
 
+> **Building a plugin?** This guide is a reference for configuration patterns in core framework code. If you are building a plugin using the staging workflow, the authoritative guide is **[08-plugin-workflow.md](08-plugin-workflow.md)**. The `SETTINGS_SCHEMA` reference in this file is supplementary — `08-plugin-workflow.md` is the canonical source.
+
 This guide explains how to load and manage configuration specific to your custom bot.
 
 ## Overview

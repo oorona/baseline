@@ -22,9 +22,8 @@ A plugin\'s core execution logic lives in a `discord.py` Cog inside the `bot/cog
 
 ### Form-Driven Settings UI (`SETTINGS_SCHEMA`):
 Plugins can securely expose configurable options to the server administrator via the frontend Dashboard without requiring the developer to write custom React code.
-*   The Cog declares a static `SETTINGS_SCHEMA` dictionary specifying its required settings fields (e.g., toggles, text inputs, Discord channel/role dropdowns).
-*   During `on_ready`, the framework introspects this schema and automatically dynamically renders the "Bot Settings" page on the frontend.
-*   Supported field types: `boolean`, `text`, `number`, `channel_select`, `role_select`, `multiselect`. The `channel_select` and `role_select` dropdowns are populated automatically from the Discord API — do not add `choices` to them. Common mistakes the validator will reject: do not use `"string"` (use `"text"`), `"integer"` (use `"number"`), `"bool"` (use `"boolean"`), or `"select"` (not a valid type).
+*   The Cog declares a static `SETTINGS_SCHEMA` dictionary; the framework introspects it on `on_ready` and renders the settings form automatically — no frontend code needed.
+*   **Authoritative `SETTINGS_SCHEMA` reference** (required structure, valid field types, and common validator errors): see [`docs/integration/08-plugin-workflow.md` — Step 1](integration/08-plugin-workflow.md) and **`CLAUDE.md` — Golden Rule 4**. Do not rely on this document for the type list; those two sources are kept up to date.
 
 ---
 
