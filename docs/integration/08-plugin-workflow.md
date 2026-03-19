@@ -347,6 +347,116 @@ After generation, always run `plugin_validate.py` before installing.
 
 ---
 
+## Multi-Page Plugins
+
+A plugin can expose multiple dashboard pages at different permission levels — for example, a user-facing view at **AUTHORIZED (3)** and an admin management view at **ADMINISTRATOR (4)** — by replacing the single `navigation` object with a `pages` array in `plugin.json`.
+
+### `plugin.json` — `pages` array format
+
+```json
+{
+  "name": "tickets",
+  "display_name": "Tickets",
+  "version": "1.0.0",
+  "description": "Support ticket system.",
+  "permission_level": 3,
+  "components": {
+    "cog": true,
+    "api": true,
+    "frontend": true,
+    "translations": true
+  },
+  "router": { "prefix": "/guilds", "tag": "tickets" },
+  "pages": [
+    {
+      "id": "tickets",
+      "source": "page.tsx",
+      "path": "tickets",
+      "permission_level": 3,
+      "navigation": {
+        "enabled": true,
+        "icon": "Ticket",
+        "color": "text-blue-500",
+        "bg_color": "bg-blue-500/10",
+        "border_color": "group-hover:border-blue-500/50"
+      }
+    },
+    {
+      "id": "tickets_admin",
+      "source": "page_admin.tsx",
+      "path": "tickets/admin",
+      "permission_level": 4,
+      "navigation": {
+        "enabled": true,
+        "icon": "ShieldCheck",
+        "color": "text-purple-500",
+        "bg_color": "bg-purple-500/10",
+        "border_color": "group-hover:border-purple-500/50"
+      }
+    }
+  ]
+}
+```
+
+Each entry in `pages` requires:
+
+| Field | Required | Description |
+|---|---|---|
+| `id` | Yes | Unique snake_case identifier — used as the nav card `id` and as the translation key base |
+| `source` | Yes | Source file in the plugin staging folder (e.g. `page.tsx`, `page_admin.tsx`) |
+| `path` | Yes | Install path relative to `dashboard/[guildId]/` — determines the URL |
+| `permission_level` | No | Overrides the plugin-level `permission_level` for this page; defaults to the plugin level if omitted |
+| `navigation.enabled` | No | Set to `false` to install the page without a nav card (e.g. a detail page linked from another page) |
+| `navigation.icon` | No | Lucide icon name; defaults to `"Settings"` |
+| `navigation.color` etc. | No | Same styling fields as the single-page `navigation` object |
+
+### Staging folder layout
+
+```
+plugins/tickets/
+  plugin.json
+  cog.py
+  api.py
+  page.tsx          ← AUTHORIZED view (level 3) — id: "tickets"
+  page_admin.tsx    ← ADMINISTRATOR view (level 4) — id: "tickets_admin"
+  translations/
+    en.ts
+    es.ts
+```
+
+### Translation keys
+
+Each page's nav card uses `t('{camelCaseId}.title')` and `t('{camelCaseId}.description')` where `camelCaseId` is the camelCase version of the page's `id`. Include keys for every page in `translations/en.ts` and `es.ts`:
+
+```typescript
+// translations/en.ts
+tickets: {
+  title: 'Tickets',
+  description: 'Browse and manage your support tickets.',
+  // ... other tickets page strings
+},
+ticketsAdmin: {
+  title: 'Ticket Admin',
+  description: 'Manage ticket categories and assignments.',
+  // ... other admin page strings
+},
+```
+
+### What the installer does
+
+For each entry in `pages`, the installer:
+1. Copies `source` → `frontend/app/dashboard/[guildId]/{path}/page.tsx`
+2. Inserts a nav card into `frontend/app/page.tsx` at the correct permission level
+3. Adds the page's icon to the lucide-react import (if not already present)
+
+Both pages appear as separate cards on the dashboard home, grouped under their respective permission-level sections. A user with AUTHORIZED access sees the `tickets` card; only those with ADMINISTRATOR access also see `tickets_admin`.
+
+### Backward compatibility
+
+The single-page `navigation` format still works — if your `plugin.json` has no `pages` array, the installer uses `navigation` as before. You only need `pages` when you want more than one page.
+
+---
+
 ## Common Validation Errors and Fixes
 
 | Error | Fix |

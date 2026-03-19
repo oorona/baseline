@@ -24,6 +24,7 @@ import re
 import shutil
 import sys
 from pathlib import Path
+from typing import Any
 
 DRY_RUN = "--dry-run" in sys.argv
 ROOT    = Path(__file__).resolve().parent.parent
@@ -161,6 +162,23 @@ def remove_frontend(plugin_name: str):
     remove_dir(ROOT / f"frontend/app/dashboard/[guildId]/{plugin_name}")
 
 
+def remove_pages(manifest: dict[str, Any]):
+    """Remove frontend pages — handles both single-page (navigation) and multi-page (pages) formats."""
+    plugin_name = manifest["name"]
+    pages_def = manifest.get("pages")
+    if pages_def:
+        for page in pages_def:
+            install_path = page.get("path", plugin_name)
+            remove_dir(ROOT / f"frontend/app/dashboard/[guildId]/{install_path}")
+            page_id = page.get("id", plugin_name)
+            icon = page.get("navigation", {}).get("icon")
+            remove_nav_card(page_id, icon=icon)
+    else:
+        remove_frontend(plugin_name)
+        nav_icon = manifest.get("navigation", {}).get("icon")
+        remove_nav_card(plugin_name, icon=nav_icon)
+
+
 def remove_nav_card(plugin_name: str, icon: str | None = None):
     # The installer inserted the card block before the anchor comment.
     # Pattern matches the card object (opening { through closing },) then
@@ -254,9 +272,7 @@ def main():
         remove_from_inventory(plugin_name)
 
     if components.get("frontend"):
-        remove_frontend(plugin_name)
-        nav_icon = manifest.get("navigation", {}).get("icon")
-        remove_nav_card(plugin_name, icon=nav_icon)
+        remove_pages(manifest)
 
     if components.get("translations"):
         remove_translations(plugin_name)

@@ -223,19 +223,64 @@ def install_frontend(plugin_dir: Path, plugin_name: str):
 
 
 def install_nav_card(manifest: dict):
+    """Single-page (legacy) nav card insertion — used when plugin.json has no 'pages' array."""
     nav = manifest.get("navigation", {})
     if not nav.get("enabled", False):
         return
-
     plugin_name = manifest["name"]
     perm = manifest.get("permission_level", 3)
+    _insert_nav_card(
+        card_id=plugin_name,
+        install_path=plugin_name,
+        perm=perm,
+        nav=nav,
+    )
+
+
+def install_pages(plugin_dir: Path, manifest: dict):
+    """Install frontend pages — handles both single-page (navigation) and multi-page (pages) formats.
+
+    Single-page (legacy):  plugin.json has a top-level "navigation" object.
+    Multi-page:            plugin.json has a "pages" array where each entry describes
+                           one page file, its install path, permission level, and nav card.
+    """
+    pages_def = manifest.get("pages")
+    if pages_def:
+        for page in pages_def:
+            source_name = page.get("source", "page.tsx")
+            src = plugin_dir / source_name
+            if not src.exists():
+                print(f"  [SKIP]  {source_name} not found — skipping page '{page.get('id', '?')}'")
+                continue
+            install_path = page.get("path", manifest["name"])
+            dst = ROOT / f"frontend/app/dashboard/[guildId]/{install_path}/page.tsx"
+            copy_file(src, dst)
+
+            nav = page.get("navigation", {})
+            if nav.get("enabled", True):
+                page_id = page.get("id", manifest["name"])
+                perm = page.get("permission_level", manifest.get("permission_level", 3))
+                _insert_nav_card(
+                    card_id=page_id,
+                    install_path=install_path,
+                    perm=perm,
+                    nav=nav,
+                )
+    else:
+        # Legacy single-page format
+        install_frontend(plugin_dir, manifest["name"])
+        install_nav_card(manifest)
+
+
+def _insert_nav_card(card_id: str, install_path: str, perm: int, nav: dict):
+    """Shared logic: patch page.tsx anchor with one nav card entry and ensure icon is imported."""
     perm_names = {
         0: "PUBLIC", 1: "PUBLIC_DATA", 2: "USER",
         3: "AUTHORIZED", 4: "OWNER", 5: "DEVELOPER",
     }
     perm_name = perm_names.get(perm, str(perm))
     is_admin = perm >= 4
-    camel = _to_camel_case(plugin_name)
+    camel = _to_camel_case(card_id)
     icon = nav.get("icon", "Settings")
     color = nav.get("color", "text-blue-500")
     bg = nav.get("bg_color", "bg-blue-500/10")
@@ -243,11 +288,11 @@ def install_nav_card(manifest: dict):
 
     card_block = (
         f"    {{\n"
-        f"      id: '{plugin_name}',\n"
+        f"      id: '{card_id}',\n"
         f"      title: t('{camel}.title'),\n"
         f"      description: t('{camel}.description'),\n"
         f"      icon: {icon},\n"
-        f"      href: `/dashboard/${{activeGuildId}}/{plugin_name}`,\n"
+        f"      href: `/dashboard/${{activeGuildId}}/{install_path}`,\n"
         f"      level: PermissionLevel.{perm_name},\n"
         f"      color: '{color}',\n"
         f"      bgColor: '{bg}',\n"
@@ -259,7 +304,7 @@ def install_nav_card(manifest: dict):
 
     page_tsx = ROOT / "frontend/app/page.tsx"
     anchor = "    // Plugins — titles come from plugin definitions; descriptions are translated"
-    patched = patch_file(page_tsx, anchor, card_block, f"insert nav card for {plugin_name}")
+    patched = patch_file(page_tsx, anchor, card_block, f"insert nav card for {card_id}")
     if not patched:
         print(
             f"  [!]  Could not auto-insert nav card — add manually to frontend/app/page.tsx:\n"
@@ -397,9 +442,8 @@ def main():
     if components.get("migration") and (plugin_dir / "migration.py").exists():
         install_migration(plugin_dir, plugin_name)
 
-    if components.get("frontend") and (plugin_dir / "page.tsx").exists():
-        install_frontend(plugin_dir, plugin_name)
-        install_nav_card(manifest)
+    if components.get("frontend"):
+        install_pages(plugin_dir, manifest)
 
     if components.get("translations") and (plugin_dir / "translations").is_dir():
         install_translations(plugin_dir, plugin_name)

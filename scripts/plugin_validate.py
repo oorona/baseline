@@ -86,9 +86,32 @@ def validate_manifest(plugin_dir: Path) -> dict:
     elif perm is None:
         warn("permission_level not set — defaults to 3 (AUTHORIZED) at install time")
 
-    # Navigation section consistency
+    # Navigation / pages section consistency
+    pages_def = manifest.get("pages")
     nav = manifest.get("navigation", {})
-    if nav.get("enabled"):
+    if pages_def is not None:
+        if not isinstance(pages_def, list) or len(pages_def) == 0:
+            err("'pages' must be a non-empty list of page definition objects")
+        else:
+            if not manifest.get("components", {}).get("frontend"):
+                err("'pages' declared but 'frontend' component is not set to true")
+            for i, page in enumerate(pages_def):
+                pid = page.get("id", f"<index {i}>")
+                if not page.get("id"):
+                    err(f"pages[{i}] missing required 'id' field")
+                if not page.get("source"):
+                    err(f"pages[{i}] (id='{pid}') missing required 'source' field (e.g. 'page.tsx')")
+                if not page.get("path"):
+                    err(f"pages[{i}] (id='{pid}') missing required 'path' field (install path under dashboard/[guildId]/)")
+                perm = page.get("permission_level")
+                if perm is None:
+                    warn(f"pages[{i}] (id='{pid}') has no permission_level — defaults to plugin-level permission_level")
+                elif perm not in range(6):
+                    err(f"pages[{i}] (id='{pid}') permission_level must be 0–5, got {perm}")
+                page_nav = page.get("navigation", {})
+                if page_nav.get("enabled", True) and not page_nav.get("icon"):
+                    warn(f"pages[{i}] (id='{pid}') navigation.icon not set — installer will default to 'Settings'")
+    elif nav.get("enabled"):
         if not manifest.get("components", {}).get("frontend"):
             err("navigation.enabled is true but 'frontend' component is not declared")
         if not nav.get("icon"):
@@ -481,13 +504,12 @@ def _validate_migration(migration_path: Path):
 
 # ── Undeclared file detection ─────────────────────────────────────────────────
 
-def check_undeclared_files(plugin_dir: Path, components: dict):
+def check_undeclared_files(plugin_dir: Path, components: dict, manifest: dict):
     file_map = {
         "cog.py": "cog",
         "api.py": "api",
         "models.py": "models",
         "migration.py": "migration",
-        "page.tsx": "frontend",
     }
     for filename, component_key in file_map.items():
         path = plugin_dir / filename
@@ -496,6 +518,29 @@ def check_undeclared_files(plugin_dir: Path, components: dict):
                 f"{filename} exists but '{component_key}' not declared in plugin.json components — "
                 f"add it to components or remove the file"
             )
+
+    # For single-page plugins: warn if page.tsx exists without frontend declared
+    # For multi-page plugins: warn about any .tsx files not listed in pages[].source
+    if components.get("frontend"):
+        pages_def = manifest.get("pages")
+        if pages_def and isinstance(pages_def, list):
+            declared_sources = {page.get("source") for page in pages_def if page.get("source")}
+            for tsx_file in plugin_dir.glob("*.tsx"):
+                if tsx_file.name not in declared_sources:
+                    warn(
+                        f"{tsx_file.name} exists but is not listed in any pages[].source entry — "
+                        f"add it to the 'pages' array or remove the file"
+                    )
+    else:
+        if (plugin_dir / "page.tsx").exists():
+            warn("page.tsx exists but 'frontend' not declared in plugin.json components")
+        for tsx_file in plugin_dir.glob("*.tsx"):
+            if tsx_file.name != "page.tsx":
+                warn(
+                    f"{tsx_file.name} exists but 'frontend' is not declared — "
+                    f"declare components.frontend and add a 'pages' array if this is a multi-page plugin"
+                )
+
     trans_dir = plugin_dir / "translations"
     if trans_dir.is_dir() and not components.get("translations", False):
         warn("translations/ directory exists but 'translations' not declared in plugin.json")
@@ -552,11 +597,23 @@ def main():
             _validate_migration(p)
 
     if components.get("frontend"):
-        p = plugin_dir / "page.tsx"
-        if p.exists():
-            validate_frontend(p)
+        pages_def = manifest.get("pages")
+        if pages_def and isinstance(pages_def, list):
+            for i, page in enumerate(pages_def):
+                source_name = page.get("source", "page.tsx")
+                p = plugin_dir / source_name
+                pid = page.get("id", f"index {i}")
+                if p.exists():
+                    print(f"\n[{source_name}]  (page id: '{pid}')")
+                    validate_frontend(p)
+                else:
+                    err(f"pages[{i}] source '{source_name}' declared but file not found")
         else:
-            err("page.tsx declared in components but file not found")
+            p = plugin_dir / "page.tsx"
+            if p.exists():
+                validate_frontend(p)
+            else:
+                err("page.tsx declared in components but file not found")
 
     if components.get("translations"):
         p = plugin_dir / "translations"
@@ -565,7 +622,7 @@ def main():
         else:
             err("translations/ declared in components but directory not found")
 
-    check_undeclared_files(plugin_dir, components)
+    check_undeclared_files(plugin_dir, components, manifest)
 
     # ── Summary ───────────────────────────────────────────────────────────────
     print(f"\n{'=' * 50}")
