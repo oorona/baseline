@@ -54,7 +54,7 @@ def deregister_router(plugin_name: str):
     else:
         log(f"WRITE  backend/installed_plugins.json — removed '{plugin_name}' entry")
         if not DRY_RUN:
-            registry_path.write_text(json.dumps(plugins, indent=2) + "\n")
+            registry_path.write_text(json.dumps(plugins, indent=2, ensure_ascii=False) + "\n")
 
 
 def deregister_migration(plugin_name: str):
@@ -73,7 +73,7 @@ def deregister_migration(plugin_name: str):
     if after < before:
         log(f"WRITE  backend/migration_inventory.json — removed '{plugin_name}' migration entry")
         if not DRY_RUN:
-            inventory_path.write_text(json.dumps(inventory, indent=2) + "\n")
+            inventory_path.write_text(json.dumps(inventory, indent=2, ensure_ascii=False) + "\n")
 
 
 def main():

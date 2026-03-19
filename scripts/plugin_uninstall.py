@@ -83,6 +83,7 @@ def remove_cog(plugin_name: str):
 def remove_api(plugin_name: str):
     remove_file(ROOT / f"backend/app/api/{plugin_name}.py")
     _unpatch_main_py(plugin_name)
+    remove_from_installed_plugins(plugin_name)
 
 
 def _unpatch_main_py(plugin_name: str):
@@ -122,6 +123,23 @@ def remove_migration(plugin_name: str):
         remove_file(f)
 
 
+def remove_from_installed_plugins(plugin_name: str):
+    registry_path = ROOT / "backend/installed_plugins.json"
+    log(f"WRITE  backend/installed_plugins.json — remove {plugin_name} entry")
+    if DRY_RUN:
+        return
+    if not registry_path.exists():
+        print(f"  [SKIP]  backend/installed_plugins.json not found")
+        return
+    plugins = json.loads(registry_path.read_text())
+    before = len(plugins)
+    plugins = [p for p in plugins if p.get("name") != plugin_name]
+    if len(plugins) == before:
+        print(f"  [SKIP]  {plugin_name} not found in installed_plugins.json")
+    else:
+        registry_path.write_text(json.dumps(plugins, indent=2, ensure_ascii=False) + "\n")
+
+
 def remove_from_inventory(plugin_name: str):
     inventory_path = ROOT / "backend/migration_inventory.json"
     log(f"WRITE  backend/migration_inventory.json — remove {plugin_name} entry")
@@ -136,14 +154,14 @@ def remove_from_inventory(plugin_name: str):
     if len(inventory["plugin_migrations"]) == before:
         print(f"  [SKIP]  {plugin_name} not found in migration_inventory.json")
     else:
-        inventory_path.write_text(json.dumps(inventory, indent=2) + "\n")
+        inventory_path.write_text(json.dumps(inventory, indent=2, ensure_ascii=False) + "\n")
 
 
 def remove_frontend(plugin_name: str):
     remove_dir(ROOT / f"frontend/app/dashboard/[guildId]/{plugin_name}")
 
 
-def remove_nav_card(plugin_name: str):
+def remove_nav_card(plugin_name: str, icon: str | None = None):
     # The installer inserted the card block before the anchor comment.
     # Pattern matches the card object (opening { through closing },) then
     # captures the anchor so we can keep it.
@@ -151,13 +169,31 @@ def remove_nav_card(plugin_name: str):
         rf"\n    \{{\n      id: '{re.escape(plugin_name)}'.*?    \}},\n"
         rf"    (// Plugins[^\n]*)"
     )
+    page_tsx = ROOT / "frontend/app/page.tsx"
     patch_file(
-        ROOT / "frontend/app/page.tsx",
+        page_tsx,
         pattern,
         r"\n    \1",
         f"remove {plugin_name} nav card from page.tsx",
         flags=re.DOTALL,
     )
+
+    # Remove the plugin's icon from the lucide-react import if it is no
+    # longer referenced anywhere else in the file.
+    if icon and not DRY_RUN:
+        src = page_tsx.read_text()
+        lucide_re = re.compile(r"(import \{)([^}]+)(\} from 'lucide-react';)")
+        m = lucide_re.search(src)
+        if m:
+            imports = [i.strip() for i in m.group(2).split(",") if i.strip()]
+            if icon in imports:
+                # Check if icon is referenced outside the import line itself
+                rest = src[:m.start()] + src[m.end():]
+                if not re.search(rf"\b{re.escape(icon)}\b", rest):
+                    imports.remove(icon)
+                    new_import = f"{m.group(1)} {', '.join(imports)} {m.group(3)}"
+                    page_tsx.write_text(src.replace(m.group(0), new_import, 1))
+                    log(f"PATCH  frontend/app/page.tsx — remove {icon} from lucide-react imports")
 
 
 def remove_translations(plugin_name: str):
@@ -219,7 +255,8 @@ def main():
 
     if components.get("frontend"):
         remove_frontend(plugin_name)
-        remove_nav_card(plugin_name)
+        nav_icon = manifest.get("navigation", {}).get("icon")
+        remove_nav_card(plugin_name, icon=nav_icon)
 
     if components.get("translations"):
         remove_translations(plugin_name)

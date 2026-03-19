@@ -114,7 +114,7 @@ def _register_plugin_router(plugin_name: str, prefix: str, tag: str):
     plugins = [p for p in plugins if p.get("name") != plugin_name]
     plugins.append({"name": plugin_name, "prefix": prefix, "tag": tag})
 
-    registry_path.write_text(json.dumps(plugins, indent=2) + "\n")
+    registry_path.write_text(json.dumps(plugins, indent=2, ensure_ascii=False) + "\n")
 
 
 def install_models(plugin_dir: Path, plugin_name: str):
@@ -213,7 +213,7 @@ def _register_plugin_in_inventory(migration_src: Path, plugin_name: str, plugin_
         "head_revision": revision_id,
     })
 
-    inventory_path.write_text(json.dumps(inventory, indent=2) + "\n")
+    inventory_path.write_text(json.dumps(inventory, indent=2, ensure_ascii=False) + "\n")
 
 
 def install_frontend(plugin_dir: Path, plugin_name: str):
