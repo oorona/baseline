@@ -791,7 +791,27 @@ async def get_audit_logs(
         .order_by(AuditLog.created_at.desc())
         .limit(100)
     )
-    return result.scalars().all()
+    logs = result.scalars().all()
+
+    # Batch-load usernames
+    user_ids = {log.user_id for log in logs}
+    username_map: dict[int, str] = {}
+    if user_ids:
+        users_result = await db.execute(select(User).where(User.id.in_(user_ids)))
+        username_map = {u.id: u.username for u in users_result.scalars().all()}
+
+    return [
+        AuditLogSchema(
+            id=log.id,
+            guild_id=log.guild_id,
+            user_id=log.user_id,
+            action=log.action,
+            details=log.details or {},
+            created_at=log.created_at,
+            username=username_map.get(log.user_id),
+        )
+        for log in logs
+    ]
 
 
 @router.delete("/{guild_id}/audit-logs")

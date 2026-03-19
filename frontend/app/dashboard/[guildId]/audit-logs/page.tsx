@@ -13,6 +13,7 @@ interface AuditLog {
     id: number;
     guild_id: number;
     user_id: number;
+    username?: string;
     action: string;
     details: Record<string, any>;
     created_at: string;
@@ -183,6 +184,7 @@ function AuditLogsPage() {
     };
 
     const formatDetails = (details: Record<string, any>) => {
+        if (!details || Object.keys(details).length === 0) return null;
         return JSON.stringify(details, null, 2);
     };
 
@@ -252,13 +254,17 @@ function AuditLogsPage() {
                                         <td className="p-4">
                                             <div className="flex items-center gap-2 text-muted-foreground">
                                                 <User className="w-4 h-4" />
-                                                <span className="font-mono text-sm">{log.user_id}</span>
+                                                <span className="text-sm">{log.username ?? String(log.user_id)}</span>
                                             </div>
                                         </td>
                                         <td className="p-4">
-                                            <pre className="text-xs text-muted-foreground font-mono bg-muted/50 p-2 rounded max-w-md overflow-x-auto scrollbar-thin">
-                                                {formatDetails(log.details)}
-                                            </pre>
+                                            {formatDetails(log.details) ? (
+                                                <pre className="text-xs text-muted-foreground font-mono bg-muted/50 p-2 rounded max-w-md overflow-x-auto scrollbar-thin">
+                                                    {formatDetails(log.details)}
+                                                </pre>
+                                            ) : (
+                                                <span className="text-xs text-muted-foreground/50 italic">—</span>
+                                            )}
                                         </td>
                                         <td className="p-4 text-muted-foreground text-sm whitespace-nowrap">
                                             <div className="flex items-center gap-2">

@@ -342,7 +342,7 @@ async def _get_session_user_id(request) -> int | None:
     return None
 
 
-async def _write_audit_log(guild_id: int, user_id: int, action: str):
+async def _write_audit_log(guild_id: int, user_id: int, action: str, details: dict = {}):
     """Fire-and-forget coroutine — writes one AuditLog row with RLS context."""
     try:
         from app.db.session import AsyncSessionLocal
@@ -357,7 +357,7 @@ async def _write_audit_log(guild_id: int, user_id: int, action: str):
                 guild_id=guild_id,
                 user_id=user_id,
                 action=action,
-                details={},
+                details=details,
             ))
             await session.commit()
     except Exception:
@@ -375,6 +375,9 @@ class GuildAuditMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request, call_next):
+        # Read body before call_next consumes the stream; Starlette caches it.
+        body_bytes = await request.body()
+
         response = await call_next(request)
 
         if SETUP_MODE or request.method not in _AUDIT_METHODS:
@@ -391,8 +394,17 @@ class GuildAuditMiddleware(BaseHTTPMiddleware):
         if not user_id:
             return response  # Bot/internal requests have no session; skip audit
 
+        details: dict = {}
+        if body_bytes:
+            try:
+                parsed = json.loads(body_bytes)
+                if isinstance(parsed, dict):
+                    details = parsed
+            except Exception:
+                pass
+
         action = f"{request.method}:{_normalise_path(request.url.path)}"
-        asyncio.create_task(_write_audit_log(guild_id, user_id, action))
+        asyncio.create_task(_write_audit_log(guild_id, user_id, action, details))
 
         return response
 

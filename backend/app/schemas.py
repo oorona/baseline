@@ -98,6 +98,7 @@ class AuditLog(AuditLogBase):
 
     id: int
     created_at: datetime
+    username: Optional[str] = None
 
 class DiscordChannel(BaseModel):
     id: str
