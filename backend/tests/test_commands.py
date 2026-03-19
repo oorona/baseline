@@ -164,7 +164,7 @@ class TestGetCommands:
         app.dependency_overrides[get_redis] = override_redis
         try:
             response = await client.get(
-                f"{settings.API_V1_STR}/commands/",
+                f"{settings.API_V1_STR}/commands",
                 headers={},
             )
         finally:

@@ -299,7 +299,106 @@ async def _write_request_metric(path: str, method: str, status_code: int, durati
         pass  # Never let metric recording crash the request
 
 
+# ==============================================================================
+# Guild Audit Middleware — automatic AuditLog for all guild-scoped mutations
+# ==============================================================================
+# Plugin developers MUST NOT write db.add(AuditLog(...)) in their endpoints.
+# This middleware intercepts every successful mutating request under
+# /guilds/{guild_id}/ and writes an AuditLog row automatically.
+#
+# The action field is:  METHOD:/api/v1/guilds/:id/<sub-path>
+# e.g.  PUT:/api/v1/guilds/:id/settings
+#       DELETE:/api/v1/guilds/:id/authorized-users/:id
+
+_GUILD_AUDIT_PATH_RE = re.compile(r"/guilds/(\d+)/")
+_AUDIT_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+async def _get_session_user_id(request) -> int | None:
+    """Extract the current user_id from the session cookie or Bearer token.
+
+    Mirrors the look-up logic in get_current_user (deps.py) without importing
+    it, so the middleware can remain independent of FastAPI's dependency graph.
+    """
+    try:
+        r = redis.Redis(connection_pool=redis_pool)
+
+        # Bearer token
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            token = auth[7:]
+            data = await r.get(f"session:{token}")
+            if data:
+                return int(json.loads(data).get("user_id", 0)) or None
+
+        # Session cookie
+        session_id = request.cookies.get("session_id")
+        if session_id:
+            data = await r.get(f"session:{session_id}")
+            if data:
+                return int(json.loads(data).get("user_id", 0)) or None
+    except Exception:
+        pass
+    return None
+
+
+async def _write_audit_log(guild_id: int, user_id: int, action: str):
+    """Fire-and-forget coroutine — writes one AuditLog row with RLS context."""
+    try:
+        from app.db.session import AsyncSessionLocal
+        from app.models import AuditLog
+        from sqlalchemy import text
+        if AsyncSessionLocal is None:
+            return
+        async with AsyncSessionLocal() as session:
+            await session.execute(text("SET LOCAL app.bypass_guild_rls = 'false'"))
+            await session.execute(text(f"SET LOCAL app.current_guild_id = '{guild_id}'"))
+            session.add(AuditLog(
+                guild_id=guild_id,
+                user_id=user_id,
+                action=action,
+                details={},
+            ))
+            await session.commit()
+    except Exception:
+        pass  # Audit failures must never crash the response
+
+
+class GuildAuditMiddleware(BaseHTTPMiddleware):
+    """Automatically writes AuditLog entries for all successful guild-scoped mutations.
+
+    Covers every POST, PUT, PATCH, DELETE under /guilds/{guild_id}/ that returns
+    a 2xx status.  Bot-internal endpoints (which use guild_id=0 or no guild scope)
+    are excluded automatically because they do not match the path pattern.
+
+    Plugin developers do NOT need to write AuditLog code.
+    """
+
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+
+        if SETUP_MODE or request.method not in _AUDIT_METHODS:
+            return response
+        if response.status_code >= 400:
+            return response
+
+        match = _GUILD_AUDIT_PATH_RE.search(request.url.path)
+        if not match:
+            return response
+
+        guild_id = int(match.group(1))
+        user_id = await _get_session_user_id(request)
+        if not user_id:
+            return response  # Bot/internal requests have no session; skip audit
+
+        action = f"{request.method}:{_normalise_path(request.url.path)}"
+        asyncio.create_task(_write_audit_log(guild_id, user_id, action))
+
+        return response
+
+
 # Add metrics middleware (runs BEFORE security middleware)
+app.add_middleware(GuildAuditMiddleware)
 app.add_middleware(MetricsMiddleware)
 
 # Add security middleware (runs BEFORE other middleware)

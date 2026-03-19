@@ -20,10 +20,13 @@ async def test_get_guild_channels_success():
             {"id": "c1", "name": "general", "type": 0}
         ])
         
+        mock_redis = AsyncMock()
+        mock_redis.get.return_value = None  # cache miss → fetch from Discord
         channels = await get_guild_channels(
             guild_id=1,
             db=mock_db,
-            current_user=mock_user
+            current_user=mock_user,
+            redis=mock_redis,
         )
         
         assert len(channels) == 1
@@ -51,10 +54,13 @@ async def test_get_guild_roles_success():
             {"id": "r1", "name": "Admin", "color": 0, "position": 1}
         ])
         
+        mock_redis = AsyncMock()
+        mock_redis.get.return_value = None  # cache miss → fetch from Discord
         roles = await get_guild_roles(
             guild_id=1,
             db=mock_db,
-            current_user=mock_user
+            current_user=mock_user,
+            redis=mock_redis,
         )
         
         assert len(roles) == 1

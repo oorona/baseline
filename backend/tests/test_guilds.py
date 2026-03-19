@@ -289,7 +289,6 @@ class TestUpdateGuildSettings:
             )
 
         assert result["settings"] == {"level_2_allow_everyone": False}
-        db.flush.assert_called_once()
         db.commit.assert_called_once()
 
     @pytest.mark.asyncio
@@ -443,6 +442,9 @@ class TestUpdateGuildSettings:
 
     @pytest.mark.asyncio
     async def test_audit_log_written_on_update(self):
+        """Audit logging is handled automatically by GuildAuditMiddleware.
+        The endpoint itself must NOT write AuditLog rows — it just commits
+        the settings change and lets the middleware record the action."""
         db = _mock_db()
         guild = Guild(id=1, name="G", owner_id=10, icon_url=None)
         db.get.return_value = guild
@@ -454,16 +456,19 @@ class TestUpdateGuildSettings:
         with patch("app.api.guilds.app_settings") as mock_cfg, \
              patch("app.api.guilds.discord_client"):
             mock_cfg.DISCORD_GUILD_ID = None
-            await update_guild_settings(
+            result = await update_guild_settings(
                 guild_id=1,
                 settings_update=self._make_request({"level_2_allow_everyone": False}),
                 db=db,
                 current_user={"user_id": 10},
             )
 
-        # db.add must have been called with an AuditLog instance
-        added_objects = [call.args[0] for call in db.add.call_args_list]
-        assert any(isinstance(o, AuditLog) for o in added_objects)
+        # Endpoint commits successfully; no manual AuditLog write expected
+        db.commit.assert_called_once()
+        assert "settings" in result
+        # The endpoint must NOT write AuditLog directly — middleware handles it
+        added_objects = [c.args[0] for c in db.add.call_args_list]
+        assert not any(isinstance(o, AuditLog) for o in added_objects)
 
     @pytest.mark.asyncio
     async def test_creates_settings_row_when_none_exists(self):
@@ -858,12 +863,14 @@ class TestPurgeAuditLogs:
 
     @pytest.mark.asyncio
     async def test_purge_audit_log_entry_written(self):
-        """After purge, a PURGE_AUDIT_LOGS AuditLog row must be added."""
+        """Purge must commit the DELETE and return a count.
+        Audit logging is handled by GuildAuditMiddleware — the endpoint
+        must NOT write a manual AuditLog row."""
         db = self._mock_db(rowcount=2)
         guild = Guild(id=1, name="G", owner_id=10, icon_url=None)
         db.get.return_value = guild
 
-        await purge_audit_logs(
+        result = await purge_audit_logs(
             guild_id=1,
             older_than_days=None,
             before=None,
@@ -872,8 +879,11 @@ class TestPurgeAuditLogs:
             current_user={"user_id": 10},
         )
 
+        db.commit.assert_called_once()
+        assert result["deleted"] == 2
+        # Middleware handles audit; endpoint must NOT add an AuditLog row
         added = [c.args[0] for c in db.add.call_args_list]
-        assert any(isinstance(o, AuditLog) and o.action == "PURGE_AUDIT_LOGS" for o in added)
+        assert not any(isinstance(o, AuditLog) for o in added)
 
     @pytest.mark.asyncio
     async def test_older_than_days_accepted(self):

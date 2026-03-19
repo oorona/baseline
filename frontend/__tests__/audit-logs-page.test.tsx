@@ -34,18 +34,28 @@ vi.mock('@/lib/i18n', () => ({
   LanguageProvider: ({ children }: { children: React.ReactNode }) => children,
 }))
 
+vi.mock('@/lib/auth-context', () => ({
+  useAuth: () => ({ user: { user_id: '1', username: 'tester' }, loading: false }),
+}))
+
+vi.mock('@/lib/hooks/use-permissions', () => ({
+  usePermissions: () => ({ permissionLevel: 2, loading: false }),
+}))
+
 vi.mock('@/lib/components/with-permission', () => ({
   withPermission: (Component: React.ComponentType<any>) => Component,
 }))
 
 vi.mock('@/lib/permissions', () => ({
-  PermissionLevel: { AUTHORIZED: 2 },
+  PermissionLevel: { AUTHORIZED: 2, OWNER: 5 },
 }))
 
 vi.mock('lucide-react', () => ({
   Clock:    () => null,
   User:     () => null,
   Activity: () => null,
+  Trash2:   () => null,
+  X:        () => null,
 }))
 
 // ── Sample data ───────────────────────────────────────────────────────────────

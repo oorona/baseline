@@ -24,6 +24,7 @@ services:
     volumes:
       - ./backend:/app
       - platform_data:/data   # Encrypted settings file shared across all backend replicas
+      - ./scripts:/scripts:ro  # plugin_validate.py and other dev scripts (test_plugin_validate.py needs this)
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped
     healthcheck:

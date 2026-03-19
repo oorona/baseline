@@ -6,9 +6,9 @@ This file is the first thing AI coding assistants should read. It contains the e
 
 A **framework** for building Discord bots with web dashboards. You extend it by adding cogs, API routes, frontend pages, and migrations. **You never modify core infrastructure files.**
 
-## Five Golden Rules
+## Four Golden Rules
 
-Every piece of code you generate must follow all five of these rules:
+Every piece of code you generate must follow all four of these rules:
 
 1. **`bot.services.llm`** — the LLM service is always accessed as `bot.services.llm` (never `bot.llm_service` or any other path)
 2. **`get_guild_db` for guild data** — endpoints that touch guild-scoped tables use `Depends(get_guild_db)`, not `Depends(get_db)`. Using `get_db` silently bypasses Row-Level Security and can leak cross-guild data
@@ -33,7 +33,8 @@ SETTINGS_SCHEMA = {
 ```
 
 Valid `"type"` values: `"boolean"`, `"text"`, `"number"`, `"channel_select"`, `"role_select"`, `"multiselect"`. **Never use** `"string"`, `"integer"`, or `"select"` — the validator will reject them. `channel_select` and `role_select` dropdowns are populated automatically from the Discord API; you do not provide `choices` for them.
-5. **`AuditLog` on every settings mutation** — every backend endpoint that modifies settings must write an `AuditLog` entry; this is a hard framework contract
+
+> **Audit logging is automatic.** The `GuildAuditMiddleware` in `backend/main.py` writes an `AuditLog` row for every successful POST/PUT/PATCH/DELETE on `/{guild_id}/` routes. Plugin endpoints **must not** add `db.add(AuditLog(...))` — doing so produces duplicate entries and creates FK risk for cross-guild operations.
 
 ## How to Build a Feature (Plugin Workflow)
 
@@ -81,7 +82,7 @@ The validator enforces all five golden rules automatically and will reject code 
 - [ ] **Cog**: `SETTINGS_SCHEMA` if the cog reads from guild settings
 - [ ] **Backend**: use `Depends(get_guild_db)` for any endpoint under `/{guild_id}/`
 - [ ] **Backend**: import and register the new router in `backend/main.py`
-- [ ] **Backend**: write an `AuditLog` entry on every settings mutation
+- [ ] **Backend**: do NOT add `db.add(AuditLog(...))` — audit logging is automatic via `GuildAuditMiddleware`
 - [ ] **Frontend**: export page as `withPermission(Page, PermissionLevel.X)`
 - [ ] **Frontend**: add a navigation card in `frontend/app/page.tsx` if the feature needs its own page
 - [ ] **i18n**: add all user-visible strings to `en.ts` **and** `es.ts` — never hardcode text

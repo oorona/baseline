@@ -530,6 +530,38 @@ NULL = guild_id  →  NULL  →  false
 
 **Zero rows are returned.** A forgotten `WHERE` clause produces an obviously empty result, not a data leak.
 
+#### Automatic Audit Logging — `GuildAuditMiddleware`
+
+Every successful POST, PUT, PATCH, or DELETE on a `/{guild_id}/` route is automatically recorded in the `audit_logs` table by `GuildAuditMiddleware` in `backend/main.py`. The action field is `METHOD:/api/v1/guilds/:id/<sub-path>`.
+
+**Plugin developers must NOT add `db.add(AuditLog(...))` to their endpoints.** Doing so:
+1. Creates duplicate audit log entries for every request
+2. Requires knowing the correct guild_id (gets it wrong for cross-guild/bot operations — FK violation)
+3. Adds error-prone boilerplate that belongs in the framework
+
+```python
+# ✓ Correct — middleware handles the audit log automatically
+@router.post("/{guild_id}/my-plugin/tickets")
+async def create_ticket(
+    guild_id: int,
+    payload: TicketPayload,
+    db: AsyncSession = Depends(get_guild_db),
+    current_user: dict = Depends(get_current_user),
+):
+    db.add(Ticket(guild_id=guild_id, ...))
+    await db.commit()           # audit log written automatically after 201 response
+    return {"id": ticket.id}
+
+# ✗ Wrong — never do this
+@router.post("/{guild_id}/my-plugin/tickets")
+async def create_ticket(...):
+    db.add(Ticket(...))
+    db.add(AuditLog(guild_id=guild_id, ...))  # ← duplicate; FK risk; not your job
+    await db.commit()
+```
+
+Bot-internal requests (no session cookie or Bearer token) are excluded from auditing automatically — the middleware only audits authenticated user actions.
+
 #### Platform-Admin Cross-Guild Endpoints — use `get_admin_db`
 
 ```python

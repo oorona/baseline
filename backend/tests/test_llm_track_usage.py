@@ -54,11 +54,11 @@ class TestTrackUsageGuildContext:
             usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
         )
 
-        calls = [str(c) for c in db.execute.call_args_list]
-        # First two calls must carry the SET LOCAL statements
-        assert any("bypass_guild_rls" in c and "false" in c for c in calls), \
+        # str(call(...)) shows object repr, not SQL — extract and stringify the arg itself
+        call_texts = [str(c.args[0]) for c in db.execute.call_args_list]
+        assert any("bypass_guild_rls" in t and "false" in t for t in call_texts), \
             "Expected SET LOCAL app.bypass_guild_rls = 'false' before insert"
-        assert any("current_guild_id" in c and "999" in c for c in calls), \
+        assert any("current_guild_id" in t and "999" in t for t in call_texts), \
             "Expected SET LOCAL app.current_guild_id = '999' before insert"
 
     @pytest.mark.asyncio
@@ -83,11 +83,11 @@ class TestTrackUsageGuildContext:
             usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
         )
 
-        calls = [str(c) for c in db.execute.call_args_list]
+        call_texts = [str(c.args[0]) for c in db.execute.call_args_list]
         # There should be exactly one call: the SELECT for pricing (no SET LOCALs)
-        assert all("bypass_guild_rls" not in c for c in calls), \
+        assert all("bypass_guild_rls" not in t for t in call_texts), \
             "Unexpected SET LOCAL app.bypass_guild_rls when guild_id is None"
-        assert all("current_guild_id" not in c for c in calls), \
+        assert all("current_guild_id" not in t for t in call_texts), \
             "Unexpected SET LOCAL app.current_guild_id when guild_id is None"
 
     @pytest.mark.asyncio
@@ -106,8 +106,8 @@ class TestTrackUsageGuildContext:
             usage={"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
         )
 
-        calls = [str(c) for c in db.execute.call_args_list]
-        assert any("12345" in c for c in calls)
+        call_texts = [str(c.args[0]) for c in db.execute.call_args_list]
+        assert any("12345" in t for t in call_texts)
 
     @pytest.mark.asyncio
     async def test_exception_is_swallowed(self):

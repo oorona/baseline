@@ -301,6 +301,11 @@ async def update_guild_settings(
 
     settings_data = settings_update.settings
 
+    # Normalise: strip any spurious "settings" sub-key left by a previous
+    # double-wrap bug.  No SETTINGS_SCHEMA field is ever named "settings" —
+    # that key is the API protocol wrapper and must never be stored in the DB.
+    settings_data.pop("settings", None)
+
     # Restricted keys may only be changed by developers (owner of the dev guild or dev-role holder)
     if not has_dev_access:
         for key in LEVEL_3_KEYS:
@@ -346,12 +351,6 @@ async def update_guild_settings(
     result_settings = settings.settings_json or {}
     result_updated_at = settings.updated_at
 
-    db.add(AuditLog(
-        guild_id=guild_id,
-        user_id=user_id,
-        action="UPDATE_SETTINGS",
-        details={"settings": settings_data}
-    ))
     await db.commit()
 
     return {
@@ -533,16 +532,6 @@ async def add_authorized_user(
         created_by=user_id
     )
     db.add(new_auth)
-    
-    # Log action
-    log = AuditLog(
-        guild_id=guild_id,
-        user_id=user_id,
-        action="ADD_AUTHORIZED_USER",
-        details={"added_user_id": request.user_id}
-    )
-    db.add(log)
-    
     await db.commit()
     
     return {"message": "User authorized successfully"}
@@ -607,15 +596,6 @@ async def remove_authorized_user(
         )
     
     await db.delete(target_auth)
-    
-    # Log action
-    log = AuditLog(
-        guild_id=guild_id,
-        user_id=current_user_id,
-        action="REMOVE_AUTHORIZED_USER",
-        details={"removed_user_id": user_id}
-    )
-    db.add(log)
     await db.commit()
     
     return {"message": "User removed successfully"}
@@ -716,16 +696,6 @@ async def add_authorized_role(
         permission_level=PermissionLevel.USER # Default L3 level
     )
     db.add(new_role_auth)
-    
-    # Log action
-    log = AuditLog(
-        guild_id=guild_id,
-        user_id=user_id,
-        action="ADD_AUTHORIZED_ROLE",
-        details={"role_id": request.role_id}
-    )
-    db.add(log)
-    
     await db.commit()
     return {"message": "Role authorized successfully"}
 
@@ -774,16 +744,6 @@ async def remove_authorized_role(
         raise HTTPException(status_code=404, detail="Role not authorized")
         
     await db.delete(target_auth)
-    
-    # Log
-    log = AuditLog(
-        guild_id=guild_id,
-        user_id=user_id,
-        action="REMOVE_AUTHORIZED_ROLE",
-        details={"role_id": role_id}
-    )
-    db.add(log)
-    
     await db.commit()
     return {"message": "Role removed successfully"}
 
@@ -873,13 +833,6 @@ async def purge_audit_logs(
 
     result = await db.execute(stmt)
     deleted = result.rowcount
-
-    db.add(AuditLog(
-        guild_id=guild_id,
-        user_id=user_id,
-        action="PURGE_AUDIT_LOGS",
-        details={"deleted": deleted, "older_than_days": older_than_days, "before": before, "after": after},
-    ))
     await db.commit()
     return {"deleted": deleted}
 

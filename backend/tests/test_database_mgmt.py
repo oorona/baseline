@@ -35,26 +35,44 @@ _FAKE_INVENTORY = {
 
 
 @pytest.fixture(autouse=True)
-def patch_version_module(tmp_path):
-    """Reload version with the fake inventory so all database_mgmt constants are in sync."""
-    import json, importlib
-    inv_file = tmp_path / "migration_inventory.json"
-    inv_file.write_text(json.dumps(_FAKE_INVENTORY))
+def patch_version_module():
+    """Patch database_mgmt module globals to use the fake inventory.
 
-    import app.core.version as v
-    with patch.object(v, "_INVENTORY_PATH", inv_file):
-        importlib.reload(v)
-        # Re-patch the names that database_mgmt imported at module load time
-        import app.api.database_mgmt as dm
-        dm.FRAMEWORK_VERSION    = v.FRAMEWORK_VERSION
-        dm.MIGRATION_CHANGELOG  = v.MIGRATION_CHANGELOG
-        dm.PLUGIN_MIGRATIONS    = v.PLUGIN_MIGRATIONS
-        dm.REQUIRED_DB_REVISION = v.REQUIRED_DB_REVISION
-        dm.get_app_version_for_revision = v.get_app_version_for_revision
-        dm.get_plugin_migration         = v.get_plugin_migration
-        dm.is_plugin_revision           = v.is_plugin_revision
+    importlib.reload() cannot be used here because version.py re-computes
+    _INVENTORY_PATH at the top of the module body, overwriting any patch
+    before _load_inventory() is called.  Instead, we directly replace the
+    module-level names that database_mgmt imported from version.py.
+    """
+    import app.api.database_mgmt as dm
+
+    fake     = _FAKE_INVENTORY
+    fake_fw  = fake["framework_migrations"]
+    fake_pl  = fake.get("plugin_migrations", [])
+    fake_head = fake_fw[-1]["head_revision"]
+
+    # Build lightweight replacements for the helper functions
+    def _fake_get_app_version(revision):
+        for entry in fake_fw:
+            if entry.get("head_revision") == revision:
+                return entry["version"]
+        return None
+
+    def _fake_get_plugin_migration(plugin_name):
+        return next((e for e in fake_pl if e.get("plugin") == plugin_name), None)
+
+    def _fake_is_plugin_revision(revision):
+        return any(e.get("head_revision") == revision for e in fake_pl)
+
+    with (
+        patch.object(dm, "FRAMEWORK_VERSION",           fake["framework_version"]),
+        patch.object(dm, "MIGRATION_CHANGELOG",         fake_fw),
+        patch.object(dm, "PLUGIN_MIGRATIONS",           fake_pl),
+        patch.object(dm, "REQUIRED_DB_REVISION",        fake_head),
+        patch.object(dm, "get_app_version_for_revision", _fake_get_app_version),
+        patch.object(dm, "get_plugin_migration",         _fake_get_plugin_migration),
+        patch.object(dm, "is_plugin_revision",           _fake_is_plugin_revision),
+    ):
         yield
-    importlib.reload(v)
 
 
 def _mock_db(rows: list[str]) -> AsyncMock:
@@ -163,13 +181,12 @@ async def test_upgrade_framework_success():
         result = await upgrade_framework_schema(db=mock_db, _admin={"user_id": "1"})
 
     assert result["success"] is True
-    assert "output" in result
+    assert "stdout" in result
 
 
 @pytest.mark.asyncio
 async def test_upgrade_framework_alembic_failure():
     from app.api.database_mgmt import upgrade_framework_schema
-    from fastapi import HTTPException
 
     mock_proc = MagicMock(spec=subprocess.CompletedProcess)
     mock_proc.returncode = 1
@@ -179,10 +196,10 @@ async def test_upgrade_framework_alembic_failure():
     mock_db = _mock_db([])
 
     with patch("app.api.database_mgmt._run_alembic", return_value=mock_proc):
-        with pytest.raises(HTTPException) as exc_info:
-            await upgrade_framework_schema(db=mock_db, _admin={"user_id": "1"})
+        result = await upgrade_framework_schema(db=mock_db, _admin={"user_id": "1"})
 
-    assert exc_info.value.status_code == 500
+    assert result["success"] is False
+    assert result["return_code"] == 1
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -233,7 +250,6 @@ async def test_apply_plugin_migration_unknown_plugin():
 @pytest.mark.asyncio
 async def test_apply_plugin_migration_alembic_failure():
     from app.api.database_mgmt import apply_plugin_migration
-    from fastapi import HTTPException
 
     mock_proc = MagicMock(spec=subprocess.CompletedProcess)
     mock_proc.returncode = 1
@@ -243,11 +259,11 @@ async def test_apply_plugin_migration_alembic_failure():
     mock_db = _mock_db(["ccc222222222"])
 
     with patch("app.api.database_mgmt._run_alembic", return_value=mock_proc):
-        with pytest.raises(HTTPException) as exc_info:
-            await apply_plugin_migration(
-                plugin_name="event_logging",
-                db=mock_db,
-                _admin={"user_id": "1"},
-            )
+        result = await apply_plugin_migration(
+            plugin_name="event_logging",
+            db=mock_db,
+            _admin={"user_id": "1"},
+        )
 
-    assert exc_info.value.status_code == 500
+    assert result["success"] is False
+    assert result["return_code"] == 1

@@ -54,28 +54,34 @@ _FAKE_INVENTORY = {
 }
 
 
-def _reload_version():
-    """Import version with the patched inventory."""
-    import importlib
-    import app.core.version as v
-    importlib.reload(v)
-    return v
-
 
 @pytest.fixture(autouse=True)
-def patch_inventory(tmp_path):
-    import json
-    inv_file = tmp_path / "migration_inventory.json"
-    inv_file.write_text(json.dumps(_FAKE_INVENTORY))
+def patch_inventory():
+    """Patch version module constants to use the fake inventory.
 
+    importlib.reload() cannot be used here because version.py re-executes
+    _INVENTORY_PATH = Path(...) at the top of the module body, overwriting
+    any attribute patch before _load_inventory() is called.  Instead we
+    directly replace the module-level names that the helper functions look
+    up at call time.
+    """
     import app.core.version as v
-    with patch.object(v, "_INVENTORY_PATH", inv_file):
-        # Reload so module-level constants pick up the patched path
-        import importlib
-        importlib.reload(v)
+
+    fake    = _FAKE_INVENTORY
+    fake_fw = fake["framework_migrations"]
+    fake_pl = fake.get("plugin_migrations", [])
+    fake_fw_version   = fake["framework_version"]
+    fake_ver_revs     = {e["version"]: e["head_revision"] for e in fake_fw}
+    fake_head         = fake_ver_revs[fake_fw_version]
+
+    with (
+        patch.object(v, "FRAMEWORK_VERSION",    fake_fw_version),
+        patch.object(v, "MIGRATION_CHANGELOG",  fake_fw),
+        patch.object(v, "PLUGIN_MIGRATIONS",    fake_pl),
+        patch.object(v, "VERSION_REVISIONS",    fake_ver_revs),
+        patch.object(v, "REQUIRED_DB_REVISION", fake_head),
+    ):
         yield v
-    # Reload again after test to restore real constants
-    importlib.reload(v)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

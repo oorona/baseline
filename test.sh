@@ -116,18 +116,29 @@ run_frontend() {
     local start
     start=$(date +%s%3N)
     local exit_code=0
-
-    (cd "$SCRIPT_DIR/frontend" && npm run test 2>&1) || exit_code=$?
+    local runner_output
+    runner_output=$(cd "$SCRIPT_DIR/frontend" && npm run test 2>&1) || exit_code=$?
+    echo "$runner_output"
 
     local elapsed
     elapsed=$(elapsed_since "$start")
 
+    # Parse "N passed" from Vitest summary line
+    local counts=""
+    local passed failed skipped
+    passed=$(echo "$runner_output" | grep -oP '\d+(?= passed)' | tail -1 || true)
+    failed=$(echo "$runner_output" | grep -oP '\d+(?= failed)'  | tail -1 || true)
+    skipped=$(echo "$runner_output" | grep -oP '\d+(?= skipped)'| tail -1 || true)
+    [[ -n "$passed"  ]] && counts="${passed} passed"
+    [[ -n "$failed"  && "$failed"  != "0" ]] && counts="${counts}  ${failed} failed"
+    [[ -n "$skipped" && "$skipped" != "0" ]] && counts="${counts}  ${skipped} skipped"
+
     if (( exit_code == 0 )); then
         echo -e "\n  ${BOLD_GREEN}✓ Frontend tests passed${RESET} $(fmt_ms $elapsed)"
-        record_result "Frontend (Vitest)" "pass" "$elapsed"
+        record_result "Frontend (Vitest)" "pass" "$elapsed" "$counts"
     else
         echo -e "\n  ${BOLD_RED}✗ Frontend tests failed${RESET} $(fmt_ms $elapsed)"
-        record_result "Frontend (Vitest)" "fail" "$elapsed" "exit code $exit_code"
+        record_result "Frontend (Vitest)" "fail" "$elapsed" "${counts:-exit code $exit_code}"
     fi
 }
 
@@ -155,19 +166,30 @@ run_backend() {
     local start
     start=$(date +%s%3N)
     local exit_code=0
-
-    docker compose -f "$SCRIPT_DIR/docker-compose.yml" exec backend \
-        python -m pytest tests/ -v --tb=short 2>&1 || exit_code=$?
+    local runner_output
+    runner_output=$(docker compose -f "$SCRIPT_DIR/docker-compose.yml" exec backend \
+        python -m pytest tests/ -v --tb=short 2>&1) || exit_code=$?
+    echo "$runner_output"
 
     local elapsed
     elapsed=$(elapsed_since "$start")
 
+    # Parse "N passed" from pytest summary line
+    local counts=""
+    local passed failed skipped
+    passed=$(echo "$runner_output" | grep -oP '\d+(?= passed)' | tail -1 || true)
+    failed=$(echo "$runner_output" | grep -oP '\d+(?= failed)'  | tail -1 || true)
+    skipped=$(echo "$runner_output" | grep -oP '\d+(?= skipped)'| tail -1 || true)
+    [[ -n "$passed"  ]] && counts="${passed} passed"
+    [[ -n "$failed"  && "$failed"  != "0" ]] && counts="${counts}  ${failed} failed"
+    [[ -n "$skipped" && "$skipped" != "0" ]] && counts="${counts}  ${skipped} skipped"
+
     if (( exit_code == 0 )); then
         echo -e "\n  ${BOLD_GREEN}✓ Backend tests passed${RESET} $(fmt_ms $elapsed)"
-        record_result "Backend (pytest)" "pass" "$elapsed"
+        record_result "Backend (pytest)" "pass" "$elapsed" "$counts"
     else
         echo -e "\n  ${BOLD_RED}✗ Backend tests failed${RESET} $(fmt_ms $elapsed)"
-        record_result "Backend (pytest)" "fail" "$elapsed" "exit code $exit_code"
+        record_result "Backend (pytest)" "fail" "$elapsed" "${counts:-exit code $exit_code}"
     fi
 }
 
@@ -195,19 +217,30 @@ run_bot() {
     local start
     start=$(date +%s%3N)
     local exit_code=0
-
-    docker compose -f "$SCRIPT_DIR/docker-compose.yml" exec bot \
-        python -m pytest tests/ -v --tb=short 2>&1 || exit_code=$?
+    local runner_output
+    runner_output=$(docker compose -f "$SCRIPT_DIR/docker-compose.yml" exec bot \
+        python -m pytest tests/ -v --tb=short 2>&1) || exit_code=$?
+    echo "$runner_output"
 
     local elapsed
     elapsed=$(elapsed_since "$start")
 
+    # Parse "N passed" from pytest summary line
+    local counts=""
+    local passed failed skipped
+    passed=$(echo "$runner_output" | grep -oP '\d+(?= passed)' | tail -1 || true)
+    failed=$(echo "$runner_output" | grep -oP '\d+(?= failed)'  | tail -1 || true)
+    skipped=$(echo "$runner_output" | grep -oP '\d+(?= skipped)'| tail -1 || true)
+    [[ -n "$passed"  ]] && counts="${passed} passed"
+    [[ -n "$failed"  && "$failed"  != "0" ]] && counts="${counts}  ${failed} failed"
+    [[ -n "$skipped" && "$skipped" != "0" ]] && counts="${counts}  ${skipped} skipped"
+
     if (( exit_code == 0 )); then
         echo -e "\n  ${BOLD_GREEN}✓ Bot tests passed${RESET} $(fmt_ms $elapsed)"
-        record_result "Bot (pytest)" "pass" "$elapsed"
+        record_result "Bot (pytest)" "pass" "$elapsed" "$counts"
     else
         echo -e "\n  ${BOLD_RED}✗ Bot tests failed${RESET} $(fmt_ms $elapsed)"
-        record_result "Bot (pytest)" "fail" "$elapsed" "exit code $exit_code"
+        record_result "Bot (pytest)" "fail" "$elapsed" "${counts:-exit code $exit_code}"
     fi
 }
 
@@ -286,16 +319,18 @@ print_summary() {
     echo
 
     local pass_count=0 fail_count=0 skip_count=0
+    local total_tests=0
 
     # Column widths
-    local name_w=32 status_w=10 time_w=10
+    local name_w=32 status_w=10 time_w=10 counts_w=24
 
-    printf "  ${BOLD_WHITE}%-${name_w}s  %-${status_w}s  %s${RESET}\n" \
-        "Group" "Status" "Time"
-    printf "  ${DIM}%-${name_w}s  %-${status_w}s  %s${RESET}\n" \
+    printf "  ${BOLD_WHITE}%-${name_w}s  %-${status_w}s  %-${time_w}s  %s${RESET}\n" \
+        "Suite" "Status" "Time" "Tests"
+    printf "  ${DIM}%-${name_w}s  %-${status_w}s  %-${time_w}s  %s${RESET}\n" \
         "$(printf '─%.0s' $(seq 1 $name_w))" \
         "$(printf '─%.0s' $(seq 1 $status_w))" \
-        "$(printf '─%.0s' $(seq 1 8))"
+        "$(printf '─%.0s' $(seq 1 $time_w))" \
+        "$(printf '─%.0s' $(seq 1 $counts_w))"
 
     for (( i=0; i<n; i++ )); do
         local name="${RESULT_NAMES[$i]}"
@@ -305,30 +340,44 @@ print_summary() {
 
         local status_str color
         case "$status" in
-            pass)  color="$BOLD_GREEN"; status_str="✓ passed"; (( pass_count++ )) ;;
-            fail)  color="$BOLD_RED";   status_str="✗ FAILED"; (( fail_count++ )) ;;
-            skip)  color="$YELLOW";     status_str="○ skipped"; (( skip_count++ )) ;;
-            error) color="$BOLD_RED";   status_str="! ERROR";   (( fail_count++ )) ;;
+            pass)  color="$BOLD_GREEN"; status_str="✓ passed"; (( ++pass_count )) ;;
+            fail)  color="$BOLD_RED";   status_str="✗ FAILED"; (( ++fail_count )) ;;
+            skip)  color="$YELLOW";     status_str="○ skipped"; (( ++skip_count )) ;;
+            error) color="$BOLD_RED";   status_str="! ERROR";   (( ++fail_count )) ;;
             *)     color="$DIM";        status_str="? unknown" ;;
         esac
+
+        # Accumulate total test count from detail field (e.g. "242 passed")
+        local suite_tests
+        suite_tests=$(echo "$detail" | grep -oP '^\d+(?= passed)' | head -1 || true)
+        if [[ -n "$suite_tests" ]]; then
+            (( total_tests += suite_tests ))
+        fi
 
         local time_str
         time_str=$(fmt_ms "$ms")
 
-        printf "  ${WHITE}%-${name_w}s${RESET}  ${color}%-${status_w}s${RESET}  ${DIM}%s${RESET}" \
-            "$name" "$status_str" "$time_str"
-
-        if [[ -n "$detail" && "$status" != "pass" ]]; then
-            printf "  ${DIM}(%s)${RESET}" "$detail"
+        # For failed suites show counts+reason; for passing show counts; for skip show reason
+        local detail_str=""
+        if [[ -n "$detail" ]]; then
+            if [[ "$status" == "pass" ]]; then
+                detail_str="${DIM}${detail}${RESET}"
+            else
+                detail_str="${RED}${detail}${RESET}"
+            fi
         fi
-        echo
+
+        printf "  ${WHITE}%-${name_w}s${RESET}  ${color}%-${status_w}s${RESET}  ${DIM}%-${time_w}s${RESET}  " \
+            "$name" "$status_str" "$time_str"
+        echo -e "$detail_str"
     done
 
     echo
-    printf "  ${DIM}%-${name_w}s  %-${status_w}s  %s${RESET}\n" \
+    printf "  ${DIM}%-${name_w}s  %-${status_w}s  %-${time_w}s  %s${RESET}\n" \
         "$(printf '─%.0s' $(seq 1 $name_w))" \
         "$(printf '─%.0s' $(seq 1 $status_w))" \
-        "$(printf '─%.0s' $(seq 1 8))"
+        "$(printf '─%.0s' $(seq 1 $time_w))" \
+        "$(printf '─%.0s' $(seq 1 $counts_w))"
 
     local total=$(( pass_count + fail_count + skip_count ))
 
@@ -342,10 +391,12 @@ print_summary() {
 
     echo
     printf "  ${final_color}%-20s${RESET}" "$verdict"
-    printf "  ${GREEN}%d passed${RESET}" "$pass_count"
-    (( fail_count > 0 ))  && printf "   ${RED}%d failed${RESET}" "$fail_count"
-    (( skip_count > 0 ))  && printf "   ${YELLOW}%d skipped${RESET}" "$skip_count"
-    printf "   ${DIM}%d total  %s${RESET}\n" "$total" "$(fmt_ms $total_wall)"
+    printf "  ${GREEN}%d suites passed${RESET}" "$pass_count"
+    if (( fail_count > 0 ));  then printf "   ${RED}%d suites failed${RESET}"   "$fail_count";  fi
+    if (( skip_count > 0 ));  then printf "   ${YELLOW}%d suites skipped${RESET}" "$skip_count"; fi
+    printf "   ${DIM}%d total suites${RESET}" "$total"
+    if (( total_tests > 0 )); then printf "   ${BOLD_WHITE}%d tests${RESET}" "$total_tests"; fi
+    printf "   ${DIM}%s${RESET}\n" "$(fmt_ms $total_wall)"
     echo
 
     (( fail_count == 0 ))
