@@ -24,7 +24,7 @@ A plugin\'s core execution logic lives in a `discord.py` Cog inside the `bot/cog
 Plugins can securely expose configurable options to the server administrator via the frontend Dashboard without requiring the developer to write custom React code.
 *   The Cog declares a static `SETTINGS_SCHEMA` dictionary specifying its required settings fields (e.g., toggles, text inputs, Discord channel/role dropdowns).
 *   During `on_ready`, the framework introspects this schema and automatically dynamically renders the "Bot Settings" page on the frontend.
-*   Supported field types: `boolean`, `text`, `number`, `channel_select`, `multiselect`. Common mistakes: do not use `"string"` (use `"text"`), `"integer"` (use `"number"`), `"bool"` (use `"boolean"`), `"role_select"` or `"select"` (not supported). The validator enforces these types and will reject the plugin if they are wrong.
+*   Supported field types: `boolean`, `text`, `number`, `channel_select`, `role_select`, `multiselect`. The `channel_select` and `role_select` dropdowns are populated automatically from the Discord API — do not add `choices` to them. Common mistakes the validator will reject: do not use `"string"` (use `"text"`), `"integer"` (use `"number"`), `"bool"` (use `"boolean"`), or `"select"` (not a valid type).
 
 ---
 

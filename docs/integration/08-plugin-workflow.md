@@ -126,13 +126,17 @@ SETTINGS_SCHEMA = {
 | `boolean` | Toggle switch (on/off) |
 | `text` | Single-line text input |
 | `number` | Numeric input |
-| `channel_select` | Dropdown of the guild's channels |
-| `multiselect` | Multi-value selection list |
+| `channel_select` | Dropdown of the guild's channels (auto-populated) |
+| `role_select` | Dropdown of the guild's roles (auto-populated) |
+| `multiselect` | Multi-value selection list (requires `choices`) |
+
+> `channel_select` and `role_select` are populated automatically from the Discord API — do not add a `choices` list to them.
 
 > **Common mistakes the validator will reject:**
 > - `"integer"` → use `"number"`
 > - `"string"` → use `"text"`
 > - `"bool"` → use `"boolean"`
+> - `"select"` → use `"multiselect"` (with a `choices` list)
 > - Missing `"id"`, `"label"`, or `"fields"` keys at the top level
 
 ### `api.py` → `backend/app/api/<name>.py`

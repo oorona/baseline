@@ -124,10 +124,12 @@ class MyCog(commands.Cog):
 | `boolean` | Toggle switch |
 | `text` | Single-line text input |
 | `number` | Numeric input |
-| `channel_select` | Dropdown of guild channels |
-| `multiselect` | Multi-value selection list |
+| `channel_select` | Dropdown of guild channels (auto-populated) |
+| `role_select` | Dropdown of guild roles (auto-populated) |
+| `multiselect` | Multi-value selection list (requires `choices`) |
 
-> **Do not use `"string"`, `"integer"`, `"bool"`, etc.** — those are not valid types and the validator will reject them.
+> **Do not use `"string"`, `"integer"`, `"bool"`, `"select"`, etc.** — those are not valid types and the validator will reject them.
+> `channel_select` and `role_select` are populated automatically from the Discord API — never add a `choices` list to them.
 
 ```python
 import structlog
@@ -162,23 +164,11 @@ class MyCog(commands.Cog):
         await interaction.response.send_message(custom_message)
 ```
 
-### Adding Custom Settings to Backend
+### How settings are stored
 
-1. Update the settings schema in `backend/app/schemas.py`:
+Plugin settings declared in `SETTINGS_SCHEMA` are stored in the guild's existing `settings` JSON column — no schema changes and no new migrations are required for simple key-value configuration. The framework reads and writes the `settings` dict automatically; your cog only needs to call `_get_settings(guild_id)` to retrieve the values.
 
-```python
-class GuildSettings(BaseModel):
-    allowed_channels: list[str] = []
-    system_prompt: Optional[str] = None
-    model: Optional[str] = "openai"
-    
-    # Add your custom settings
-    custom_message: Optional[str] = "Hello!"
-    max_warnings: Optional[int] = 3
-    banned_words: list[str] = []
-```
-
-2. Users can now update these via the frontend settings page
+> **Never modify `backend/app/schemas.py` from a plugin.** That is a core file. All per-guild configuration belongs in `SETTINGS_SCHEMA` fields, which the framework persists for you.
 
 ## Method 3: Config Files
 
