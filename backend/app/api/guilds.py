@@ -2,7 +2,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import delete as sa_delete, text
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.future import select
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Dict, Any, Optional
@@ -347,27 +346,12 @@ async def update_guild_settings(
     result_settings = settings.settings_json or {}
     result_updated_at = settings.updated_at
 
-    # Flush settings first so they are committed even if audit log fails
-    await db.flush()
-
-    # Log action — wrapped in a savepoint so a FK violation (guild not yet
-    # registered) doesn't roll back the settings save.
-    try:
-        async with db.begin_nested():
-            log = AuditLog(
-                guild_id=guild_id,
-                user_id=user_id,
-                action="UPDATE_SETTINGS",
-                details={"settings": settings_data}
-            )
-            db.add(log)
-    except IntegrityError:
-        import logging
-        logging.getLogger(__name__).warning(
-            "audit_log_skipped: guild %s not in guilds table — settings saved, audit log dropped",
-            guild_id,
-        )
-
+    db.add(AuditLog(
+        guild_id=guild_id,
+        user_id=user_id,
+        action="UPDATE_SETTINGS",
+        details={"settings": settings_data}
+    ))
     await db.commit()
 
     return {
@@ -890,19 +874,12 @@ async def purge_audit_logs(
     result = await db.execute(stmt)
     deleted = result.rowcount
 
-    # Record the purge itself (savepoint so the settings save survives even if FK issue)
-    try:
-        async with db.begin_nested():
-            db.add(AuditLog(
-                guild_id=guild_id,
-                user_id=user_id,
-                action="PURGE_AUDIT_LOGS",
-                details={"deleted": deleted, "older_than_days": older_than_days, "before": before, "after": after},
-            ))
-    except IntegrityError:
-        import logging
-        logging.getLogger(__name__).warning("audit_log_skipped for purge: guild %s", guild_id)
-
+    db.add(AuditLog(
+        guild_id=guild_id,
+        user_id=user_id,
+        action="PURGE_AUDIT_LOGS",
+        details={"deleted": deleted, "older_than_days": older_than_days, "before": before, "after": after},
+    ))
     await db.commit()
     return {"deleted": deleted}
 

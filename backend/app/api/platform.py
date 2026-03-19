@@ -6,6 +6,7 @@ from pydantic import BaseModel
 import structlog
 
 from app.db.session import get_db
+from app.db.guild_session import get_admin_db
 from app.db.redis import get_redis
 from app.models import GuildSettings
 from app.core.config import settings as app_settings
@@ -19,7 +20,7 @@ class PlatformSettingsUpdate(BaseModel):
 
 @router.get("/settings")
 async def get_platform_settings(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_admin_db),
     admin: dict = Depends(verify_platform_admin)
 ):
     """Get global platform settings (stored in Developer Guild settings)."""
@@ -47,7 +48,7 @@ async def get_platform_settings(
 @router.put("/settings")
 async def update_platform_settings(
     update_data: PlatformSettingsUpdate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_admin_db),
     admin: dict = Depends(verify_platform_admin)
 ):
     """Update global platform settings."""

@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Optional, Any
 from dataclasses import dataclass, asdict
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy import select, text
 from redis.asyncio import Redis 
 
 from app.core.config import settings
@@ -245,7 +245,14 @@ class LLMService:
                 output_cost = (usage["completion_tokens"] / 1000) * pricing.output_cost_per_1k
                 cost = input_cost + output_cost
 
-            # 2. Insert Record
+            # 2. Set guild RLS context when writing to guild-scoped llm_usage table.
+            #    The session comes from get_db (bypass=true); if a guild is known we must
+            #    disable the bypass and activate the per-guild policy so RLS applies.
+            if guild_id is not None:
+                await db.execute(text("SET LOCAL app.bypass_guild_rls = 'false'"))
+                await db.execute(text(f"SET LOCAL app.current_guild_id = '{int(guild_id)}'"))
+
+            # 3. Insert Record
             record = LLMUsage(
                 user_id=user_id,
                 guild_id=guild_id,

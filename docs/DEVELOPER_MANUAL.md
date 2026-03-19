@@ -565,6 +565,42 @@ The session also has `search_path = <app_schema>` set at connection time. Every 
 
 **In bot services:** Cogs call the backend API over HTTP — the backend owns all DB sessions. The bot never connects to Postgres directly.
 
+#### Services That Write to Guild-Scoped Tables Without an HTTP Context
+
+Some backend services (e.g. `LLMService._track_usage`) receive a `db` session from a caller and must write to a guild-scoped table. Because the caller's session comes from `get_db` (bypass=true), the service must set the RLS context itself when a `guild_id` is known:
+
+```python
+from sqlalchemy import text
+
+async def _write_guild_record(db, guild_id, ...):
+    if guild_id is not None:
+        # Disable bypass and activate per-guild policy before the INSERT.
+        await db.execute(text("SET LOCAL app.bypass_guild_rls = 'false'"))
+        await db.execute(text(f"SET LOCAL app.current_guild_id = '{int(guild_id)}'"))
+    # Now safe to INSERT — RLS policy is satisfied.
+    db.add(MyGuildModel(guild_id=guild_id, ...))
+    await db.commit()
+```
+
+`SET LOCAL` is transaction-scoped and is cleared automatically on commit/rollback, so no cleanup is needed.
+
+#### Platform-Admin Access to Guild-Scoped Tables
+
+Endpoints that need to read or write guild-scoped tables across all guilds (e.g. platform settings stored in a designated guild's row) must use `get_admin_db`, **not** `get_db`. `get_admin_db` sets `bypass_guild_rls = 'true'` and automatically enforces platform-admin authentication:
+
+```python
+from app.db.guild_session import get_admin_db
+
+@router.get("/settings")
+async def get_platform_settings(
+    db: AsyncSession = Depends(get_admin_db),  # cross-guild RLS bypass + L6 auth
+    admin: dict = Depends(verify_platform_admin),
+):
+    ...
+```
+
+`get_db` must **never** be used for endpoints that touch guild-scoped tables, even for admin operations — it provides no auth guard and leaves RLS silently bypassed.
+
 ---
 
 ### 6.4 Adding New Tables (Framework Extension)

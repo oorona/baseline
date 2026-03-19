@@ -79,6 +79,14 @@ async def get_guild_db(
             # an explicit WHERE clause.
             return (await db.execute(select(Ticket))).scalars().all()
     """
+    # get_db (our base dependency) sets bypass_guild_rls='true' so that
+    # global-table queries (users, shards, etc.) work without a guild context.
+    # For guild-scoped sessions we must override that: disable the bypass and
+    # activate the guild-specific RLS policy instead.  This ensures:
+    #   1. Every query on a guild-scoped table sees ONLY rows for this guild.
+    #   2. The FK check on guilds.id (FORCE RLS) resolves correctly because
+    #      guilds.id = current_guild_id satisfies the policy.
+    await db.execute(text("SET LOCAL app.bypass_guild_rls = 'false'"))
     await db.execute(text(f"SET LOCAL app.current_guild_id = '{int(guild_id)}'"))
     yield db
 
