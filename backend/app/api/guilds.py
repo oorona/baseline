@@ -360,16 +360,13 @@ async def update_guild_settings(
     )
     db.add(log)
 
-    # flush() sends all pending SQL and fetches server-generated values
-    # (updated_at via asyncpg RETURNING) while the transaction stays open.
-    # We capture the values before commit because onupdate/server_default
-    # columns can be re-expired post-commit, triggering MissingGreenlet in
-    # async context even with expire_on_commit=False.
-    await db.flush()
+    # Capture BEFORE flush: flush() expires ORM attributes (onupdate/server_default
+    # columns are marked for reload via RETURNING), and accessing them afterward
+    # triggers a lazy SELECT outside the greenlet → MissingGreenlet.
     result_settings = settings.settings_json or {}
     result_updated_at = settings.updated_at
 
-    # commit() persists both the settings update and the audit log.
+    await db.flush()
     await db.commit()
 
     return {

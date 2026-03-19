@@ -16,15 +16,58 @@ class IntrospectionCog(commands.Cog):
         logger.info("IntrospectionCog: Gathering bot info...")
         await self.report_bot_info()
 
-    async def report_bot_info(self):
-        # 1. Collect Commands
-        commands_list = []
+    def _extract_commands(self) -> list[dict]:
+        """Walk the app command tree and return rich command entries with cog name and params."""
+        import discord.app_commands as ac
+
+        entries = []
         for cmd in self.bot.tree.get_commands():
-            commands_list.append({
-                "name": cmd.name,
-                "description": cmd.description,
-                "type": "Slash Command"
-            })
+            cog_name = (
+                type(cmd.binding).__name__
+                if hasattr(cmd, "binding") and cmd.binding
+                else "Slash Commands"
+            )
+
+            if isinstance(cmd, ac.Group):
+                for sub in cmd.commands:
+                    if isinstance(sub, ac.Group):
+                        # Two-level nesting: /group sub subsub
+                        for subsub in sub.commands:
+                            entries.append({
+                                "name": f"{cmd.name} {sub.name} {subsub.name}",
+                                "description": subsub.description or "",
+                                "cog": cog_name,
+                                "params": [
+                                    {"name": p.name, "required": p.required}
+                                    for p in getattr(subsub, "parameters", [])
+                                ],
+                            })
+                    else:
+                        entries.append({
+                            "name": f"{cmd.name} {sub.name}",
+                            "description": sub.description or "",
+                            "cog": cog_name,
+                            "params": [
+                                {"name": p.name, "required": p.required}
+                                for p in getattr(sub, "parameters", [])
+                            ],
+                        })
+            else:
+                entries.append({
+                    "name": cmd.name,
+                    "description": cmd.description or "",
+                    "cog": cog_name,
+                    "params": [
+                        {"name": p.name, "required": p.required}
+                        for p in getattr(cmd, "parameters", [])
+                    ],
+                })
+
+        return entries
+
+    async def report_bot_info(self):
+        # 1. Collect Commands (rich: cog name + parameters for usage strings)
+        commands_list = self._extract_commands()
         
         # 2. Collect Listeners
         listeners_list = []

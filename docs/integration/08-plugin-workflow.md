@@ -275,7 +275,7 @@ Pass `--strict` to promote warnings to errors (useful in CI):
 |---|---|
 | Copies `cog.py` | `bot/cogs/event_logging.py` |
 | Copies `api.py` | `backend/app/api/event_logging.py` |
-| Patches `backend/main.py` | Adds `from app.api.event_logging import router ...` + `app.include_router(...)` |
+| Updates `backend/installed_plugins.json` | Registers the plugin name, router prefix, and tag — auto-discovered by `plugin_loader.py` at startup |
 | Appends `models.py` | Appends model classes to `backend/app/models.py` |
 | Copies `migration.py` | `backend/alembic/versions/<timestamp>_event_logging.py` |
 | Writes `migration_inventory.json` | Registers plugin name, version, and revision ID — no manual edits needed |
@@ -295,6 +295,8 @@ docker compose restart backend bot frontend
 ```
 
 `backend` must restart to reload `migration_inventory.json` (loaded once at startup by `version.py`). The bot will pick up the new cog, introspect its `SETTINGS_SCHEMA`, and sync the settings form to the database. The frontend will show the new dashboard page.
+
+If your plugin defines slash commands, they will appear automatically in the **Command Reference** page after restart. Click **Refresh from Cogs** on that page to update the cached list — the data comes from the bot's live introspection report, not from Discord's API.
 
 ---
 

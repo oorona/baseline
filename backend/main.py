@@ -351,9 +351,14 @@ app.include_router(db_mgmt_router, prefix=f"{settings.API_V1_STR}/database", tag
 from app.api.commands import router as commands_router
 app.include_router(commands_router, prefix=f"{settings.API_V1_STR}/commands", tags=["commands"])
 
+
 # Setup wizard — always registered (needed in wizard mode)
 from app.api.setup import router as setup_router
 app.include_router(setup_router, prefix=f"{settings.API_V1_STR}/setup", tags=["setup"])
+
+# Plugin routers — auto-discovered from installed_plugins.json (never edit this block)
+from app.plugin_loader import load_plugin_routers
+load_plugin_routers(app, settings.API_V1_STR)
 
 
 @app.get(f"{settings.API_V1_STR}/health")

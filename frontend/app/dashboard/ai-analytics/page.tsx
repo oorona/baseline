@@ -51,7 +51,7 @@ function AIAnalyticsPage() {
                 </div>
                 <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 shadow-md">
                     <h3 className="text-sm font-medium text-gray-400 mb-2">Estimated Cost</h3>
-                    <div className="text-2xl font-bold">${stats.total_cost.toFixed(4)}</div>
+                    <div className="text-2xl font-bold">${(stats.total_cost ?? 0).toFixed(4)}</div>
                 </div>
                 <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 shadow-md">
                     <h3 className="text-sm font-medium text-gray-400 mb-2">Total Requests</h3>

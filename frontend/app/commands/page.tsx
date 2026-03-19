@@ -31,15 +31,20 @@ function CommandsPage() {
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
     const [expandedCogs, setExpandedCogs] = useState<Set<string>>(new Set());
 
-    const fetchCommands = async () => {
+    const fetchCommands = async (): Promise<boolean> => {
         try {
             const result = await apiClient.getCommands();
             setData(result);
-            // Expand all cogs by default
             const cogs = new Set(result.commands.map((c: BotCommand) => c.cog));
             setExpandedCogs(cogs);
-        } catch {
-            // leave data as-is on error
+            return true;
+        } catch (err: any) {
+            const status = err?.response?.status;
+            const msg = err?.response?.data?.detail || err?.message || 'Unknown error';
+            console.error('getCommands failed:', status, msg);
+            setMessage({ type: 'error', text: `Failed to load commands (HTTP ${status ?? 'network error'}): ${msg}` });
+            setData({ commands: [], last_updated: null, total: 0 });
+            return false;
         } finally {
             setLoading(false);
         }
@@ -56,14 +61,18 @@ function CommandsPage() {
         setMessage(null);
         try {
             await apiClient.refreshCommands();
-            await fetchCommands();
-            setMessage({ type: 'success', text: t('commands.refreshSuccess') });
         } catch (err: any) {
             const detail = err?.response?.data?.detail || err?.message;
             setMessage({ type: 'error', text: detail ? `${t('commands.refreshError')} ${detail}` : t('commands.refreshError') });
-        } finally {
             setRefreshing(false);
+            return;
         }
+        const ok = await fetchCommands();
+        setRefreshing(false);
+        if (ok) {
+            setMessage({ type: 'success', text: t('commands.refreshSuccess') });
+        }
+        // fetchCommands already set error message if !ok
     };
 
     const toggleCog = (cog: string) => {

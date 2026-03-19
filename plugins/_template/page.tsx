@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { withPermission } from '@/lib/hoc/with-permission';
+import { withPermission } from '@/lib/components/with-permission';
 import { PermissionLevel } from '@/lib/permissions';
 import { useTranslation } from '@/lib/i18n';
 import { apiClient } from '@/app/api-client';

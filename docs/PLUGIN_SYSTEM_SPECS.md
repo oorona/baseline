@@ -112,7 +112,7 @@ plugins/
 
 - Copies `cog.py` → `bot/cogs/<name>.py`
 - Copies `api.py` → `backend/app/api/<name>.py`
-- Patches `backend/main.py` to import and register the new router
+- Updates `backend/installed_plugins.json` to register the router (auto-discovered by `plugin_loader.py` — `main.py` is never modified)
 - Copies `page.tsx` → `frontend/app/dashboard/[guildId]/<name>/page.tsx` (creates directory)
 - Merges translation snippets into `en.ts` and `es.ts`
 - Copies migration file to `backend/alembic/versions/<timestamp>_<name>.py` and patches it to an independent Alembic branch (`down_revision = None`, `branch_labels = ['plugin_name']`)

@@ -88,28 +88,33 @@ def install_api(plugin_dir: Path, plugin_name: str, router_prefix: str, router_t
     src = plugin_dir / "api.py"
     dst = ROOT / f"backend/app/api/{plugin_name}.py"
     copy_file(src, dst)
-    _patch_main_py(plugin_name, router_prefix, router_tag)
+    _register_plugin_router(plugin_name, router_prefix, router_tag)
 
 
-def _patch_main_py(plugin_name: str, prefix: str, tag: str):
-    main_py = ROOT / "backend/main.py"
-    import_line = f"from app.api.{plugin_name} import router as {plugin_name}_router"
-    include_line = (
-        f'app.include_router({plugin_name}_router, '
-        f'prefix=f"{{settings.API_V1_STR}}{prefix}", tags=["{tag}"])'
-    )
-    new_block = (
-        f"\n# Plugin: {plugin_name}\n"
-        f"{import_line}\n"
-        f"{include_line}\n\n"
-        f"# Setup wizard"  # this is the anchor we're replacing
-    )
-    patch_file(
-        main_py,
-        "# Setup wizard",
-        new_block,
-        f"register {plugin_name} router in main.py",
-    )
+def _register_plugin_router(plugin_name: str, prefix: str, tag: str):
+    """Register the plugin in installed_plugins.json.
+
+    main.py auto-discovers routers from this file at startup via plugin_loader.py.
+    main.py is never modified by plugin installs — this is the entire registration.
+    """
+    registry_path = ROOT / "backend/installed_plugins.json"
+    log(f"WRITE  backend/installed_plugins.json — register {plugin_name} router")
+
+    if DRY_RUN:
+        return
+
+    plugins: list[dict] = []
+    if registry_path.exists():
+        try:
+            plugins = json.loads(registry_path.read_text())
+        except Exception:
+            plugins = []
+
+    # Replace any existing entry for this plugin (re-install scenario)
+    plugins = [p for p in plugins if p.get("name") != plugin_name]
+    plugins.append({"name": plugin_name, "prefix": prefix, "tag": tag})
+
+    registry_path.write_text(json.dumps(plugins, indent=2) + "\n")
 
 
 def install_models(plugin_dir: Path, plugin_name: str):
