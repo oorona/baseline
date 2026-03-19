@@ -293,6 +293,11 @@ class APIClient {
         return response.data;
     }
 
+    async purgeAuditLogs(guildId: string, params: { older_than_days?: number; before?: string; after?: string }) {
+        const response = await this.client.delete(`/guilds/${guildId}/audit-logs`, { params });
+        return response.data as { deleted: number };
+    }
+
     // Shard endpoints
     async getShards() {
         const response = await this.client.get('/shards');
@@ -324,6 +329,11 @@ class APIClient {
     async getLLMStats() {
         const response = await this.client.get('/llm/stats');
         return response.data;
+    }
+
+    async purgeLLMUsage(params: { older_than_days?: number; before?: string; after?: string }) {
+        const response = await this.client.delete('/llm/usage', { params });
+        return response.data as { deleted: number; summaries_deleted: number };
     }
 
     // *** DEMO CODE *** - Gemini Demo Endpoints
@@ -1405,6 +1415,11 @@ class APIClient {
         if (guildId) params.guild_id = guildId;
         const response = await this.client.get('/instrumentation/stats', { params });
         return response.data;
+    }
+
+    async purgeInstrumentationData(params: { older_than_days?: number; before?: string; after?: string; tables?: string }) {
+        const response = await this.client.delete('/instrumentation/data', { params });
+        return response.data as { deleted: Record<string, number> };
     }
 
     // ── LLM Schema Store ──────────────────────────────────────────────────

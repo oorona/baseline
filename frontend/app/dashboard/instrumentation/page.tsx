@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { apiClient } from '@/app/api-client';
 import { withPermission } from '@/lib/components/with-permission';
 import { PermissionLevel } from '@/lib/permissions';
-import { RefreshCw, TrendingUp, MousePointer, Zap, Terminal, Filter } from 'lucide-react';
+import { RefreshCw, TrendingUp, MousePointer, Zap, Terminal, Filter, Trash2, X } from 'lucide-react';
 import { useTranslation } from '@/lib/i18n';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -98,6 +98,137 @@ function LineChart({ data }: { data: GuildGrowthPoint[] }) {
   );
 }
 
+// ── Purge Modal ───────────────────────────────────────────────────────────────
+
+type PurgeMode = 'all' | 'older_than' | 'date_range';
+
+const PURGEABLE_TABLES = ['guild_events', 'card_usage', 'bot_commands', 'request_metrics'] as const;
+
+function PurgeModal({ onClose, onPurged }: { onClose: () => void; onPurged: () => void }) {
+  const { t } = useTranslation();
+  const [mode, setMode] = useState<PurgeMode>('all');
+  const [days, setDays] = useState('30');
+  const [before, setBefore] = useState('');
+  const [after, setAfter] = useState('');
+  const [tables, setTables] = useState<Set<string>>(new Set(PURGEABLE_TABLES));
+  const [purging, setPurging] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [purgeError, setPurgeError] = useState<string | null>(null);
+
+  const tableLabels: Record<string, string> = {
+    guild_events:    t('instrumentation.purgeTableGuildEvents'),
+    card_usage:      t('instrumentation.purgeTableCardUsage'),
+    bot_commands:    t('instrumentation.purgeTableBotCommands'),
+    request_metrics: t('instrumentation.purgeTableRequestMetrics'),
+  };
+
+  const toggleTable = (key: string) => {
+    setTables(prev => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  };
+
+  const handlePurge = async () => {
+    if (tables.size === 0) return;
+    setPurging(true);
+    setResult(null);
+    setPurgeError(null);
+    try {
+      const params: { older_than_days?: number; before?: string; after?: string; tables?: string } = {
+        tables: tables.size === PURGEABLE_TABLES.length ? 'all' : [...tables].join(','),
+      };
+      if (mode === 'older_than') params.older_than_days = parseInt(days, 10);
+      if (mode === 'date_range') {
+        if (before) params.before = before;
+        if (after) params.after = after;
+      }
+      const data = await apiClient.purgeInstrumentationData(params);
+      const summary = Object.entries(data.deleted).map(([k, v]) => `${k}: ${v}`).join(', ');
+      setResult(t('instrumentation.purgeSuccess').replace('{summary}', summary));
+      onPurged();
+    } catch {
+      setPurgeError(t('instrumentation.purgeError'));
+    } finally {
+      setPurging(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-foreground">{t('instrumentation.purgeTitle')}</h2>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
+        </div>
+
+        <p className="text-sm text-red-400">{t('instrumentation.purgeWarning')}</p>
+
+        <div className="space-y-2">
+          {(['all', 'older_than', 'date_range'] as PurgeMode[]).map((m) => (
+            <label key={m} className="flex items-center gap-2 cursor-pointer">
+              <input type="radio" name="purge-mode" value={m} checked={mode === m} onChange={() => setMode(m)} />
+              <span className="text-sm text-foreground">
+                {m === 'all' && t('instrumentation.purgeAll')}
+                {m === 'older_than' && t('instrumentation.purgeOlderThan')}
+                {m === 'date_range' && t('instrumentation.purgeDateRange')}
+              </span>
+            </label>
+          ))}
+        </div>
+
+        {mode === 'older_than' && (
+          <div className="flex items-center gap-2">
+            <input type="number" min="1" value={days} onChange={(e) => setDays(e.target.value)}
+              className="w-24 px-3 py-1.5 rounded-md border border-border bg-background text-foreground text-sm" />
+            <span className="text-sm text-muted-foreground">{t('instrumentation.purgeDays')}</span>
+          </div>
+        )}
+
+        {mode === 'date_range' && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground w-16">{t('instrumentation.purgeAfter')}</span>
+              <input type="date" value={after} onChange={(e) => setAfter(e.target.value)}
+                className="px-3 py-1.5 rounded-md border border-border bg-background text-foreground text-sm" />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground w-16">{t('instrumentation.purgeBefore')}</span>
+              <input type="date" value={before} onChange={(e) => setBefore(e.target.value)}
+                className="px-3 py-1.5 rounded-md border border-border bg-background text-foreground text-sm" />
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground font-medium">{t('instrumentation.purgeTablesLabel')}</p>
+          {PURGEABLE_TABLES.map((key) => (
+            <label key={key} className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={tables.has(key)} onChange={() => toggleTable(key)} />
+              <span className="text-sm text-foreground">{tableLabels[key]}</span>
+            </label>
+          ))}
+        </div>
+
+        {result && <p className="text-sm text-green-400">{result}</p>}
+        {purgeError && <p className="text-sm text-red-400">{purgeError}</p>}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <button onClick={onClose}
+            className="px-4 py-2 text-sm rounded-md border border-border text-foreground hover:bg-muted transition-colors">
+            {t('common.cancel')}
+          </button>
+          <button onClick={handlePurge} disabled={purging || tables.size === 0}
+            className="px-4 py-2 text-sm rounded-md bg-red-600 hover:bg-red-700 text-white font-medium transition-colors disabled:opacity-50">
+            {purging ? t('instrumentation.purging') : t('instrumentation.purgeConfirm')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 function InstrumentationPage() {
@@ -107,6 +238,7 @@ function InstrumentationPage() {
   const [error, setError] = useState<string | null>(null);
   const [range, setRange] = useState<Range>('7d');
   const [guildFilter, setGuildFilter] = useState('');
+  const [showPurge, setShowPurge] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -130,6 +262,8 @@ function InstrumentationPage() {
   const totalCmds        = stats?.top_commands.reduce((s, d) => s + d.count, 0) ?? 0;
 
   return (
+    <>
+    {showPurge && <PurgeModal onClose={() => setShowPurge(false)} onPurged={() => { setShowPurge(false); load(); }} />}
     <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">
 
       {/* Header */}
@@ -140,6 +274,13 @@ function InstrumentationPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => setShowPurge(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm bg-red-600/10 hover:bg-red-600/20 text-red-400 border border-red-600/30 transition-colors"
+          >
+            <Trash2 size={13} />
+            {t('instrumentation.purgeButton')}
+          </button>
           {/* Range selector */}
           <div className="flex rounded-lg border border-border overflow-hidden text-sm">
             {(['24h', '7d', '30d'] as Range[]).map(r => (
@@ -351,6 +492,7 @@ function InstrumentationPage() {
         </div>
       </div>
     </div>
+    </>
   );
 }
 

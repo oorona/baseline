@@ -362,7 +362,9 @@ describe('BotSettingsPage — save action', () => {
             expect(api.updateGuildSettings).toHaveBeenCalledOnce()
             const [calledGuildId, payload] = api.updateGuildSettings.mock.calls[0]
             expect(calledGuildId).toBe('123456789')
-            expect(payload).toHaveProperty('settings')
+            // payload must be the flat settings dict — NOT wrapped in { settings: ... }
+            expect(payload).not.toHaveProperty('settings')
+            expect(payload).toMatchObject({ enabled: true, prefix: '!', limit: 10 })
         })
     })
 

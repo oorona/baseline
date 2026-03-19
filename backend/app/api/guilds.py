@@ -1,11 +1,13 @@
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
+from sqlalchemy import delete as sa_delete, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.future import select
 from sqlalchemy.orm import Session, joinedload
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
+from datetime import datetime, timedelta, timezone
 import json
 from redis.asyncio import Redis
 
@@ -339,22 +341,33 @@ async def update_guild_settings(
         # We could validte roles if needed
         pass
     
-    # Log action
-    log = AuditLog(
-        guild_id=guild_id,
-        user_id=user_id,
-        action="UPDATE_SETTINGS",
-        details={"settings": settings_data}
-    )
-    db.add(log)
-
     # Capture BEFORE flush: flush() expires ORM attributes (onupdate/server_default
     # columns are marked for reload via RETURNING), and accessing them afterward
     # triggers a lazy SELECT outside the greenlet → MissingGreenlet.
     result_settings = settings.settings_json or {}
     result_updated_at = settings.updated_at
 
+    # Flush settings first so they are committed even if audit log fails
     await db.flush()
+
+    # Log action — wrapped in a savepoint so a FK violation (guild not yet
+    # registered) doesn't roll back the settings save.
+    try:
+        async with db.begin_nested():
+            log = AuditLog(
+                guild_id=guild_id,
+                user_id=user_id,
+                action="UPDATE_SETTINGS",
+                details={"settings": settings_data}
+            )
+            db.add(log)
+    except IntegrityError:
+        import logging
+        logging.getLogger(__name__).warning(
+            "audit_log_skipped: guild %s not in guilds table — settings saved, audit log dropped",
+            guild_id,
+        )
+
     await db.commit()
 
     return {
@@ -835,6 +848,64 @@ async def get_audit_logs(
         .limit(100)
     )
     return result.scalars().all()
+
+
+@router.delete("/{guild_id}/audit-logs")
+async def purge_audit_logs(
+    guild_id: int,
+    older_than_days: Optional[int] = Query(None, ge=1, description="Delete logs older than N days"),
+    before: Optional[str] = Query(None, description="Delete logs before this ISO date (e.g. 2025-01-01)"),
+    after: Optional[str] = Query(None, description="Delete logs after this ISO date"),
+    db: AsyncSession = Depends(get_guild_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Purge audit logs for a guild. Requires owner or admin permission."""
+    user_id = int(current_user["user_id"])
+
+    guild = await db.get(Guild, guild_id)
+    if not guild:
+        raise HTTPException(status_code=404, detail="Guild not found")
+
+    is_owner = guild.owner_id == user_id
+    if not is_owner:
+        auth_check = await db.execute(
+            select(AuthorizedUser).where(
+                AuthorizedUser.guild_id == guild_id,
+                AuthorizedUser.user_id == user_id,
+            )
+        )
+        auth_user = auth_check.scalar_one_or_none()
+        if not auth_user or auth_user.permission_level != PermissionLevel.ADMIN:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only admins can purge audit logs")
+
+    stmt = sa_delete(AuditLog).where(AuditLog.guild_id == guild_id)
+    if older_than_days is not None:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=older_than_days)
+        stmt = stmt.where(AuditLog.created_at < cutoff)
+    if before:
+        stmt = stmt.where(AuditLog.created_at < datetime.fromisoformat(before).replace(tzinfo=timezone.utc))
+    if after:
+        stmt = stmt.where(AuditLog.created_at > datetime.fromisoformat(after).replace(tzinfo=timezone.utc))
+
+    result = await db.execute(stmt)
+    deleted = result.rowcount
+
+    # Record the purge itself (savepoint so the settings save survives even if FK issue)
+    try:
+        async with db.begin_nested():
+            db.add(AuditLog(
+                guild_id=guild_id,
+                user_id=user_id,
+                action="PURGE_AUDIT_LOGS",
+                details={"deleted": deleted, "older_than_days": older_than_days, "before": before, "after": after},
+            ))
+    except IntegrityError:
+        import logging
+        logging.getLogger(__name__).warning("audit_log_skipped for purge: guild %s", guild_id)
+
+    await db.commit()
+    return {"deleted": deleted}
+
 
 @router.get("/{guild_id}/channels", response_model=List[DiscordChannel])
 async def get_guild_channels(

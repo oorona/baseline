@@ -19,7 +19,7 @@ from typing import Optional
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel
-from sqlalchemy import Float, Integer, func, select, text
+from sqlalchemy import Float, Integer, delete as sa_delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, verify_platform_admin
@@ -266,6 +266,59 @@ async def get_instrumentation_stats(
         "top_commands": top_commands,
         "endpoint_perf": endpoint_perf,
     }
+
+
+# ── Purge endpoint ────────────────────────────────────────────────────────────
+
+_PURGEABLE_TABLES = {
+    "guild_events":    (GuildEvent,    "timestamp"),
+    "card_usage":      (CardUsage,     "timestamp"),
+    "bot_commands":    (BotCommandMetrics, "timestamp"),
+    "request_metrics": (RequestMetrics,    "timestamp"),
+}
+
+
+@router.delete("/data")
+async def purge_instrumentation_data(
+    older_than_days: Optional[int] = Query(None, ge=1, description="Delete records older than N days"),
+    before: Optional[str] = Query(None, description="Delete records before this ISO date"),
+    after: Optional[str] = Query(None, description="Delete records after this ISO date"),
+    tables: str = Query(default="all", description="Comma-separated table keys or 'all'"),
+    db: AsyncSession = Depends(get_db),
+    _admin: dict = Depends(verify_platform_admin),
+):
+    """Purge instrumentation data. Developer only."""
+    requested = (
+        list(_PURGEABLE_TABLES.keys())
+        if tables.strip().lower() == "all"
+        else [t.strip() for t in tables.split(",") if t.strip() in _PURGEABLE_TABLES]
+    )
+    if not requested:
+        raise HTTPException(status_code=400, detail=f"No valid tables specified. Valid: {list(_PURGEABLE_TABLES)}")
+
+    cutoff_before = None
+    cutoff_after = None
+    if older_than_days is not None:
+        cutoff_before = datetime.now(timezone.utc) - timedelta(days=older_than_days)
+    if before:
+        cutoff_before = datetime.fromisoformat(before).replace(tzinfo=timezone.utc)
+    if after:
+        cutoff_after = datetime.fromisoformat(after).replace(tzinfo=timezone.utc)
+
+    deleted: dict[str, int] = {}
+    for key in requested:
+        model, ts_col = _PURGEABLE_TABLES[key]
+        stmt = sa_delete(model)
+        col = getattr(model, ts_col)
+        if cutoff_before:
+            stmt = stmt.where(col < cutoff_before)
+        if cutoff_after:
+            stmt = stmt.where(col > cutoff_after)
+        result = await db.execute(stmt)
+        deleted[key] = result.rowcount
+
+    await db.commit()
+    return {"deleted": deleted}
 
 
 # ── Prometheus /metrics endpoint ───────────────────────────────────────────────

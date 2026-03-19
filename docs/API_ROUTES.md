@@ -77,8 +77,19 @@ Body for POST: `{ "user_id": 123456789 }`
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `GET` | `/guilds/{guild_id}/audit-logs` | Session (admin) | List audit log entries for this guild |
+| `DELETE` | `/guilds/{guild_id}/audit-logs` | Session (owner or admin) | Purge audit log entries |
 
-Query params: `limit`, `offset`, `action` (filter by action type)
+Query params for `GET`: `limit`, `offset`, `action` (filter by action type)
+
+Query params for `DELETE` (all optional, at least one must be supplied to limit scope):
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `older_than_days` | integer ≥ 1 | Delete entries older than N days |
+| `before` | ISO date string | Delete entries before this date (e.g. `2025-01-01`) |
+| `after` | ISO date string | Delete entries after this date |
+
+Omitting all params deletes **all** logs for the guild. Returns `{"deleted": <count>}`.
 
 ### Discord Data (Live from Discord API)
 
@@ -128,6 +139,17 @@ Query params: `limit`, `offset`, `action` (filter by action type)
 | `POST` | `/llm/structured` | Session | Get a structured JSON response |
 | `POST` | `/llm/tools` | Session | Function/tool calling |
 | `GET` | `/llm/stats` | Session (admin) | LLM usage analytics (tokens, cost, per-guild breakdown) |
+| `DELETE` | `/llm/usage` | Session (developer) | Purge LLM usage logs and aggregated summaries |
+
+Query params for `DELETE` (all optional):
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `older_than_days` | integer ≥ 1 | Delete records older than N days |
+| `before` | ISO date string | Delete records before this date |
+| `after` | ISO date string | Delete records after this date |
+
+Returns `{"deleted": <usage_count>, "summaries_deleted": <summary_count>}`.
 
 ---
 
@@ -191,7 +213,27 @@ Setup Wizard endpoints. Used during initial configuration to store secrets encry
 
 ## Instrumentation — `/api/v1/instrumentation`
 
-Internal Prometheus metrics collection. Not for direct use by extensions.
+Internal Prometheus metrics collection and purge. **L6 Developer access required** for stats and purge.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/instrumentation/card-click` | Session | Record a dashboard card click |
+| `POST` | `/instrumentation/bot-command` | Internal | Record a bot command invocation |
+| `POST` | `/instrumentation/guild-event` | Internal | Record a guild join/leave event |
+| `GET` | `/instrumentation/stats` | Session (developer) | Aggregated stats (guild growth, card usage, commands, API perf) |
+| `GET` | `/instrumentation/metrics` | Internal network only | Prometheus text-format scrape endpoint |
+| `DELETE` | `/instrumentation/data` | Session (developer) | Purge metric records |
+
+Query params for `DELETE`:
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `older_than_days` | integer ≥ 1 | Delete records older than N days |
+| `before` | ISO date string | Delete records before this date |
+| `after` | ISO date string | Delete records after this date |
+| `tables` | string | Comma-separated table keys or `all` (default). Valid keys: `guild_events`, `card_usage`, `bot_commands`, `request_metrics` |
+
+Returns `{"deleted": {"guild_events": N, "card_usage": N, "bot_commands": N, "request_metrics": N}}`.
 
 ---
 

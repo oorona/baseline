@@ -26,6 +26,7 @@ from app.api.guilds import (
     remove_authorized_user,
     add_authorized_role,
     remove_authorized_role,
+    purge_audit_logs,
 )
 from app.models import (
     AuditLog,
@@ -738,3 +739,173 @@ class TestRemoveAuthorizedRole:
             )
 
         assert exc.value.status_code == 404
+
+
+# ── purge_audit_logs ──────────────────────────────────────────────────────────
+
+class TestPurgeAuditLogs:
+    """
+    Tests for DELETE /{guild_id}/audit-logs
+
+    Covered:
+      - Owner can purge all logs (no date filter)
+      - Admin (ADMIN permission_level) can purge
+      - Non-admin member is rejected with 403
+      - older_than_days filter accepted
+      - before / after date filters accepted
+      - Guild not found raises 404
+      - PURGE_AUDIT_LOGS AuditLog entry is written after purge
+    """
+
+    def _mock_db(self, rowcount: int = 5):
+        db = AsyncMock()
+        db.flush = AsyncMock()
+        db.commit = AsyncMock()
+        db.add = MagicMock()
+        db.delete = AsyncMock()
+        result_mock = MagicMock()
+        result_mock.rowcount = rowcount
+        db.execute = AsyncMock(return_value=result_mock)
+        nested_cm = AsyncMock()
+        nested_cm.__aenter__ = AsyncMock(return_value=None)
+        nested_cm.__aexit__ = AsyncMock(return_value=False)
+        db.begin_nested = MagicMock(return_value=nested_cm)
+        return db
+
+    @pytest.mark.asyncio
+    async def test_owner_purges_all_logs(self):
+        db = self._mock_db(rowcount=7)
+        guild = Guild(id=1, name="G", owner_id=10, icon_url=None)
+        db.get.return_value = guild
+
+        result = await purge_audit_logs(
+            guild_id=1,
+            older_than_days=None,
+            before=None,
+            after=None,
+            db=db,
+            current_user={"user_id": 10},
+        )
+
+        assert result == {"deleted": 7}
+        db.commit.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_admin_user_can_purge(self):
+        db = self._mock_db(rowcount=3)
+        guild = Guild(id=1, name="G", owner_id=99, icon_url=None)
+        db.get.return_value = guild
+        auth_user = AuthorizedUser(user_id=10, guild_id=1, permission_level=PermissionLevel.ADMIN)
+        scalar_result = MagicMock()
+        scalar_result.scalar_one_or_none.return_value = auth_user
+        rowcount_result = MagicMock()
+        rowcount_result.rowcount = 3
+        db.execute = AsyncMock(side_effect=[scalar_result, rowcount_result])
+        nested_cm = AsyncMock()
+        nested_cm.__aenter__ = AsyncMock(return_value=None)
+        nested_cm.__aexit__ = AsyncMock(return_value=False)
+        db.begin_nested = MagicMock(return_value=nested_cm)
+
+        result = await purge_audit_logs(
+            guild_id=1,
+            older_than_days=None,
+            before=None,
+            after=None,
+            db=db,
+            current_user={"user_id": 10},
+        )
+
+        assert result == {"deleted": 3}
+
+    @pytest.mark.asyncio
+    async def test_non_admin_member_raises_403(self):
+        db = self._mock_db()
+        guild = Guild(id=1, name="G", owner_id=99, icon_url=None)
+        db.get.return_value = guild
+        auth_user = AuthorizedUser(user_id=10, guild_id=1, permission_level=PermissionLevel.USER)
+        scalar_result = MagicMock()
+        scalar_result.scalar_one_or_none.return_value = auth_user
+        db.execute = AsyncMock(return_value=scalar_result)
+
+        with pytest.raises(HTTPException) as exc:
+            await purge_audit_logs(
+                guild_id=1,
+                older_than_days=None,
+                before=None,
+                after=None,
+                db=db,
+                current_user={"user_id": 10},
+            )
+
+        assert exc.value.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_unknown_guild_raises_404(self):
+        db = self._mock_db()
+        db.get.return_value = None
+
+        with pytest.raises(HTTPException) as exc:
+            await purge_audit_logs(
+                guild_id=999,
+                older_than_days=None,
+                before=None,
+                after=None,
+                db=db,
+                current_user={"user_id": 10},
+            )
+
+        assert exc.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_purge_audit_log_entry_written(self):
+        """After purge, a PURGE_AUDIT_LOGS AuditLog row must be added."""
+        db = self._mock_db(rowcount=2)
+        guild = Guild(id=1, name="G", owner_id=10, icon_url=None)
+        db.get.return_value = guild
+
+        await purge_audit_logs(
+            guild_id=1,
+            older_than_days=None,
+            before=None,
+            after=None,
+            db=db,
+            current_user={"user_id": 10},
+        )
+
+        added = [c.args[0] for c in db.add.call_args_list]
+        assert any(isinstance(o, AuditLog) and o.action == "PURGE_AUDIT_LOGS" for o in added)
+
+    @pytest.mark.asyncio
+    async def test_older_than_days_accepted(self):
+        db = self._mock_db(rowcount=1)
+        guild = Guild(id=1, name="G", owner_id=10, icon_url=None)
+        db.get.return_value = guild
+
+        result = await purge_audit_logs(
+            guild_id=1,
+            older_than_days=30,
+            before=None,
+            after=None,
+            db=db,
+            current_user={"user_id": 10},
+        )
+
+        assert result == {"deleted": 1}
+        db.execute.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_date_range_filters_accepted(self):
+        db = self._mock_db(rowcount=0)
+        guild = Guild(id=1, name="G", owner_id=10, icon_url=None)
+        db.get.return_value = guild
+
+        result = await purge_audit_logs(
+            guild_id=1,
+            older_than_days=None,
+            before="2025-01-01",
+            after="2024-01-01",
+            db=db,
+            current_user={"user_id": 10},
+        )
+
+        assert result == {"deleted": 0}

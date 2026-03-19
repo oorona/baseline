@@ -23,6 +23,7 @@ from app.api.instrumentation import (
     record_guild_event,
     get_instrumentation_stats,
     prometheus_metrics,
+    purge_instrumentation_data,
     CardClickRequest,
     BotCommandRequest,
     GuildEventRequest,
@@ -334,3 +335,127 @@ class TestPrometheusMetrics:
             await prometheus_metrics(request=self._req("8.8.8.8"))
 
         assert exc.value.status_code == 403
+
+
+# ── purge_instrumentation_data ────────────────────────────────────────────────
+
+class TestPurgeInstrumentationData:
+    """
+    Tests for DELETE /instrumentation/data
+
+    Covered:
+      - 'all' tables purges every purgeable table
+      - comma-separated table subset only deletes those tables
+      - invalid table names are silently ignored (no valid tables → 400)
+      - all-invalid tables param raises 400
+      - older_than_days filter accepted
+      - before / after date filters accepted
+      - rowcount accumulated per table
+    """
+
+    def _mock_db(self, rowcount: int = 4):
+        db = AsyncMock()
+        db.commit = AsyncMock()
+        result_mock = MagicMock()
+        result_mock.rowcount = rowcount
+        db.execute = AsyncMock(return_value=result_mock)
+        return db
+
+    @pytest.mark.asyncio
+    async def test_purge_all_tables_calls_execute_for_each(self):
+        db = self._mock_db(rowcount=2)
+
+        result = await purge_instrumentation_data(
+            older_than_days=None,
+            before=None,
+            after=None,
+            tables="all",
+            db=db,
+            _admin={"user_id": "1"},
+        )
+
+        # Four purgeable tables → four DELETE executions
+        assert db.execute.call_count == 4
+        assert set(result["deleted"].keys()) == {"guild_events", "card_usage", "bot_commands", "request_metrics"}
+
+    @pytest.mark.asyncio
+    async def test_purge_subset_of_tables(self):
+        db = self._mock_db(rowcount=3)
+
+        result = await purge_instrumentation_data(
+            older_than_days=None,
+            before=None,
+            after=None,
+            tables="guild_events,card_usage",
+            db=db,
+            _admin={"user_id": "1"},
+        )
+
+        assert db.execute.call_count == 2
+        assert "guild_events" in result["deleted"]
+        assert "card_usage" in result["deleted"]
+        assert "bot_commands" not in result["deleted"]
+
+    @pytest.mark.asyncio
+    async def test_all_invalid_table_names_raises_400(self):
+        from fastapi import HTTPException
+        db = self._mock_db()
+
+        with pytest.raises(HTTPException) as exc:
+            await purge_instrumentation_data(
+                older_than_days=None,
+                before=None,
+                after=None,
+                tables="nonexistent_table,also_bad",
+                db=db,
+                _admin={"user_id": "1"},
+            )
+
+        assert exc.value.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_rowcount_aggregated_per_table(self):
+        db = self._mock_db(rowcount=5)
+
+        result = await purge_instrumentation_data(
+            older_than_days=None,
+            before=None,
+            after=None,
+            tables="guild_events",
+            db=db,
+            _admin={"user_id": "1"},
+        )
+
+        assert result["deleted"]["guild_events"] == 5
+
+    @pytest.mark.asyncio
+    async def test_older_than_days_accepted(self):
+        db = self._mock_db(rowcount=10)
+
+        result = await purge_instrumentation_data(
+            older_than_days=7,
+            before=None,
+            after=None,
+            tables="all",
+            db=db,
+            _admin={"user_id": "1"},
+        )
+
+        db.execute.assert_called()
+        assert all(v == 10 for v in result["deleted"].values())
+
+    @pytest.mark.asyncio
+    async def test_date_range_filters_accepted(self):
+        db = self._mock_db(rowcount=0)
+
+        result = await purge_instrumentation_data(
+            older_than_days=None,
+            before="2025-06-01",
+            after="2025-01-01",
+            tables="bot_commands",
+            db=db,
+            _admin={"user_id": "1"},
+        )
+
+        assert result["deleted"]["bot_commands"] == 0
+        db.commit.assert_called_once()

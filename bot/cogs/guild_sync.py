@@ -32,34 +32,36 @@ class GuildSyncCog(commands.Cog):
             "member_count": guild.member_count,
         }
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{self.backend_url}/instrumentation/guild-event",
-                    json=payload,
-                    timeout=aiohttp.ClientTimeout(total=5),
-                ) as resp:
-                    if resp.status not in (200, 204):
-                        logger.warning("Failed to record guild event", guild_id=guild.id, status=resp.status)
+            async with self.bot.session.post(
+                f"{self.backend_url}/instrumentation/guild-event",
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=5),
+            ) as resp:
+                if resp.status not in (200, 204):
+                    logger.warning("guild_event_record_failed", guild_id=guild.id, status=resp.status)
         except Exception as e:
-            logger.warning("Error recording guild event", guild_id=guild.id, error=str(e))
+            logger.warning("guild_event_record_error", guild_id=guild.id, error=str(e))
 
     async def sync_guild(self, guild: discord.Guild):
         payload = {
-            "id": guild.id,
+            "id": str(guild.id),
             "name": guild.name,
             "icon_url": str(guild.icon.url) if guild.icon else None,
-            "owner_id": guild.owner_id
+            "owner_id": str(guild.owner_id),
         }
-        
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(f"{self.backend_url}/guilds/", json=payload) as resp:
-                    if resp.status == 200:
-                        logger.info("Synced guild to backend", guild_id=guild.id)
-                    else:
-                        logger.error("Failed to sync guild", guild_id=guild.id, status=resp.status)
+            async with self.bot.session.post(
+                f"{self.backend_url}/guilds",  # no trailing slash — avoids redirect that strips POST body
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status in (200, 201):
+                    logger.info("guild_sync_ok", guild_id=guild.id, name=guild.name)
+                else:
+                    body = await resp.text()
+                    logger.error("guild_sync_failed", guild_id=guild.id, status=resp.status, body=body[:200])
         except Exception as e:
-            logger.error("Error syncing guild", guild_id=guild.id, error=str(e))
+            logger.error("guild_sync_error", guild_id=guild.id, error=str(e))
 
     @commands.Cog.listener()
     async def on_ready(self):

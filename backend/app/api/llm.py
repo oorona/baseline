@@ -8,17 +8,18 @@ using the generic LLM service (OpenAI, Anthropic, Google, XAI).
 """
 import json
 import re
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from redis.asyncio import Redis
-from sqlalchemy import func, select
+from sqlalchemy import delete as sa_delete, func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, get_redis, get_current_user, get_llm_service, verify_platform_admin
 from app.core.limiter import limiter
-from app.models import LLMUsage
+from app.models import LLMUsage, LLMUsageSummary
 from app.schemas import (
     ChatRequest,
     FunctionCallRequest,
@@ -429,3 +430,38 @@ async def get_stats(
         "by_provider": by_provider,
         "recent_logs": logs,
     }
+
+
+@router.delete("/usage")
+async def purge_llm_usage(
+    older_than_days: Optional[int] = Query(None, ge=1, description="Delete records older than N days"),
+    before: Optional[str] = Query(None, description="Delete records before this ISO date"),
+    after: Optional[str] = Query(None, description="Delete records after this ISO date"),
+    db: Session = Depends(get_db),
+    admin: dict = Depends(verify_platform_admin),
+):
+    """Purge LLM usage logs (and matching summaries). Developer only."""
+    usage_stmt = sa_delete(LLMUsage)
+    summary_stmt = sa_delete(LLMUsageSummary)
+
+    cutoff_before = None
+    cutoff_after = None
+    if older_than_days is not None:
+        cutoff_before = datetime.now(timezone.utc) - timedelta(days=older_than_days)
+    if before:
+        cutoff_before = datetime.fromisoformat(before).replace(tzinfo=timezone.utc)
+    if after:
+        cutoff_after = datetime.fromisoformat(after).replace(tzinfo=timezone.utc)
+
+    if cutoff_before:
+        usage_stmt = usage_stmt.where(LLMUsage.timestamp < cutoff_before)
+        summary_stmt = summary_stmt.where(LLMUsageSummary.period_start < cutoff_before)
+    if cutoff_after:
+        usage_stmt = usage_stmt.where(LLMUsage.timestamp > cutoff_after)
+        summary_stmt = summary_stmt.where(LLMUsageSummary.period_start > cutoff_after)
+
+    usage_result = await db.execute(usage_stmt)
+    summary_result = await db.execute(summary_stmt)
+    await db.commit()
+
+    return {"deleted": usage_result.rowcount, "summaries_deleted": summary_result.rowcount}

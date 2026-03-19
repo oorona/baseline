@@ -539,3 +539,36 @@ docker-compose.yml                          # Core services (no changes needed)
 docker-compose.observability.yml           # Add this file
 docker-compose.prod.yml                     # Production overrides (ports, resources)
 ```
+
+---
+
+## Data Retention and Purge
+
+Instrumentation data accumulates in Postgres over time. Use the purge endpoint to clean up old records without a full table truncation.
+
+**Endpoint:** `DELETE /api/v1/instrumentation/data` — L6 Developer access required.
+
+### Examples
+
+```bash
+# Purge all data older than 90 days across all tables
+curl -X DELETE "https://your-api/api/v1/instrumentation/data?older_than_days=90&tables=all" \
+     -H "Authorization: Bearer <token>"
+
+# Purge only request_metrics before a specific date
+curl -X DELETE "https://your-api/api/v1/instrumentation/data?before=2025-01-01&tables=request_metrics" \
+     -H "Authorization: Bearer <token>"
+
+# Purge guild_events and card_usage for a date range
+curl -X DELETE "https://your-api/api/v1/instrumentation/data?after=2024-01-01&before=2025-01-01&tables=guild_events,card_usage" \
+     -H "Authorization: Bearer <token>"
+```
+
+The response lists deleted row counts per table:
+```json
+{"deleted": {"guild_events": 120, "card_usage": 340, "bot_commands": 0, "request_metrics": 0}}
+```
+
+Valid table keys: `guild_events`, `card_usage`, `bot_commands`, `request_metrics`.
+
+The dashboard Instrumentation page also exposes a **Purge Data** button (visible to L6 developers) with a modal for mode selection (all / older than N days / date range) and table checkboxes.

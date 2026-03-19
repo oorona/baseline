@@ -219,7 +219,7 @@ function GuildSettingsPage() {
         setSaving(true);
         setMessage(null);
         try {
-            await apiClient.updateGuildSettings(guildId, { settings });
+            await apiClient.updateGuildSettings(guildId, settings);
             setMessage({ type: 'success', text: t('guildSettings.savedSuccess') });
         } catch {
             setMessage({ type: 'error', text: t('guildSettings.saveError') });
