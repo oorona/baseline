@@ -160,9 +160,6 @@ describe('LLMConfigsPage — schemas tab', () => {
             },
         }))
 
-        // Stub window.confirm to return true so the delete proceeds
-        vi.stubGlobal('confirm', () => true)
-
         const { default: Page } = await import('../app/dashboard/llm-configs/page')
         await act(async () => { render(<Page />) })
 
@@ -170,15 +167,17 @@ describe('LLMConfigsPage — schemas tab', () => {
         await waitFor(() => screen.getByText('Test Schema'))
         await act(async () => { fireEvent.click(screen.getByText('Test Schema')) })
 
-        // Wait for the Delete button to appear in the editor panel
+        // First click shows inline confirmation
         await waitFor(() => screen.getByText('Delete'))
         await act(async () => { fireEvent.click(screen.getByText('Delete')) })
+
+        // Second click on "Confirm Delete" actually triggers the API call
+        await waitFor(() => screen.getByText('Confirm Delete'))
+        await act(async () => { fireEvent.click(screen.getByText('Confirm Delete')) })
 
         await waitFor(() => {
             expect(deleteLlmSchema).toHaveBeenCalledWith('schema1')
         })
-
-        vi.unstubAllGlobals()
     })
 
     it('schema is removed from list after successful delete', async () => {
@@ -198,8 +197,6 @@ describe('LLMConfigsPage — schemas tab', () => {
             },
         }))
 
-        vi.stubGlobal('confirm', () => true)
-
         const { default: Page } = await import('../app/dashboard/llm-configs/page')
         await act(async () => { render(<Page />) })
 
@@ -207,12 +204,12 @@ describe('LLMConfigsPage — schemas tab', () => {
         await act(async () => { fireEvent.click(screen.getByText('Test Schema')) })
         await waitFor(() => screen.getByText('Delete'))
         await act(async () => { fireEvent.click(screen.getByText('Delete')) })
+        await waitFor(() => screen.getByText('Confirm Delete'))
+        await act(async () => { fireEvent.click(screen.getByText('Confirm Delete')) })
 
         await waitFor(() => {
             expect(screen.queryByText('Test Schema')).toBeNull()
         })
-
-        vi.unstubAllGlobals()
     })
 })
 
@@ -257,8 +254,6 @@ describe('LLMConfigsPage — function sets tab', () => {
             },
         }))
 
-        vi.stubGlobal('confirm', () => true)
-
         const { default: Page } = await import('../app/dashboard/llm-configs/page')
         await act(async () => { render(<Page />) })
 
@@ -270,15 +265,17 @@ describe('LLMConfigsPage — function sets tab', () => {
         await waitFor(() => screen.getByText('Test Functions'))
         await act(async () => { fireEvent.click(screen.getByText('Test Functions')) })
 
-        // Wait for Delete button in editor
+        // First click shows inline confirmation
         await waitFor(() => screen.getByText('Delete'))
         await act(async () => { fireEvent.click(screen.getByText('Delete')) })
+
+        // Second click on "Confirm Delete" triggers the API call
+        await waitFor(() => screen.getByText('Confirm Delete'))
+        await act(async () => { fireEvent.click(screen.getByText('Confirm Delete')) })
 
         await waitFor(() => {
             expect(deleteLlmFunctionSet).toHaveBeenCalledWith('fs1')
         })
-
-        vi.unstubAllGlobals()
     })
 })
 

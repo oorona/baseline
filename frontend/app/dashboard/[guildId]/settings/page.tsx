@@ -6,6 +6,7 @@ import { Save, Shield, AlertCircle } from 'lucide-react';
 import { apiClient, SettingsField, SettingsSchema } from '@/app/api-client';
 import { withPermission } from '@/lib/components/with-permission';
 import { PermissionLevel } from '@/lib/permissions';
+import { useTranslation } from '@/lib/i18n';
 
 // ─── Field renderers ──────────────────────────────────────────────────────────
 
@@ -157,6 +158,7 @@ function SchemaField(props: FieldProps) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 function GuildSettingsPage() {
+    const { t } = useTranslation();
     const params = useParams();
     const guildId = params.guildId as string;
 
@@ -198,7 +200,7 @@ function GuildSettingsPage() {
                 setSchemas(schemaData.schemas || []);
             } catch (err) {
                 console.error('Failed to load settings:', err);
-                setMessage({ type: 'error', text: 'Failed to load settings.' });
+                setMessage({ type: 'error', text: t('guildSettings.loadError') });
             } finally {
                 setLoading(false);
             }
@@ -216,9 +218,9 @@ function GuildSettingsPage() {
         setMessage(null);
         try {
             await apiClient.updateGuildSettings(guildId, { settings });
-            setMessage({ type: 'success', text: 'Settings saved successfully.' });
+            setMessage({ type: 'success', text: t('guildSettings.savedSuccess') });
         } catch {
-            setMessage({ type: 'error', text: 'Failed to save settings.' });
+            setMessage({ type: 'error', text: t('guildSettings.saveError') });
         } finally {
             setSaving(false);
         }
@@ -229,7 +231,7 @@ function GuildSettingsPage() {
     if (loading) {
         return (
             <div className="flex h-full items-center justify-center">
-                <div className="text-muted-foreground animate-pulse">Loading settings…</div>
+                <div className="text-muted-foreground animate-pulse">{t('guildSettings.loading')}</div>
             </div>
         );
     }
@@ -239,8 +241,8 @@ function GuildSettingsPage() {
         schemas.length === 0 ? (
             <div className="bg-card border border-border rounded-xl p-8 text-center text-muted-foreground space-y-2">
                 <AlertCircle className="mx-auto w-8 h-8 opacity-40" />
-                <p className="font-medium">No configurable settings available.</p>
-                <p className="text-sm">The bot hasn't reported any settings schemas yet. Make sure the bot is online.</p>
+                <p className="font-medium">{t('guildSettings.noSchemas')}</p>
+                <p className="text-sm">{t('guildSettings.noSchemasHint')}</p>
             </div>
         ) : (
             schemas.map((schema) => (
@@ -269,16 +271,16 @@ function GuildSettingsPage() {
         );
 
     return (
-        <div className="max-w-4xl mx-auto space-y-8">
+        <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">
             <div>
-                <h1 className="text-3xl font-bold tracking-tight">Bot Settings</h1>
-                <p className="text-muted-foreground mt-2">Configure how the bot behaves in your server.</p>
+                <h1 className="text-3xl font-bold tracking-tight">{t('guildSettings.title')}</h1>
+                <p className="text-muted-foreground mt-2">{t('guildSettings.subtitle')}</p>
             </div>
 
             {isReadOnly && (
                 <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-yellow-600 dark:text-yellow-400 text-sm flex items-center gap-2">
                     <Shield size={16} />
-                    You have read-only access to these settings. Contact an admin to make changes.
+                    {t('guildSettings.readOnlyBanner')}
                 </div>
             )}
 
@@ -305,12 +307,12 @@ function GuildSettingsPage() {
                             {saving ? (
                                 <>
                                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                    Saving…
+                                    {t('guildSettings.saving')}
                                 </>
                             ) : (
                                 <>
                                     <Save className="w-5 h-5" />
-                                    Save Settings
+                                    {t('guildSettings.saveButton')}
                                 </>
                             )}
                         </button>

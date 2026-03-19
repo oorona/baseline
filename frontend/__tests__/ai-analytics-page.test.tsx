@@ -218,7 +218,7 @@ describe('AIAnalyticsPage', () => {
       // wait for state to settle
       await waitFor(() => {
         // page rendered at all
-        expect(screen.queryByText('Loading analytics...')).toBeNull()
+        expect(screen.queryByText('aiAnalytics.loading')).toBeNull()
       })
     } catch {
       thrown = true
@@ -243,7 +243,7 @@ describe('AIAnalyticsPage', () => {
 
     await waitFor(() => {
       // The page sets an error string that includes "developer permissions"
-      expect(screen.getByText(/developer permissions/i)).toBeDefined()
+      expect(screen.getByText(/aiAnalytics.loadError/i)).toBeDefined()
     })
   })
 })

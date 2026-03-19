@@ -102,7 +102,7 @@ function AccountPage() {
     if (loading) return <div className="p-8 text-gray-400">{t('account.loadingProfile')}</div>;
 
     return (
-        <div className="p-8 max-w-2xl mx-auto">
+        <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">
             <div className="mb-8">
                 <h1 className="text-3xl font-bold mb-2 text-foreground">{t('account.title')}</h1>
                 <p className="text-muted-foreground">{t('account.subtitle')}</p>

@@ -852,11 +852,12 @@ async def get_audit_logs(
 async def get_guild_channels(
     guild_id: int,
     db: Session = Depends(get_guild_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    redis: Redis = Depends(get_redis)
 ):
     """Get list of channels for a guild from Discord API."""
     user_id = int(current_user["user_id"])
-    
+
     # Check if guild exists
     guild = await db.get(Guild, guild_id)
     if not guild:
@@ -864,7 +865,7 @@ async def get_guild_channels(
 
     # Check if user has access (Owner or Authorized)
     is_owner = guild.owner_id == user_id
-    
+
     if not is_owner:
         auth_check = await db.execute(
             select(AuthorizedUser).where(
@@ -879,7 +880,12 @@ async def get_guild_channels(
             )
 
     try:
+        cache_key = f"discord:channels:{guild_id}"
+        cached = await redis.get(cache_key)
+        if cached:
+            return json.loads(cached)
         channels = await discord_client.get_guild_channels(str(guild_id))
+        await redis.setex(cache_key, 300, json.dumps([c if isinstance(c, dict) else c.dict() for c in channels]))
         return channels
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -888,11 +894,12 @@ async def get_guild_channels(
 async def get_guild_roles(
     guild_id: int,
     db: Session = Depends(get_guild_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    redis: Redis = Depends(get_redis)
 ):
     """Get list of roles for a guild from Discord API."""
     user_id = int(current_user["user_id"])
-    
+
     # Check if guild exists
     guild = await db.get(Guild, guild_id)
     if not guild:
@@ -900,7 +907,7 @@ async def get_guild_roles(
 
     # Check if user has access (Owner or Authorized)
     is_owner = guild.owner_id == user_id
-    
+
     if not is_owner:
         auth_check = await db.execute(
             select(AuthorizedUser).where(
@@ -915,7 +922,12 @@ async def get_guild_roles(
             )
 
     try:
+        cache_key = f"discord:roles:{guild_id}"
+        cached = await redis.get(cache_key)
+        if cached:
+            return json.loads(cached)
         roles = await discord_client.get_guild_roles(str(guild_id))
+        await redis.setex(cache_key, 300, json.dumps([r if isinstance(r, dict) else r.dict() for r in roles]))
         return roles
 
     except Exception as e:
@@ -1222,7 +1234,8 @@ async def search_guild_members(
     guild_id: int,
     query: str,
     db: Session = Depends(get_guild_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    redis: Redis = Depends(get_redis)
 ):
     """Search for members in a guild."""
     user_id = int(current_user["user_id"])
@@ -1249,8 +1262,13 @@ async def search_guild_members(
             )
 
     try:
+        cache_key = f"discord:members:search:{guild_id}:{query.lower()}"
+        cached = await redis.get(cache_key)
+        if cached:
+            return json.loads(cached)
+
         members_data = await discord_client.search_guild_members(str(guild_id), query)
-        
+
         # Transform Discord API response to Schema
         results = []
         for m in members_data:
@@ -1264,7 +1282,8 @@ async def search_guild_members(
                 avatar_url=f"https://cdn.discordapp.com/avatars/{user.get('id')}/{user.get('avatar')}.png" if user.get("avatar") else None
             )
             results.append(member)
-            
+
+        await redis.setex(cache_key, 60, json.dumps([r.dict() for r in results]))
         return results
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

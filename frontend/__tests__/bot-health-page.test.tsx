@@ -70,7 +70,7 @@ describe('BotHealthPage — healthy state', () => {
         render(<BotHealthPage />)
 
         await waitFor(() => {
-            const operationalCells = screen.getAllByText('Operational')
+            const operationalCells = screen.getAllByText('botHealth.statusOperational')
             expect(operationalCells.length).toBe(3)
         })
     })
@@ -96,7 +96,7 @@ describe('BotHealthPage — degraded state', () => {
         render(<BotHealthPage />)
 
         await waitFor(() => {
-            expect(screen.getByText('Degraded')).toBeDefined()
+            expect(screen.getByText('botHealth.statusDegraded')).toBeDefined()
         })
     })
 })
@@ -123,12 +123,12 @@ describe('BotHealthPage — error / failure state', () => {
         // The page's catch leaves status at 'unknown' which renders "Issues Detected"
         // and sets loadingData false, so the loading spinner must not be present
         await waitFor(() => {
-            expect(screen.queryByText('Checking bot health...')).toBeNull()
+            expect(screen.queryByText('botHealth.loading')).toBeNull()
         })
 
         // At least one status card should show Issues Detected
         await waitFor(() => {
-            const issueCards = screen.getAllByText('Issues Detected')
+            const issueCards = screen.getAllByText('botHealth.statusIssues')
             expect(issueCards.length).toBeGreaterThan(0)
         })
     })
@@ -155,12 +155,12 @@ describe('BotHealthPage — refresh button', () => {
 
         // Wait for initial load to complete so the refresh button is rendered
         await waitFor(() => {
-            expect(screen.getByTitle('Refresh')).toBeDefined()
+            expect(screen.getByTitle('botHealth.refreshTitle')).toBeDefined()
         })
 
         const callCountBefore = healthCheck.mock.calls.length
 
-        fireEvent.click(screen.getByTitle('Refresh'))
+        fireEvent.click(screen.getByTitle('botHealth.refreshTitle'))
 
         await waitFor(() => {
             expect(healthCheck.mock.calls.length).toBeGreaterThan(callCountBefore)

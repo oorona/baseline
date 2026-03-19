@@ -67,7 +67,7 @@ type TabKey = typeof TABS[number]['key'];
 function Badge({ label, variant }: { label: string; variant: 'dynamic' | 'static' | 'secret' | 'source' }) {
   const cls: Record<string, string> = {
     dynamic: 'bg-green-500/10 text-green-400 border-green-500/30',
-    static:  'bg-amber-500/10 text-amber-400 border-amber-500/30',
+    static:  'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30',
     secret:  'bg-red-500/10 text-red-400 border-red-500/30',
     source:  'bg-blue-500/10 text-blue-400 border-blue-500/30',
   };
@@ -215,7 +215,7 @@ function SettingRow({
             </p>
           )}
           {!s.is_dynamic && s.requires_restart_note && (
-            <p className="text-xs text-amber-400/80 mt-1 flex items-center gap-1">
+            <p className="text-xs text-amber-600/80 dark:text-amber-400/80 mt-1 flex items-center gap-1">
               <Lock size={10} />
               {s.requires_restart_note}
             </p>
@@ -305,8 +305,8 @@ function ApiKeysTab() {
       {/* Encryption key gate */}
       <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-5 space-y-3">
         <div className="flex items-center gap-2">
-          <Lock size={14} className="text-amber-400 shrink-0" />
-          <p className="text-sm font-medium text-amber-300">Encryption Key Required</p>
+          <Lock size={14} className="text-amber-600 dark:text-amber-400 shrink-0" />
+          <p className="text-sm font-medium text-amber-700 dark:text-amber-300">Encryption Key Required</p>
         </div>
         <p className="text-xs text-muted-foreground">
           API keys are stored in an encrypted file. To write changes you must supply the encryption
@@ -319,7 +319,7 @@ function ApiKeysTab() {
             value={encKey}
             onChange={e => setEncKey(e.target.value)}
             placeholder="Enter encryption key…"
-            className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500/50 transition-colors pr-10"
+            className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-amber-600/50 focus:border-amber-600/50 transition-colors pr-10"
           />
           <button
             type="button"
@@ -348,7 +348,7 @@ function ApiKeysTab() {
       {message && (
         <div className={`flex items-start gap-3 p-4 rounded-lg border text-sm ${
           message.type === 'success' ? 'bg-green-500/10 border-green-500/30 text-green-400' :
-          message.type === 'warning' ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' :
+          message.type === 'warning' ? 'bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400' :
           'bg-destructive/10 border-destructive/30 text-destructive'
         }`}>
           {message.type === 'success' ? <CheckCircle2 size={16} className="mt-0.5 shrink-0" /> :
@@ -394,7 +394,7 @@ function ApiKeysTab() {
                 </button>
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                Current: {entry.is_set ? (entry.masked_value ?? '****') : <span className="text-amber-400/80">Not set</span>}
+                Current: {entry.is_set ? (entry.masked_value ?? '****') : <span className="text-amber-600/80 dark:text-amber-400/80">Not set</span>}
               </p>
             </div>
           );
@@ -404,9 +404,9 @@ function ApiKeysTab() {
       {hasEdits && (
         <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-card border border-border rounded-xl shadow-xl px-5 py-3">
           <span className="text-sm text-muted-foreground">
-            {encKey.trim() ? '' : <Lock size={12} className="inline mr-1 text-amber-400" />}
+            {encKey.trim() ? '' : <Lock size={12} className="inline mr-1 text-amber-600 dark:text-amber-400" />}
             {Object.keys(edits).length} unsaved change{Object.keys(edits).length !== 1 ? 's' : ''}
-            {!encKey.trim() && <span className="text-amber-400/80 ml-1">— enter key above</span>}
+            {!encKey.trim() && <span className="text-amber-600/80 dark:text-amber-400/80 ml-1">— enter key above</span>}
           </span>
           <button
             onClick={handleSave}
@@ -494,7 +494,7 @@ function DatabaseTab() {
       {message && (
         <div className={`flex items-start gap-3 p-4 rounded-lg border text-sm ${
           message.type === 'success' ? 'bg-green-500/10 border-green-500/30 text-green-400' :
-          message.type === 'warning' ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' :
+          message.type === 'warning' ? 'bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400' :
           'bg-destructive/10 border-destructive/30 text-destructive'
         }`}>
           {message.type === 'success' ? <CheckCircle2 size={16} className="mt-0.5 shrink-0" /> :
@@ -642,7 +642,7 @@ function SystemConfigPage() {
     : [];
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6 p-6 md:p-8">
+    <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
 
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -683,7 +683,7 @@ function SystemConfigPage() {
       {activeTab !== 'database' && activeTab !== 'api_keys' && (
         <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
           <span className="flex items-center gap-1"><Zap size={12} className="text-green-400" /> Dynamic — applied at runtime without restart</span>
-          <span className="flex items-center gap-1"><Lock size={12} className="text-amber-400" /> Static — requires server restart</span>
+          <span className="flex items-center gap-1"><Lock size={12} className="text-amber-600 dark:text-amber-400" /> Static — requires server restart</span>
         </div>
       )}
 
@@ -691,7 +691,7 @@ function SystemConfigPage() {
       {message && activeTab !== 'database' && activeTab !== 'api_keys' && (
         <div className={`flex items-start gap-3 p-4 rounded-lg border text-sm ${
           message.type === 'success' ? 'bg-green-500/10 border-green-500/30 text-green-400' :
-          message.type === 'warning' ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' :
+          message.type === 'warning' ? 'bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400' :
           'bg-destructive/10 border-destructive/30 text-destructive'
         }`}>
           {message.type === 'success' ? <CheckCircle2 size={16} className="mt-0.5 shrink-0" /> :

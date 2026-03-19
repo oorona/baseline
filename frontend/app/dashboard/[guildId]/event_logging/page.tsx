@@ -62,7 +62,7 @@ function EventLoggingPage({ params }: Props) {
   const ignoredEvents = ALL_EVENTS.filter(e =>  settings.logging_ignored_events.includes(e.key));
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">
 
       {/* Header */}
       <div className="flex items-start justify-between">

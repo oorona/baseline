@@ -120,7 +120,7 @@ describe('AuditLogsPage — data display', () => {
     await act(async () => { render(<Page />) })
 
     await waitFor(() => {
-      expect(screen.getByText('No audit logs found.')).toBeDefined()
+      expect(screen.getByText('auditLogs.noLogs')).toBeDefined()
     })
   })
 
@@ -180,7 +180,7 @@ describe('AuditLogsPage — error handling', () => {
     await waitFor(() => {
       // The page renders err.response?.data?.detail ?? 'Failed to load audit logs'
       // Since our mock throws a plain Error (no .response), the fallback text is shown
-      expect(screen.getByText('Failed to load audit logs')).toBeDefined()
+      expect(screen.getByText('auditLogs.loadError')).toBeDefined()
     })
   })
 })

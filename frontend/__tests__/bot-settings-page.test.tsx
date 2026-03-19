@@ -239,7 +239,7 @@ describe('BotSettingsPage — data loading', () => {
         await act(async () => { render(<SettingsPage />) })
 
         // The loading text is rendered while all promises are pending
-        expect(screen.getByText('Loading settings…')).toBeDefined()
+        expect(screen.getByText('guildSettings.loading')).toBeDefined()
     })
 })
 
@@ -314,7 +314,7 @@ describe('BotSettingsPage — permissions', () => {
         await act(async () => { render(<SettingsPage />) })
 
         await waitFor(() => {
-            expect(screen.getByText(/read-only access/i)).toBeDefined()
+            expect(screen.getByText(/guildSettings.readOnlyBanner/i)).toBeDefined()
         })
     })
 
@@ -352,10 +352,10 @@ describe('BotSettingsPage — save action', () => {
         await act(async () => { render(<SettingsPage />) })
 
         // Wait for schema to render, then the Save button appears
-        await waitFor(() => screen.getByText('Save Settings'))
+        await waitFor(() => screen.getByText('guildSettings.saveButton'))
 
         await act(async () => {
-            fireEvent.click(screen.getByText('Save Settings'))
+            fireEvent.click(screen.getByText('guildSettings.saveButton'))
         })
 
         await waitFor(() => {
@@ -375,14 +375,14 @@ describe('BotSettingsPage — save action', () => {
         const { default: SettingsPage } = await import('../app/dashboard/[guildId]/settings/page')
         await act(async () => { render(<SettingsPage />) })
 
-        await waitFor(() => screen.getByText('Save Settings'))
+        await waitFor(() => screen.getByText('guildSettings.saveButton'))
 
         await act(async () => {
-            fireEvent.click(screen.getByText('Save Settings'))
+            fireEvent.click(screen.getByText('guildSettings.saveButton'))
         })
 
         await waitFor(() => {
-            expect(screen.getByText('Settings saved successfully.')).toBeDefined()
+            expect(screen.getByText('guildSettings.savedSuccess')).toBeDefined()
         })
     })
 
@@ -399,14 +399,14 @@ describe('BotSettingsPage — save action', () => {
         const { default: SettingsPage } = await import('../app/dashboard/[guildId]/settings/page')
         await act(async () => { render(<SettingsPage />) })
 
-        await waitFor(() => screen.getByText('Save Settings'))
+        await waitFor(() => screen.getByText('guildSettings.saveButton'))
 
         await act(async () => {
-            fireEvent.click(screen.getByText('Save Settings'))
+            fireEvent.click(screen.getByText('guildSettings.saveButton'))
         })
 
         await waitFor(() => {
-            expect(screen.getByText('Failed to save settings.')).toBeDefined()
+            expect(screen.getByText('guildSettings.saveError')).toBeDefined()
         })
     })
 })
@@ -435,7 +435,7 @@ describe('BotSettingsPage — error states', () => {
 
         // Page must exit the loading state (no infinite spinner)
         await waitFor(() => {
-            expect(screen.queryByText('Loading settings…')).toBeNull()
+            expect(screen.queryByText('guildSettings.loading')).toBeNull()
         })
     })
 
@@ -454,7 +454,7 @@ describe('BotSettingsPage — error states', () => {
 
         await waitFor(() => {
             // The catch block sets message: { type: 'error', text: 'Failed to load settings.' }
-            expect(screen.getByText('Failed to load settings.')).toBeDefined()
+            expect(screen.getByText('guildSettings.loadError')).toBeDefined()
         })
     })
 
@@ -473,11 +473,11 @@ describe('BotSettingsPage — error states', () => {
 
         // Must exit loading state
         await waitFor(() => {
-            expect(screen.queryByText('Loading settings…')).toBeNull()
+            expect(screen.queryByText('guildSettings.loading')).toBeNull()
         })
 
         // Error message must be surfaced
-        expect(screen.getByText('Failed to load settings.')).toBeDefined()
+        expect(screen.getByText('guildSettings.loadError')).toBeDefined()
     })
 
     it('no schemas returned — shows "No configurable settings available" placeholder', async () => {
@@ -494,7 +494,7 @@ describe('BotSettingsPage — error states', () => {
         await act(async () => { render(<SettingsPage />) })
 
         await waitFor(() => {
-            expect(screen.getByText('No configurable settings available.')).toBeDefined()
+            expect(screen.getByText('guildSettings.noSchemas')).toBeDefined()
         })
     })
 })

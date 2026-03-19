@@ -6,6 +6,7 @@ import { apiClient } from '@/app/api-client';
 import { Clock, User, Activity } from 'lucide-react';
 import { withPermission } from '@/lib/components/with-permission';
 import { PermissionLevel } from '@/lib/permissions';
+import { useTranslation } from '@/lib/i18n';
 
 interface AuditLog {
     id: number;
@@ -17,6 +18,7 @@ interface AuditLog {
 }
 
 function AuditLogsPage() {
+    const { t } = useTranslation();
     const params = useParams();
     const guildId = params.guildId as string;
 
@@ -30,7 +32,7 @@ function AuditLogsPage() {
                 const data = await apiClient.getAuditLogs(guildId);
                 setLogs(data);
             } catch (err: any) {
-                setError(err.response?.data?.detail || 'Failed to load audit logs');
+                setError(err.response?.data?.detail || t('auditLogs.loadError'));
             } finally {
                 setLoading(false);
             }
@@ -50,7 +52,7 @@ function AuditLogsPage() {
     };
 
     if (loading) {
-        return <div className="p-8 text-gray-400">Loading audit logs...</div>;
+        return <div className="p-8 text-muted-foreground">{t('auditLogs.loading')}</div>;
     }
 
     if (error) {
@@ -58,10 +60,10 @@ function AuditLogsPage() {
     }
 
     return (
-        <div className="p-8 max-w-6xl mx-auto">
+        <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">
             <div className="mb-8">
-                <h1 className="text-3xl font-bold mb-2 text-foreground">Audit Logs</h1>
-                <p className="text-muted-foreground">Track changes and actions within this server.</p>
+                <h1 className="text-3xl font-bold mb-2 text-foreground">{t('auditLogs.title')}</h1>
+                <p className="text-muted-foreground">{t('auditLogs.subtitle')}</p>
             </div>
 
             <div className="bg-card rounded-xl border border-border overflow-hidden shadow-sm">
@@ -69,17 +71,17 @@ function AuditLogsPage() {
                     <table className="w-full text-left">
                         <thead>
                             <tr className="bg-muted/50 border-b border-border">
-                                <th className="p-4 font-medium text-muted-foreground">Action</th>
-                                <th className="p-4 font-medium text-muted-foreground">User ID</th>
-                                <th className="p-4 font-medium text-muted-foreground">Details</th>
-                                <th className="p-4 font-medium text-muted-foreground">Time</th>
+                                <th className="p-4 font-medium text-muted-foreground">{t('auditLogs.colAction')}</th>
+                                <th className="p-4 font-medium text-muted-foreground">{t('auditLogs.colUser')}</th>
+                                <th className="p-4 font-medium text-muted-foreground">{t('auditLogs.colDetails')}</th>
+                                <th className="p-4 font-medium text-muted-foreground">{t('auditLogs.colTime')}</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border">
                             {logs.length === 0 ? (
                                 <tr>
                                     <td colSpan={4} className="p-8 text-center text-muted-foreground">
-                                        No audit logs found.
+                                        {t('auditLogs.noLogs')}
                                     </td>
                                 </tr>
                             ) : (

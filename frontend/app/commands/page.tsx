@@ -89,7 +89,7 @@ function CommandsPage() {
 
     if (loading) {
         return (
-            <div className="p-8 max-w-4xl mx-auto space-y-4">
+            <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">
                 {[...Array(3)].map((_, i) => (
                     <div key={i} className="animate-pulse bg-card border border-border rounded-xl p-6 space-y-3">
                         <div className="h-5 bg-muted rounded w-1/4" />
@@ -116,7 +116,7 @@ function CommandsPage() {
         : t('commands.neverSynced');
 
     return (
-        <div className="p-8 max-w-4xl mx-auto">
+        <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">
             {/* Header */}
             <div className="mb-8 flex flex-col md:flex-row md:items-start justify-between gap-4">
                 <div>

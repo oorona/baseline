@@ -5,6 +5,7 @@ import { apiClient } from '@/app/api-client';
 import { Terminal, Radio, Shield, Clock } from 'lucide-react';
 import { withPermission } from '@/lib/components/with-permission';
 import { PermissionLevel } from '@/lib/permissions';
+import { useTranslation } from '@/lib/i18n';
 
 interface BotReport {
     commands: Array<{
@@ -24,6 +25,7 @@ interface BotReport {
 }
 
 function BotReportPage() {
+    const { t } = useTranslation();
     const [report, setReport] = useState<BotReport | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -44,14 +46,14 @@ function BotReportPage() {
             setDbStatus(dbData);
         } catch (err) {
             console.error(err);
-            setError('Failed to load report data');
+            setError(t('botReport.loadError'));
         } finally {
             setLoading(false);
         }
     };
 
     if (loading) {
-        return <div className="p-8 text-center text-gray-400">Loading report...</div>;
+        return <div className="p-8 text-center text-muted-foreground">{t('botReport.loading')}</div>;
     }
 
     if (error) {
@@ -59,19 +61,19 @@ function BotReportPage() {
     }
 
     if (!report) {
-        return <div className="p-8 text-center text-gray-400">No report available</div>;
+        return <div className="p-8 text-center text-muted-foreground">{t('botReport.noReport')}</div>;
     }
 
     return (
-        <div className="p-8 max-w-7xl mx-auto space-y-8">
+        <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
             <div className="flex items-center justify-between border-b border-border pb-6">
                 <div>
-                    <h1 className="text-3xl font-bold text-foreground mb-2">Developer Report</h1>
-                    <p className="text-muted-foreground">Bot internal introspection data</p>
+                    <h1 className="text-3xl font-bold text-foreground mb-2">{t('botReport.title')}</h1>
+                    <p className="text-muted-foreground">{t('botReport.subtitle')}</p>
                 </div>
                 <div className="flex items-center space-x-2 text-sm text-muted-foreground">
                     <Clock size={16} />
-                    <span>Last Updated: {new Date(report.timestamp * 1000).toLocaleString()}</span>
+                    <span>{t('botReport.lastUpdated', { time: new Date(report.timestamp * 1000).toLocaleString() })}</span>
                 </div>
             </div>
 
@@ -81,13 +83,13 @@ function BotReportPage() {
 
                     <div className="flex items-center space-x-2 mb-4">
                         <Terminal className="text-blue-500" size={24} />
-                        <h2 className="text-xl font-semibold text-foreground">Slash Commands</h2>
+                        <h2 className="text-xl font-semibold text-foreground">{t('botReport.sectionCommands')}</h2>
                     </div>
                     <div className="space-y-4 max-h-[600px] overflow-y-auto custom-scrollbar">
                         {report.commands.map((cmd) => (
                             <div key={cmd.name} className="p-3 bg-secondary/50 rounded-md border border-border">
                                 <div className="font-mono text-blue-500 font-bold">/{cmd.name}</div>
-                                <div className="text-sm text-muted-foreground mt-1">{cmd.description || 'No description'}</div>
+                                <div className="text-sm text-muted-foreground mt-1">{cmd.description || t('botReport.noDescription')}</div>
                             </div>
                         ))}
                     </div>
@@ -97,7 +99,7 @@ function BotReportPage() {
                 <div className="bg-card rounded-lg p-6 border border-border shadow-sm">
                     <div className="flex items-center space-x-2 mb-4">
                         <Radio className="text-green-500" size={24} />
-                        <h2 className="text-xl font-semibold text-foreground">Event Listeners</h2>
+                        <h2 className="text-xl font-semibold text-foreground">{t('botReport.sectionListeners')}</h2>
                     </div>
                     <div className="space-y-4 max-h-[600px] overflow-y-auto custom-scrollbar">
                         {report.listeners.map((listener, idx) => (
@@ -113,12 +115,12 @@ function BotReportPage() {
                 <div className="bg-card rounded-lg p-6 border border-border shadow-sm">
                     <div className="flex items-center space-x-2 mb-4">
                         <Shield className="text-purple-500" size={24} />
-                        <h2 className="text-xl font-semibold text-foreground">Permissions</h2>
+                        <h2 className="text-xl font-semibold text-foreground">{t('botReport.sectionPermissions')}</h2>
                     </div>
 
                     <div className="space-y-6 max-h-[600px] overflow-y-auto custom-scrollbar">
                         <div>
-                            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">Intents</h3>
+                            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">{t('botReport.subsectionIntents')}</h3>
                             <div className="grid grid-cols-1 gap-2">
                                 {Object.entries(report.permissions.intents || {}).map(([intent, enabled]) => (
                                     <div key={intent} className="flex justify-between items-center px-3 py-2 bg-secondary/50 rounded border border-border">
@@ -130,7 +132,7 @@ function BotReportPage() {
                         </div>
 
                         <div>
-                            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">Bot Permissions (Example)</h3>
+                            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">{t('botReport.subsectionBotPerms')}</h3>
                             <div className="grid grid-cols-1 gap-2">
                                 {Object.entries(report.permissions.guild_permissions_example || {}).map(([perm, enabled]) => (
                                     <div key={perm} className="flex justify-between items-center px-3 py-2 bg-secondary/50 rounded border border-border">

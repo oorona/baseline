@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { apiClient } from '@/app/api-client';
 import { usePlugins } from '@/app/plugins';
-import { Bot, Settings, Activity, Terminal, Shield, Lock, ExternalLink, User, FileText, Database, BarChart2, Settings2, Wrench, Gauge, BrainCircuit, Globe, BookOpen } from 'lucide-react';
+import { Settings, Activity, Terminal, Shield, Lock, User, FileText, Database, BarChart2, Settings2, Gauge, BrainCircuit, Globe, BookOpen } from 'lucide-react';
 import { usePermissions } from '@/lib/hooks/use-permissions';
 import { PermissionLevel } from '@/lib/permissions';
 import { useTranslation } from '@/lib/i18n';
@@ -191,9 +191,9 @@ function DashboardContent() {
       icon: Settings2,
       href: `/dashboard/${activeGuildId}/card-visibility`,
       level: PermissionLevel.OWNER,
-      color: 'text-amber-500',
-      bgColor: 'bg-amber-500/10',
-      borderColor: 'group-hover:border-amber-500/50',
+      color: 'text-orange-500',
+      bgColor: 'bg-orange-500/10',
+      borderColor: 'group-hover:border-orange-500/50',
       isAdminOnly: false
     },
     {
@@ -239,9 +239,9 @@ function DashboardContent() {
       icon: Database,
       href: `/dashboard/database`,
       level: PermissionLevel.DEVELOPER,
-      color: 'text-amber-500',
-      bgColor: 'bg-amber-500/10',
-      borderColor: 'group-hover:border-amber-500/50',
+      color: 'text-yellow-600',
+      bgColor: 'bg-yellow-500/10',
+      borderColor: 'group-hover:border-yellow-600/50',
       isAdminOnly: true
     },
     {
@@ -267,18 +267,6 @@ function DashboardContent() {
       bgColor: 'bg-violet-500/10',
       borderColor: 'group-hover:border-violet-500/50',
       isAdminOnly: true
-    },
-    {
-      id: 'event_logging',
-      title: t('eventLogging.title'),
-      description: t('eventLogging.description'),
-      icon: FileText,
-      href: `/dashboard/${activeGuildId}/event_logging`,
-      level: PermissionLevel.AUTHORIZED,
-      color: 'text-amber-400',
-      bgColor: 'bg-amber-500/10',
-      borderColor: 'group-hover:border-amber-500/50',
-      isAdminOnly: false,
     },
     // Plugins — titles come from plugin definitions; descriptions are translated
     ...pluginNavItems.map((plugin: any) => ({
@@ -340,7 +328,7 @@ function DashboardContent() {
           2: { label: t('dashboard.sectionUserLabel'),       description: t('dashboard.sectionUserDesc'),       accentText: 'text-emerald-400', borderAccent: 'border-emerald-500/50', sectionBg: 'bg-emerald-500/5', badge: 'bg-emerald-500/20 text-emerald-300' },
           3: { label: t('dashboard.sectionAuthorizedLabel'),     description: t('dashboard.sectionAuthorizedDesc'),     accentText: 'text-blue-400',    borderAccent: 'border-blue-500/50',    sectionBg: 'bg-blue-500/5',    badge: 'bg-blue-500/20 text-blue-300' },
           4: { label: t('dashboard.sectionAdministratorLabel'), description: t('dashboard.sectionAdministratorDesc'), accentText: 'text-purple-400',  borderAccent: 'border-purple-500/50',  sectionBg: 'bg-purple-500/5',  badge: 'bg-purple-500/20 text-purple-300' },
-          5: { label: t('dashboard.sectionOwnerLabel'),          description: t('dashboard.sectionOwnerDesc'),          accentText: 'text-amber-400',   borderAccent: 'border-amber-500/50',   sectionBg: 'bg-amber-500/5',   badge: 'bg-amber-500/20 text-amber-300' },
+          5: { label: t('dashboard.sectionOwnerLabel'),          description: t('dashboard.sectionOwnerDesc'),          accentText: 'text-orange-500',  borderAccent: 'border-orange-500/50',  sectionBg: 'bg-orange-500/5',  badge: 'bg-orange-500/20 text-orange-500' },
           6: { label: t('dashboard.sectionDeveloperLabel'),      description: t('dashboard.sectionDeveloperDesc'),      accentText: 'text-red-400',     borderAccent: 'border-red-500/50',     sectionBg: 'bg-red-500/5',     badge: 'bg-red-500/20 text-red-300' },
         };
 
@@ -356,8 +344,8 @@ function DashboardContent() {
         return (
           <div className="space-y-10">
             {sortedLevels.map(level => {
-              const meta = levelMeta[level] ?? { label: `Level ${level}`, description: '', accentText: 'text-muted-foreground', borderAccent: 'border-border', sectionBg: 'bg-muted/5', badge: 'bg-muted text-muted-foreground' };
-              const levelCards = cardsByLevel[level];
+              const meta = levelMeta[level] ?? { label: '', description: '', accentText: 'text-muted-foreground', borderAccent: 'border-border', sectionBg: 'bg-muted/5', badge: 'bg-muted text-muted-foreground' };
+              const levelCards = [...cardsByLevel[level]].sort((a, b) => a.title.localeCompare(b.title));
               return (
                 <div key={level} className="space-y-4">
                   {showSectionHeaders && (
@@ -384,14 +372,11 @@ function DashboardContent() {
                           <card.icon size={28} />
                         </div>
 
-                        <div className="mt-4 mb-auto">
+                        <div className="mt-4 mb-auto pr-16">
                           <h3 className="text-2xl font-bold mb-3 group-hover:text-primary transition-colors">{card.title}</h3>
                           <p className="text-muted-foreground leading-relaxed">{card.description}</p>
                         </div>
 
-                        <div className="mt-8 pt-6 border-t border-border/50 flex items-center justify-end text-muted-foreground">
-                          <ExternalLink size={16} className="opacity-0 group-hover:opacity-100 transition-opacity" />
-                        </div>
                       </div>
                     ))}
                   </div>

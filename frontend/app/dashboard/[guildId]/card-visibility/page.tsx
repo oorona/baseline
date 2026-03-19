@@ -82,7 +82,7 @@ function CardVisibilityPage() {
 
     if (loading) {
         return (
-            <div className="p-8 max-w-2xl mx-auto space-y-4">
+            <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">
                 {[...Array(4)].map((_, i) => (
                     <div key={i} className="animate-pulse bg-card border border-border rounded-xl p-5 flex items-center justify-between">
                         <div className="space-y-2 flex-1">
@@ -97,7 +97,7 @@ function CardVisibilityPage() {
     }
 
     return (
-        <div className="p-8 max-w-2xl mx-auto">
+        <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">
             {/* Header */}
             <div className="mb-8">
                 <h1 className="text-3xl font-bold text-foreground flex items-center gap-3">

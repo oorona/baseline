@@ -32,7 +32,7 @@ class PageErrorBoundary extends Component<{ children: ReactNode }, EBState> {
   render() {
     if (this.state.error) {
       return (
-        <div className="max-w-5xl mx-auto p-8 space-y-4">
+        <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
           <div className="p-4 rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 text-sm">
             <p className="font-semibold mb-1">Page render error</p>
             <pre className="text-xs font-mono whitespace-pre-wrap opacity-80">
@@ -793,7 +793,7 @@ function DatabaseManagementPage() {
   ];
 
   return (
-    <div className="max-w-5xl mx-auto space-y-8 p-6 md:p-8">
+    <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
 
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">

@@ -7,6 +7,7 @@ import { withPermission } from '@/lib/components/with-permission';
 import { PermissionLevel } from '@/lib/permissions';
 import { UserPlus, Trash2, Shield, Settings as SettingsIcon, Check } from 'lucide-react';
 import { UserSearch } from '@/app/components/UserSearch';
+import { useTranslation } from '@/lib/i18n';
 
 interface AuthorizedUser {
     user_id: string;
@@ -31,6 +32,7 @@ interface DiscordRole {
 
 // Level 4: Owner Only
 function PermissionsPage() {
+    const { t } = useTranslation();
     const params = useParams();
     const guildId = params.guildId as string;
 
@@ -49,6 +51,9 @@ function PermissionsPage() {
 
     const [selectedRoleId, setSelectedRoleId] = useState('');
     const [addingRole, setAddingRole] = useState(false);
+
+    const [pendingRemoveUser, setPendingRemoveUser] = useState<string | null>(null);
+    const [pendingRemoveRole, setPendingRemoveRole] = useState<string | null>(null);
 
     useEffect(() => {
         fetchAllData();
@@ -72,7 +77,7 @@ function PermissionsPage() {
             setError(null);
         } catch (err: any) {
             console.error(err);
-            setError(err.response?.data?.detail || 'Failed to load permission data');
+            setError(err.response?.data?.detail || t('permissions.loadError'));
         } finally {
             setLoading(false);
         }
@@ -92,23 +97,24 @@ function PermissionsPage() {
             await apiClient.addAuthorizedUser(guildId, newUserId);
             setNewUserId('');
             setSearchQuery('');
-            showSuccess('User added successfully');
+            showSuccess(t('permissions.successUserAdded'));
             fetchAllData();
         } catch (err: any) {
-            setError(err.response?.data?.detail || 'Failed to add user');
+            setError(err.response?.data?.detail || t('permissions.errorAddUser'));
         } finally {
             setAddingUser(false);
         }
     };
 
     const handleRemoveUser = async (userId: string) => {
-        if (!confirm('Are you sure?')) return;
         try {
             await apiClient.removeAuthorizedUser(guildId, userId);
-            showSuccess('User removed successfully');
+            setPendingRemoveUser(null);
+            showSuccess(t('permissions.successUserRemoved'));
             fetchAllData();
         } catch (err: any) {
-            setError(err.response?.data?.detail || 'Failed to remove user');
+            setPendingRemoveUser(null);
+            setError(err.response?.data?.detail || t('permissions.errorRemoveUser'));
         }
     };
 
@@ -120,23 +126,24 @@ function PermissionsPage() {
         try {
             await apiClient.addAuthorizedRole(guildId, selectedRoleId);
             setSelectedRoleId('');
-            showSuccess('Role authorized successfully');
+            showSuccess(t('permissions.successRoleAdded'));
             fetchAllData();
         } catch (err: any) {
-            setError(err.response?.data?.detail || 'Failed to authorize role');
+            setError(err.response?.data?.detail || t('permissions.errorAddRole'));
         } finally {
             setAddingRole(false);
         }
     };
 
     const handleRemoveAuthRole = async (roleId: string) => {
-        if (!confirm('Are you sure?')) return;
         try {
             await apiClient.removeAuthorizedRole(guildId, roleId);
-            showSuccess('Role removed successfully');
+            setPendingRemoveRole(null);
+            showSuccess(t('permissions.successRoleRemoved'));
             fetchAllData();
         } catch (err: any) {
-            setError(err.response?.data?.detail || 'Failed to remove role');
+            setPendingRemoveRole(null);
+            setError(err.response?.data?.detail || t('permissions.errorRemoveRole'));
         }
     };
 
@@ -144,13 +151,11 @@ function PermissionsPage() {
     const updateSettings = async (newSettingsPartial: GuildSettings) => {
         const updated = { ...settings, ...newSettingsPartial };
         try {
-            // Check api-client implementation for updateGuildSettings signature and logic
-            // Assuming it accepts the settings object directly as passed in the body
             await apiClient.updateGuildSettings(guildId, updated);
             setSettings(updated);
-            showSuccess('Settings updated');
+            showSuccess(t('permissions.successSettingsUpdated'));
         } catch (err: any) {
-            setError(err.response?.data?.detail || 'Failed to update settings');
+            setError(err.response?.data?.detail || t('permissions.errorUpdateSettings'));
             fetchAllData();
         }
     };
@@ -176,16 +181,16 @@ function PermissionsPage() {
     if (loading) {
         return (
             <div className="flex items-center justify-center h-full">
-                <div className="text-gray-400 animate-pulse">Loading permissions...</div>
+                <div className="text-muted-foreground animate-pulse">{t('permissions.loading')}</div>
             </div>
         );
     }
 
     return (
-        <div className="max-w-4xl space-y-8 pb-10">
+        <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">
             <div>
-                <h1 className="text-3xl font-bold mb-2">Permission Management</h1>
-                <p className="text-gray-400">Control access levels for your guild.</p>
+                <h1 className="text-3xl font-bold mb-2">{t('permissions.title')}</h1>
+                <p className="text-muted-foreground">{t('permissions.subtitle')}</p>
             </div>
 
             {error && (
@@ -207,16 +212,16 @@ function PermissionsPage() {
                         <SettingsIcon size={24} className="text-blue-500" />
                     </div>
                     <div>
-                        <h2 className="text-xl font-semibold text-foreground">General Access (Level 2)</h2>
-                        <p className="text-sm text-muted-foreground">Control who can access the dashboard (Login Required)</p>
+                        <h2 className="text-xl font-semibold text-foreground">{t('permissions.sectionL2Title')}</h2>
+                        <p className="text-sm text-muted-foreground">{t('permissions.sectionL2Desc')}</p>
                     </div>
                 </div>
 
                 <div className="space-y-4">
                     <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg border border-border">
                         <div>
-                            <div className="font-medium text-foreground">Allow Everyone</div>
-                            <div className="text-sm text-muted-foreground">If enabled, any member of the guild can access the dashboard.</div>
+                            <div className="font-medium text-foreground">{t('permissions.allowEveryone')}</div>
+                            <div className="text-sm text-muted-foreground">{t('permissions.allowEveryoneDesc')}</div>
                         </div>
                         <label className="relative inline-flex items-center cursor-pointer">
                             <input
@@ -225,14 +230,14 @@ function PermissionsPage() {
                                 checked={settings.level_2_allow_everyone !== false} // Default true
                                 onChange={toggleL2Everyone}
                             />
-                            <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                            <div className="w-11 h-6 bg-muted border border-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-border after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                         </label>
                     </div>
 
                     {(settings.level_2_allow_everyone === false) && (
                         <div className="mt-4 animate-in fade-in slide-in-from-top-1 duration-200">
-                            <h3 className="text-sm font-semibold text-foreground mb-2">Allowed Roles</h3>
-                            <p className="text-xs text-muted-foreground mb-3">Select roles that are allowed to access the dashboard.</p>
+                            <h3 className="text-sm font-semibold text-foreground mb-2">{t('permissions.allowedRolesTitle')}</h3>
+                            <p className="text-xs text-muted-foreground mb-3">{t('permissions.allowedRolesDesc')}</p>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-60 overflow-y-auto p-2 border border-border rounded-lg">
                                 {roles.map(role => (
@@ -241,7 +246,7 @@ function PermissionsPage() {
                                             type="checkbox"
                                             checked={(settings.level_2_roles || []).includes(role.id)}
                                             onChange={() => toggleL2Role(role.id)}
-                                            className="rounded border-gray-600 text-blue-600 focus:ring-blue-500 bg-gray-700"
+                                            className="rounded border-border text-blue-600 focus:ring-blue-500 bg-background"
                                         />
                                         <span className="text-sm truncate" style={{ color: role.color ? `#${role.color.toString(16).padStart(6, '0')}` : 'inherit' }}>
                                             {role.name}
@@ -262,8 +267,8 @@ function PermissionsPage() {
                             <Shield size={24} className="text-purple-500" />
                         </div>
                         <div>
-                            <h2 className="text-xl font-semibold text-foreground">Authorized Roles (Level 3)</h2>
-                            <p className="text-sm text-muted-foreground">Grant high-level access to specific roles (excluding @everyone).</p>
+                            <h2 className="text-xl font-semibold text-foreground">{t('permissions.sectionL3RolesTitle')}</h2>
+                            <p className="text-sm text-muted-foreground">{t('permissions.sectionL3RolesDesc')}</p>
                         </div>
                     </div>
                 </div>
@@ -275,7 +280,7 @@ function PermissionsPage() {
                             value={selectedRoleId}
                             onChange={(e) => setSelectedRoleId(e.target.value)}
                         >
-                            <option value="">Select a role to authorize...</option>
+                            <option value="">{t('permissions.selectRolePlaceholder')}</option>
                             {roles
                                 .filter(r => r.name !== '@everyone') // Filter out @everyone for L3
                                 .filter(r => !authRoles.some(ar => ar.role_id === r.id)) // Filter out already authorized
@@ -290,14 +295,14 @@ function PermissionsPage() {
                             disabled={!selectedRoleId || addingRole}
                             className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
                         >
-                            {addingRole ? 'Adding...' : 'Authorize'}
+                            {addingRole ? t('permissions.authorizingButton') : t('permissions.authorizeButton')}
                         </button>
                     </div>
 
                     <div className="space-y-2">
                         {authRoles.length === 0 ? (
                             <div className="text-center py-6 text-muted-foreground bg-muted/20 rounded-lg border border-dashed border-border">
-                                No authorized roles configured.
+                                {t('permissions.noRoles')}
                             </div>
                         ) : (
                             authRoles.map(ar => (
@@ -305,13 +310,27 @@ function PermissionsPage() {
                                     <div className="font-medium text-foreground">
                                         {getRoleName(ar.role_id)}
                                     </div>
-                                    <button
-                                        onClick={() => handleRemoveAuthRole(ar.role_id)}
-                                        className="text-red-500 hover:text-red-400 p-2"
-                                        title="Remove Permission"
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
+                                    {pendingRemoveRole === ar.role_id ? (
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs text-red-400">{t('permissions.confirmRemove')}</span>
+                                            <button
+                                                onClick={() => handleRemoveAuthRole(ar.role_id)}
+                                                className="text-xs px-2 py-1 bg-red-600 hover:bg-red-500 text-white rounded"
+                                            >{t('permissions.confirmButton')}</button>
+                                            <button
+                                                onClick={() => setPendingRemoveRole(null)}
+                                                className="text-xs px-2 py-1 bg-muted hover:bg-muted/80 text-foreground rounded"
+                                            >{t('permissions.cancelButton')}</button>
+                                        </div>
+                                    ) : (
+                                        <button
+                                            onClick={() => setPendingRemoveRole(ar.role_id)}
+                                            className="text-red-500 hover:text-red-400 p-2"
+                                            title="Remove Permission"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                    )}
                                 </div>
                             ))
                         )}
@@ -327,8 +346,8 @@ function PermissionsPage() {
                             <UserPlus size={24} className="text-green-500" />
                         </div>
                         <div>
-                            <h2 className="text-xl font-semibold text-foreground">Authorized Users (Level 3)</h2>
-                            <p className="text-sm text-muted-foreground">Grant high-level access to specific users directly.</p>
+                            <h2 className="text-xl font-semibold text-foreground">{t('permissions.sectionL3UsersTitle')}</h2>
+                            <p className="text-sm text-muted-foreground">{t('permissions.sectionL3UsersDesc')}</p>
                         </div>
                     </div>
                 </div>
@@ -347,7 +366,7 @@ function PermissionsPage() {
                                     setNewUserId(user.id);
                                     setSearchQuery(user.username);
                                 }}
-                                placeholder="Search user to authorize..."
+                                placeholder={t('permissions.searchUserPlaceholder')}
                             />
                         </div>
                         <button
@@ -355,14 +374,14 @@ function PermissionsPage() {
                             disabled={!newUserId || addingUser}
                             className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
                         >
-                            {addingUser ? 'Adding...' : 'Authorize'}
+                            {addingUser ? t('permissions.authorizingButton') : t('permissions.authorizeButton')}
                         </button>
                     </div>
 
                     <div className="divide-y divide-border border border-border rounded-lg overflow-hidden">
                         {users.length === 0 ? (
                             <div className="p-6 text-center text-muted-foreground">
-                                No authorized users found.
+                                {t('permissions.noUsers')}
                             </div>
                         ) : (
                             users.map((user) => (
@@ -378,16 +397,30 @@ function PermissionsPage() {
                                         <div>
                                             <div className="font-medium text-foreground">{user.username || user.user_id}</div>
                                             <div className="text-xs text-muted-foreground">
-                                                {user.permission_level} • {new Date(user.created_at).toLocaleDateString()}
+                                                {t('permissions.elevatedAccess')} • {new Date(user.created_at).toLocaleDateString()}
                                             </div>
                                         </div>
                                     </div>
-                                    <button
-                                        onClick={() => handleRemoveUser(user.user_id)}
-                                        className="text-red-500 hover:text-red-400 p-2"
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
+                                    {pendingRemoveUser === user.user_id ? (
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs text-red-400">{t('permissions.confirmRemove')}</span>
+                                            <button
+                                                onClick={() => handleRemoveUser(user.user_id)}
+                                                className="text-xs px-2 py-1 bg-red-600 hover:bg-red-500 text-white rounded"
+                                            >{t('permissions.confirmButton')}</button>
+                                            <button
+                                                onClick={() => setPendingRemoveUser(null)}
+                                                className="text-xs px-2 py-1 bg-muted hover:bg-muted/80 text-foreground rounded"
+                                            >{t('permissions.cancelButton')}</button>
+                                        </div>
+                                    ) : (
+                                        <button
+                                            onClick={() => setPendingRemoveUser(user.user_id)}
+                                            className="text-red-500 hover:text-red-400 p-2"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                    )}
                                 </div>
                             ))
                         )}

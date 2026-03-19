@@ -38,7 +38,7 @@ export function Header() {
 
                 <div className="flex items-center gap-4">
                     {user && (
-                        <div className="flex items-center gap-3 pl-4 border-l border-border">
+                        <Link href="/dashboard/account" title={t('header.accountSettings')} className="flex items-center gap-3 pl-4 border-l border-border cursor-pointer hover:opacity-80 transition-opacity">
                             {user.avatar_url ? (
                                 <img src={user.avatar_url} alt={user.username} className="w-8 h-8 rounded-full" />
                             ) : (
@@ -52,7 +52,7 @@ export function Header() {
                                     {user.is_admin ? t('header.admin') : t('header.user')}
                                 </span>
                             </div>
-                        </div>
+                        </Link>
                     )}
 
                     <div className="flex items-center gap-2">
