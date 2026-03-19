@@ -52,3 +52,5 @@ secrets/
 #bot/cogs/logging.py
 #frontend/app/dashboard/[guildId]/test-l1/
 #frontend/app/dashboard/[guildId]/test-l2/
+plugins/
+!plugins/_template/

@@ -216,6 +216,34 @@ export const en = {
     tryAgain: 'Try Again',
     loading: 'Loading...',
   },
+
+  // ── Plugin: event_logging ─────────────────────────
+  eventLogging: {
+  title: 'Event Logging',
+  description: 'Monitor and configure guild event logging.',
+  configureLink: 'Configure',
+  loadError: 'Failed to load logging settings.',
+  notConfiguredHint: 'Logging is not fully configured. Enable it and set a log channel in Settings.',
+
+  statusSection: 'Status',
+  enabledLabel: 'Event Logging',
+  statusActive: 'Active',
+  statusInactive: 'Inactive',
+  channelLabel: 'Log Channel',
+  noChannel: 'Not configured',
+
+  eventsSection: 'Monitored Events',
+  eventActive: 'Active',
+  eventIgnored: 'Ignored',
+
+  events: {
+    messageDelete: 'Message Deleted',
+    messageEdit: 'Message Edited',
+    memberJoin: 'Member Joined',
+    memberLeave: 'Member Left',
+  },
+},
+
 } as const;
 
 /**

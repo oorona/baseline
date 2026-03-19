@@ -62,7 +62,7 @@ def _build_payload(raw_commands: list[dict]) -> dict:
     }
 
 
-@router.get("/")
+@router.get("")
 async def get_commands(
     redis: Redis = Depends(get_redis),
 ):

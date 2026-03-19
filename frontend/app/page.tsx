@@ -268,6 +268,18 @@ function DashboardContent() {
       borderColor: 'group-hover:border-violet-500/50',
       isAdminOnly: true
     },
+    {
+      id: 'event_logging',
+      title: t('eventLogging.title'),
+      description: t('eventLogging.description'),
+      icon: FileText,
+      href: `/dashboard/${activeGuildId}/event_logging`,
+      level: PermissionLevel.AUTHORIZED,
+      color: 'text-amber-400',
+      bgColor: 'bg-amber-500/10',
+      borderColor: 'group-hover:border-amber-500/50',
+      isAdminOnly: false,
+    },
     // Plugins — titles come from plugin definitions; descriptions are translated
     ...pluginNavItems.map((plugin: any) => ({
       id: `plugin-${plugin.id || plugin.name}`,

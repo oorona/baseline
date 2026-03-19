@@ -1478,7 +1478,7 @@ class APIClient {
     // ── Commands ───────────────────────────────────────────────────────────
 
     async getCommands(): Promise<{ commands: any[]; last_updated: string | null; total: number }> {
-        const response = await this.client.get('/commands/');
+        const response = await this.client.get('/commands');
         return response.data;
     }
 

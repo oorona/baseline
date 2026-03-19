@@ -154,9 +154,10 @@ async def lifespan(app: FastAPI):
         pass
 
 app = FastAPI(
-    title=settings.PROJECT_NAME, 
+    title=settings.PROJECT_NAME,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
-    lifespan=lifespan
+    lifespan=lifespan,
+    redirect_slashes=False,  # prevent FastAPI 307s — Next.js strips trailing slashes before the rewrite proxy runs
 )
 
 # Rate Limiting
