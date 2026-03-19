@@ -185,7 +185,9 @@ function GuildSettingsPage() {
 
                 setSettings(settingsData.settings || {});
                 setCanModify(
-                    guildData.permission_level === 'owner' || settingsData.can_modify_level_3 === true
+                    guildData.permission_level === 'owner' ||
+                    guildData.permission_level === 'admin' ||
+                    settingsData.can_modify_level_3 === true
                 );
                 setChannels(
                     channelsData
@@ -323,5 +325,5 @@ function GuildSettingsPage() {
     );
 }
 
-// Level 3: Authorized
-export default withPermission(GuildSettingsPage, PermissionLevel.AUTHORIZED);
+// Level 4: Administrator
+export default withPermission(GuildSettingsPage, PermissionLevel.ADMINISTRATOR);

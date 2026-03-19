@@ -271,13 +271,13 @@ describe('BotSettingsPage — permissions', () => {
         })
     })
 
-    it('non-owner (AUTHORIZED but not owner) — form fields are disabled', async () => {
+    it('non-admin (USER level, not owner or admin) — form fields are disabled', async () => {
         vi.doMock('@/lib/auth-context', () => ({
             useAuth: () => ({ user: { user_id: '1', is_admin: false }, loading: false }),
         }))
         vi.doMock('@/app/api-client', () => ({
             apiClient: makeApiMock({
-                getGuild: vi.fn().mockResolvedValue({ id: '123456789', permission_level: 'authorized' }),
+                getGuild: vi.fn().mockResolvedValue({ id: '123456789', permission_level: 'user' }),
                 getGuildSettings: vi.fn().mockResolvedValue({
                     ...SAMPLE_SETTINGS,
                     can_modify_level_3: false,
@@ -296,13 +296,13 @@ describe('BotSettingsPage — permissions', () => {
         })
     })
 
-    it('non-owner — read-only banner is shown', async () => {
+    it('non-admin — read-only banner is shown', async () => {
         vi.doMock('@/lib/auth-context', () => ({
             useAuth: () => ({ user: { user_id: '1', is_admin: false }, loading: false }),
         }))
         vi.doMock('@/app/api-client', () => ({
             apiClient: makeApiMock({
-                getGuild: vi.fn().mockResolvedValue({ id: '123456789', permission_level: 'authorized' }),
+                getGuild: vi.fn().mockResolvedValue({ id: '123456789', permission_level: 'user' }),
                 getGuildSettings: vi.fn().mockResolvedValue({
                     ...SAMPLE_SETTINGS,
                     can_modify_level_3: false,

@@ -256,6 +256,24 @@ async def update_guild_settings(
     # Check if user has access (Owner or Authorized)
     is_owner = guild.owner_id == user_id
     
+    # Check if user has Developer Access (needed before the auth check below)
+    LEVEL_3_KEYS = ["system_prompt", "model", "admin_role_id"]
+    has_dev_access = False
+    dev_guild_id = app_settings.DISCORD_GUILD_ID
+    dev_role_id = app_settings.DEVELOPER_ROLE_ID
+
+    if dev_guild_id:
+        try:
+            dev_guild = await discord_client.get_guild(str(dev_guild_id))
+            if str(user_id) == dev_guild.get("owner_id"):
+                has_dev_access = True
+            if not has_dev_access and dev_role_id:
+                member_data = await discord_client.get_guild_member(str(dev_guild_id), str(user_id))
+                if dev_role_id in member_data.get("roles", []):
+                    has_dev_access = True
+        except Exception:
+            pass
+
     if not is_owner:
         auth_check = await db.execute(
             select(AuthorizedUser).where(
@@ -264,62 +282,32 @@ async def update_guild_settings(
             )
         )
         auth_user = auth_check.scalar_one_or_none()
-        if not auth_user:
+
+        # Allow: authorized ADMIN in this guild, OR platform developer role holder.
+        # Regular authorized USERs cannot modify settings (read-only access to the page).
+        is_guild_admin = auth_user and auth_user.permission_level == PermissionLevel.ADMIN
+        if not is_guild_admin and not has_dev_access:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You do not have access to this guild"
+                detail="Only guild admins or platform developers can update settings"
             )
-        
-        if auth_user.permission_level != PermissionLevel.ADMIN:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only admins can update settings"
-            )
-    
+
     # Get or create settings
     settings_result = await db.execute(
         select(GuildSettings).where(GuildSettings.guild_id == guild_id)
     )
     settings = settings_result.scalar_one_or_none()
-    
-    # Validate settings against schema
+
     settings_data = settings_update.settings
 
-    # Level 3 Access Control Check
-    # Keys that are restricted to Developers only
-    LEVEL_3_KEYS = ["system_prompt", "model", "admin_role_id"]
-    
-    # Check if user has Developer Access
-    has_dev_access = False
-    dev_guild_id = app_settings.DISCORD_GUILD_ID
-    dev_role_id = app_settings.DEVELOPER_ROLE_ID
-
-    if dev_guild_id:
-        try:
-             # Check if user is the Owner of the Developer Guild
-            dev_guild = await discord_client.get_guild(str(dev_guild_id))
-            if str(user_id) == dev_guild.get("owner_id"):
-                has_dev_access = True
-
-             # Check user's roles in the Developer Guild
-            if not has_dev_access and dev_role_id:
-                member_data = await discord_client.get_guild_member(str(dev_guild_id), str(user_id))
-                if dev_role_id in member_data.get("roles", []):
-                    has_dev_access = True
-        except Exception:
-            # User likely not in the developer guild or other error
-            pass
-
-    # If not a developer, check for attempted changes to restricted keys
+    # Restricted keys may only be changed by developers (owner of the dev guild or dev-role holder)
     if not has_dev_access:
         for key in LEVEL_3_KEYS:
-            # If key is being modified (present in new settings)
             if key in settings_data:
-                # Check if it's actually different from existing
                 current_val = settings.settings_json.get(key) if settings else None
                 new_val = settings_data.get(key)
                 if current_val != new_val:
-                     raise HTTPException(
+                    raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN,
                         detail=f"You do not have permission to modify restricted setting: {key}"
                     )

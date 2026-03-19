@@ -28,8 +28,8 @@ The framework enforces a **7-tier permission model**. Every page, endpoint, and 
 | **L0** | **Public** | Anyone, no auth | Landing page, login, public docs |
 | **L1** | **Public Data** | Anyone, no auth | Read-only stats, command list (no PII) |
 | **L2** | **User** | Any logged-in user (configurable via guild roles) | Dashboard home, read-only guild stats |
-| **L3** | **Authorized** | Explicitly authorized users/roles per guild | Bot settings, moderation commands |
-| **L4** | **Administrator** | Guild administrators (Discord admin permission) | Add/remove authorized users and roles |
+| **L3** | **Authorized** | Explicitly authorized users/roles per guild | Read-only view of bot settings, moderation commands |
+| **L4** | **Administrator** | Guild administrators (Discord admin permission) | Bot settings (edit), add/remove authorized users and roles |
 | **L5** | **Owner** | Guild owner only | Permission management, billing, destructive config |
 | **L6** | **Developer** | Platform administrators only | Platform debug, LLM analytics, all-guild access |
 
@@ -111,11 +111,11 @@ async def guild_stats(
 ---
 
 #### L3 — Authorized (Strictly Controlled)
-Requires explicit authorization: the user must be in the `authorized_users` table for that guild, or have an `authorized_role`. **Default for all write operations and bot settings.**
+Requires explicit authorization: the user must be in the `authorized_users` table for that guild, or have an `authorized_role`. **Default for read-only access to guild data (audit logs, settings view, etc.).**
 
 ```typescript
 // Frontend
-export default withPermission(BotSettingsPage, PermissionLevel.AUTHORIZED);
+export default withPermission(AuditLogsPage, PermissionLevel.AUTHORIZED);
 ```
 
 ```python
@@ -458,8 +458,8 @@ All registered endpoints and their security level. Use this as a reference when 
 | `/{guild_id}/channels` | GET | L2 | Fetches from Discord API |
 | `/{guild_id}/roles` | GET | L2 | Fetches from Discord API |
 | `/{guild_id}/members/search` | GET | L2 | Member autocomplete |
-| `/{guild_id}/settings` | GET | L3 | Guild bot settings |
-| `/{guild_id}/settings` | PUT | L3 | Update guild settings; some keys restricted to L5 |
+| `/{guild_id}/settings` | GET | L3 | Guild bot settings (read-only for L3) |
+| `/{guild_id}/settings` | PUT | L4 | Update guild settings; some keys restricted to L6 |
 | `/{guild_id}/authorized-users` | GET | L3 | List authorized users |
 | `/{guild_id}/authorized-roles` | GET | L3 | List authorized roles |
 | `/{guild_id}/audit-logs` | GET | L3 | View audit log |

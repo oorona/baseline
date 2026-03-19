@@ -6,8 +6,9 @@ import { apiClient } from '@/app/api-client';
 import { usePlugins } from '@/app/plugins';
 import { usePermissions } from '@/lib/hooks/use-permissions';
 import { PermissionLevel } from '@/lib/permissions';
+import { withPermission } from '@/lib/components/with-permission';
 
-export default function PluginPage() {
+function PluginPage() {
     const params = useParams();
     const guildId = params.guildId as string;
     const pluginId = params.pluginId as string;
@@ -98,3 +99,6 @@ export default function PluginPage() {
     // Pass settings to the component
     return <PageComponent guildId={guildId} settings={settings} />;
 }
+
+// Minimum outer guard; plugin-specific level is enforced by the inner usePermissions check
+export default withPermission(PluginPage, PermissionLevel.AUTHORIZED);
