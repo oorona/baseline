@@ -6,10 +6,15 @@ Directory layout
   /data/prompts/
     {plugin_name}/
       manifest.json                          ← written at install time, never by this service
-      {context_name}/
-        system_prompt.txt                    ← editable content
+      {context_name}/                        ← PURPOSE goes in the folder name
+        system_prompt.txt                    ← ROLE goes in the file name
         user_prompt.txt
-        (any other declared file names)
+
+Naming rules (enforced by the validator):
+  • The context folder name encodes PURPOSE  — e.g. "ticket_intake", "faq_answers"
+  • The file name encodes ROLE in the LLM call — must be one of VALID_FILE_NAMES
+  • Do NOT encode purpose in the file name (wrong: "agent_system.txt", "welcome.txt")
+  • Do NOT use a flat layout with descriptive names instead of context subfolders
 
 The "context" is a purpose identifier chosen by the plugin: "ticket_intake",
 "faq_answers", "dm_support", etc. Each context groups the prompts that belong
@@ -43,9 +48,12 @@ manifest.json schema
     ]
   }
 
-Standard file name conventions (enforced by convention, not the framework):
+Required file names — the validator rejects any name not in this set:
   system_prompt  → system-level instruction for the LLM
-  user_prompt    → template applied to each incoming message
+  user_prompt    → template applied to each incoming user message
+  assistant_prompt → pre-seeded assistant turn (for few-shot examples)
+  injection      → content injected mid-conversation (RAG snippets, tool results)
+  context        → background context prepended to the conversation
 """
 from __future__ import annotations
 

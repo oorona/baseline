@@ -136,12 +136,23 @@ def validate_manifest(plugin_dir: Path) -> dict:
     return manifest
 
 
+# File names that are valid within a context folder.
+# The CONTEXT folder encodes PURPOSE (e.g. "ticket_intake").
+# The FILE NAME encodes ROLE in the LLM call.
+# Do NOT put purpose in the file name (wrong: "agent_system", "welcome", "ticket_user").
+_VALID_FILE_NAMES = {"system_prompt", "user_prompt", "assistant_prompt", "injection", "context"}
+
+
 def _validate_prompts(manifest: dict, plugin_dir: Path):
     """Validate the 'prompts' array in plugin.json when components.prompts = true.
 
     Each entry in "prompts" is a context — a named purpose folder such as
     "ticket_intake" or "faq_answers". Each context contains a "files" list
-    (typically system_prompt and user_prompt).
+    whose names must come from _VALID_FILE_NAMES (system_prompt, user_prompt, …).
+
+    Common mistake: encoding purpose in the file name instead of the folder.
+      WRONG: files named "agent_system", "welcome", "injection_user" (flat, descriptive)
+      RIGHT: context="ticket_agent" with files named "system_prompt", "user_prompt"
     """
     contexts = manifest.get("prompts")
     if not isinstance(contexts, list) or len(contexts) == 0:
@@ -178,6 +189,15 @@ def _validate_prompts(manifest: dict, plugin_dir: Path):
                 continue
             if not re.match(r"^[a-z][a-z0-9_]*$", file_entry["name"]):
                 err(f"prompts[{i}].files[{j}] name '{file_entry['name']}' must be snake_case lowercase")
+            elif file_entry["name"] not in _VALID_FILE_NAMES:
+                err(
+                    f"prompts[{i}].files[{j}] invalid file name '{file_entry['name']}' — "
+                    f"must be one of: {sorted(_VALID_FILE_NAMES)}. "
+                    f"The context folder ('{ctx_name}') is where purpose goes; "
+                    f"the file name is the role in the LLM call. "
+                    f"Wrong: 'agent_system', 'welcome', 'ticket_user'. "
+                    f"Right: context='ticket_agent', file='system_prompt'."
+                )
             elif file_entry["name"] in seen_file_names:
                 err(f"prompts[{i}].files[{j}] duplicate file name '{file_entry['name']}' in context '{ctx_name}'")
             else:

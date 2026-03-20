@@ -138,7 +138,33 @@ Plugins that make LLM calls with custom prompts declare them in `plugin.json`. T
       user_prompt.txt
 ```
 
-The **context** is the key design decision: each folder name describes what that set of prompts is used for — `ticket_intake`, `faq_answers`, `dm_support`, etc. One plugin can declare as many contexts as it needs.
+The **context folder name** encodes **purpose**. The **file name** encodes **role** in the LLM call. These are two separate dimensions — never conflate them.
+
+> **Wrong — purpose in the file name (flat layout):**
+> ```
+> ticketnode/
+>   welcome.txt           ← ✗ purpose in file name
+>   agent_system.txt      ← ✗ purpose in file name
+>   agent_user.txt        ← ✗ purpose in file name
+>   injection_system.txt  ← ✗ purpose in file name
+> ```
+>
+> **Right — purpose in the folder, role in the file:**
+> ```
+> ticketnode/
+>   welcome/
+>     system_prompt.txt   ← ✓ role = system_prompt
+>   ticket_agent/
+>     system_prompt.txt   ← ✓
+>     user_prompt.txt     ← ✓
+>   injection_check/
+>     system_prompt.txt   ← ✓
+>     user_prompt.txt     ← ✓
+> ```
+
+Valid file names (the validator rejects anything else): `system_prompt`, `user_prompt`, `assistant_prompt`, `injection`, `context`.
+
+One plugin can declare as many contexts as it needs.
 
 **Declaring contexts in `plugin.json`:**
 
