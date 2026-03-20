@@ -1087,7 +1087,7 @@ async def create_or_update_guild(
 ):
     # Convert string IDs to int for DB
     guild_id = int(guild_in.id)
-    owner_id = int(guild_in.owner_id)
+    owner_id = int(guild_in.owner_id) if guild_in.owner_id else None
 
     stmt = select(Guild).where(Guild.id == guild_id)
     result = await db.execute(stmt)
@@ -1102,7 +1102,8 @@ async def create_or_update_guild(
     else:
         guild.name = guild_in.name
         guild.icon_url = guild_in.icon_url
-        guild.owner_id = owner_id
+        if owner_id is not None:
+            guild.owner_id = owner_id
         guild.is_active = True
     
     await db.commit()

@@ -22,11 +22,13 @@ class GuildBase(BaseModel):
     id: str
     name: str
     icon_url: Optional[str] = None
-    owner_id: str
+    owner_id: Optional[str] = None
 
     @field_validator('id', 'owner_id', mode='before')
     @classmethod
     def coerce_to_str(cls, v):
+        if v is None:
+            return None
         return str(v)
 
 class GuildCreate(GuildBase):
