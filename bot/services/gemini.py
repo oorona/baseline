@@ -63,11 +63,14 @@ logger = structlog.get_logger()
 
 class GeminiModel(str, Enum):
     """Available Gemini models and their capabilities."""
+    # Gemini 3.1 Series (default)
+    GEMINI_31_FLASH_LITE = "gemini-3.1-flash-lite-preview"
+
     # Gemini 3 Series
     GEMINI_3_PRO = "gemini-3-pro-preview"
     GEMINI_3_FLASH = "gemini-3-flash-preview"
     GEMINI_3_PRO_IMAGE = "gemini-3-pro-image-preview"
-    
+
     # Gemini 2.5 Series (fallback)
     GEMINI_25_PRO = "gemini-2.5-pro"
     GEMINI_25_FLASH = "gemini-2.5-flash"
@@ -342,7 +345,7 @@ class GeminiService:
     def __init__(
         self,
         api_key: str,
-        default_model: str = GeminiModel.GEMINI_3_FLASH.value,
+        default_model: str = GeminiModel.GEMINI_31_FLASH_LITE.value,
         http_options: Optional[Dict[str, str]] = None
     ):
         """
@@ -521,20 +524,16 @@ class GeminiService:
         config = types.GenerateContentConfig(**config_dict) if config_dict else None
         
         try:
-            loop = asyncio.get_running_loop()
-            response = await loop.run_in_executor(
-                None,
-                lambda: self._client.models.generate_content(
-                    model=model,
-                    contents=contents,
-                    config=config
-                )
+            response = await self._client.aio.models.generate_content(
+                model=model,
+                contents=contents,
+                config=config
             )
-            
+
             # Extract result
             result = GenerationResult()
             result.text = response.text if hasattr(response, 'text') else None
-            
+
             # Extract thoughts if requested
             if include_thoughts and hasattr(response, 'candidates'):
                 for candidate in response.candidates:
@@ -632,16 +631,12 @@ class GeminiService:
         config = types.GenerateContentConfig(**config_dict)
         
         try:
-            loop = asyncio.get_running_loop()
-            response = await loop.run_in_executor(
-                None,
-                lambda: self._client.models.generate_content(
-                    model=model,
-                    contents=contents,
-                    config=config
-                )
+            response = await self._client.aio.models.generate_content(
+                model=model,
+                contents=contents,
+                config=config
             )
-            
+
             result = GenerationResult()
             image_count = 0
             
@@ -749,19 +744,15 @@ class GeminiService:
                 )
         
         try:
-            loop = asyncio.get_running_loop()
-            response = await loop.run_in_executor(
-                None,
-                lambda: self._client.models.generate_content(
-                    model=model,
-                    contents=contents,
-                    config=config
-                )
+            response = await self._client.aio.models.generate_content(
+                model=model,
+                contents=contents,
+                config=config
             )
-            
+
             result = GenerationResult()
             result.text = response.text if hasattr(response, 'text') else None
-            
+
             # Parse structured data if detection was requested
             if (detect_objects or segment_objects) and result.text:
                 try:
@@ -827,14 +818,10 @@ class GeminiService:
         )
         
         try:
-            loop = asyncio.get_running_loop()
-            response = await loop.run_in_executor(
-                None,
-                lambda: self._client.models.embed_content(
-                    model=model,
-                    contents=content,
-                    config=config
-                )
+            response = await self._client.aio.models.embed_content(
+                model=model,
+                contents=content,
+                config=config
             )
             
             # Track usage
@@ -938,14 +925,10 @@ class GeminiService:
         )
         
         try:
-            loop = asyncio.get_running_loop()
-            response = await loop.run_in_executor(
-                None,
-                lambda: self._client.models.generate_content(
-                    model=model,
-                    contents=text,
-                    config=config
-                )
+            response = await self._client.aio.models.generate_content(
+                model=model,
+                contents=text,
+                config=config
             )
             
             # Extract audio data
@@ -1033,11 +1016,7 @@ Requirements:
             ))
         else:
             # Upload file
-            loop = asyncio.get_running_loop()
-            uploaded = await loop.run_in_executor(
-                None,
-                lambda: self._client.files.upload(file=audio)
-            )
+            uploaded = await self._client.aio.files.upload(file=audio)
             contents.append(uploaded)
         
         contents.append(enhanced_prompt)
@@ -1068,19 +1047,15 @@ Requirements:
             )
         
         try:
-            loop = asyncio.get_running_loop()
-            response = await loop.run_in_executor(
-                None,
-                lambda: self._client.models.generate_content(
-                    model=model,
-                    contents=contents,
-                    config=config
-                )
+            response = await self._client.aio.models.generate_content(
+                model=model,
+                contents=contents,
+                config=config
             )
-            
+
             result = GenerationResult()
             result.text = response.text if hasattr(response, 'text') else None
-            
+
             if config and result.text:
                 try:
                     result.structured_data = json.loads(result.text)
@@ -1158,16 +1133,12 @@ Requirements:
         config = types.GenerateContentConfig(**config_dict)
         
         try:
-            loop = asyncio.get_running_loop()
-            response = await loop.run_in_executor(
-                None,
-                lambda: self._client.models.generate_content(
-                    model=model,
-                    contents=prompt,
-                    config=config
-                )
+            response = await self._client.aio.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=config
             )
-            
+
             # Track usage
             usage = self._extract_usage(
                 response, model, CapabilityType.STRUCTURED_OUTPUT, start_time
@@ -1252,19 +1223,15 @@ Requirements:
         config = types.GenerateContentConfig(**config_dict)
         
         try:
-            loop = asyncio.get_running_loop()
-            response = await loop.run_in_executor(
-                None,
-                lambda: self._client.models.generate_content(
-                    model=model,
-                    contents=prompt,
-                    config=config
-                )
+            response = await self._client.aio.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=config
             )
-            
+
             result = GenerationResult()
             result.text = response.text if hasattr(response, 'text') else None
-            
+
             # Extract function calls
             if hasattr(response, 'function_calls') and response.function_calls:
                 result.function_calls = [
@@ -1301,12 +1268,8 @@ Requirements:
             Store name/ID for use in queries
         """
         try:
-            loop = asyncio.get_running_loop()
-            store = await loop.run_in_executor(
-                None,
-                lambda: self._client.file_search_stores.create(
-                    config={"display_name": display_name}
-                )
+            store = await self._client.aio.file_search_stores.create(
+                config={"display_name": display_name}
             )
             return store.name
         except Exception as e:
@@ -1333,30 +1296,22 @@ Requirements:
             Operation ID
         """
         try:
-            loop = asyncio.get_running_loop()
-            
             config = {"display_name": display_name or file_path}
             if custom_metadata:
                 config["custom_metadata"] = [
                     {"key": k, "string_value": str(v)} for k, v in custom_metadata.items()
                 ]
-            
-            operation = await loop.run_in_executor(
-                None,
-                lambda: self._client.file_search_stores.upload_to_file_search_store(
-                    file=file_path,
-                    file_search_store_name=store_name,
-                    config=config
-                )
+
+            operation = await self._client.aio.file_search_stores.upload_to_file_search_store(
+                file=file_path,
+                file_search_store_name=store_name,
+                config=config
             )
-            
+
             # Wait for completion
             while not operation.done:
                 await asyncio.sleep(2)
-                operation = await loop.run_in_executor(
-                    None,
-                    lambda: self._client.operations.get(operation)
-                )
+                operation = await self._client.aio.operations.get(operation)
             
             return operation.name
             
@@ -1409,19 +1364,15 @@ Requirements:
         )
         
         try:
-            loop = asyncio.get_running_loop()
-            response = await loop.run_in_executor(
-                None,
-                lambda: self._client.models.generate_content(
-                    model=model,
-                    contents=prompt,
-                    config=config
-                )
+            response = await self._client.aio.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=config
             )
-            
+
             result = GenerationResult()
             result.text = response.text if hasattr(response, 'text') else None
-            
+
             # Extract grounding metadata
             if hasattr(response, 'candidates') and response.candidates:
                 candidate = response.candidates[0]
@@ -1489,14 +1440,10 @@ Requirements:
         config = types.GenerateContentConfig(tools=tools)
         
         try:
-            loop = asyncio.get_running_loop()
-            response = await loop.run_in_executor(
-                None,
-                lambda: self._client.models.generate_content(
-                    model=model,
-                    contents=full_prompt,
-                    config=config
-                )
+            response = await self._client.aio.models.generate_content(
+                model=model,
+                contents=full_prompt,
+                config=config
             )
             
             result = GenerationResult()
@@ -1563,21 +1510,16 @@ Requirements:
             ```
         """
         try:
-            loop = asyncio.get_running_loop()
-            
             # Build contents
             if isinstance(content, str):
                 contents = [content]
             elif isinstance(content, bytes):
                 # Upload file first
-                uploaded = await loop.run_in_executor(
-                    None,
-                    lambda: self._client.files.upload(file=io.BytesIO(content))
-                )
+                uploaded = await self._client.aio.files.upload(file=io.BytesIO(content))
                 contents = [uploaded]
             else:
                 contents = self._build_contents(content)
-            
+
             cache_config = types.CreateCachedContentConfig(
                 display_name=config.display_name,
                 ttl=f"{config.ttl_seconds}s",
@@ -1585,13 +1527,10 @@ Requirements:
             )
             if config.system_instruction:
                 cache_config.system_instruction = config.system_instruction
-            
-            cache = await loop.run_in_executor(
-                None,
-                lambda: self._client.caches.create(
-                    model=f"models/{model}",
-                    config=cache_config
-                )
+
+            cache = await self._client.aio.caches.create(
+                model=f"models/{model}",
+                config=cache_config
             )
             
             # Store mapping
@@ -1607,11 +1546,7 @@ Requirements:
     async def delete_cache(self, cache_name: str) -> None:
         """Delete a content cache."""
         try:
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(
-                None,
-                lambda: self._client.caches.delete(cache_name)
-            )
+            await self._client.aio.caches.delete(cache_name)
             # Remove from local mapping
             self._caches = {k: v for k, v in self._caches.items() if v != cache_name}
         except Exception as e:
@@ -1650,13 +1585,9 @@ Requirements:
             else:
                 contents = self._build_contents(content)
             
-            loop = asyncio.get_running_loop()
-            response = await loop.run_in_executor(
-                None,
-                lambda: self._client.models.count_tokens(
-                    model=model,
-                    contents=contents
-                )
+            response = await self._client.aio.models.count_tokens(
+                model=model,
+                contents=contents
             )
             
             return response.total_tokens
@@ -1695,11 +1626,7 @@ Requirements:
     async def get_model_info(self, model: str) -> Dict[str, Any]:
         """Get information about a model including token limits."""
         try:
-            loop = asyncio.get_running_loop()
-            info = await loop.run_in_executor(
-                None,
-                lambda: self._client.models.get(model=model)
-            )
+            info = await self._client.aio.models.get(model=model)
             return {
                 "name": info.name,
                 "display_name": info.display_name,

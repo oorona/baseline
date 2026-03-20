@@ -27,6 +27,7 @@ def _make_request(
     req = MagicMock()
     req.method = method
     req.url.path = path
+    req.body = AsyncMock(return_value=b"")
     headers = {}
     if auth:
         headers["Authorization"] = auth
@@ -252,7 +253,7 @@ class TestGuildAuditMiddleware:
 
         captured_args = []
 
-        async def fake_write(gid, uid, action):
+        async def fake_write(gid, uid, action, details=None):
             captured_args.append((gid, uid, action))
 
         import asyncio as _asyncio

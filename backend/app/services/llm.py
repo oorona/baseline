@@ -165,12 +165,12 @@ class AnthropicProvider(LLMProvider):
             raise e
 
 class GoogleProvider(LLMProvider):
-    def __init__(self, api_key: str, model: str = "gemini-2.5-flash"):
+    def __init__(self, api_key: str, model: str = "gemini-3.1-flash-lite-preview"):
         self.client = genai.Client(api_key=api_key)
         self.model_name = model
 
     async def get_available_models(self) -> List[str]:
-        return ["gemini-3-flash-preview", "gemini-3-pro-preview", "gemini-2.5-flash", "gemini-2.5-pro"]
+        return ["gemini-3.1-flash-lite-preview", "gemini-3-flash-preview", "gemini-3-pro-preview", "gemini-2.5-flash", "gemini-2.5-pro"]
 
     async def generate_response(self, messages: List[LLMMessage], system_prompt: str = "You are a helpful assistant.", model: Optional[str] = None) -> LLMResponse:
         # Build conversation history for the new SDK
@@ -186,19 +186,14 @@ class GoogleProvider(LLMProvider):
         
         try:
             from google.genai import types
-            
-            loop = asyncio.get_running_loop()
-            def _generate():
-                response = self.client.models.generate_content(
-                    model=target_model_name,
-                    contents=contents,
-                    config=types.GenerateContentConfig(
-                        system_instruction=system_prompt
-                    )
-                )
-                return response
 
-            response = await loop.run_in_executor(None, _generate)
+            response = await self.client.aio.models.generate_content(
+                model=target_model_name,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_prompt
+                )
+            )
             content = response.text
             
             # Extract usage from new SDK

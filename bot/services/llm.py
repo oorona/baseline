@@ -191,7 +191,7 @@ class GoogleProvider(LLMProvider):
     See: docs/GEMINI_CAPABILITIES.md for full documentation.
     """
 
-    def __init__(self, api_key: str, model: str = "gemini-2.5-flash"):
+    def __init__(self, api_key: str, model: str = "gemini-3.1-flash-lite-preview"):
         self.api_key = api_key
         self.model_name = model
         self._usage_callback: Optional[Callable[[UsageMetadata], None]] = None
