@@ -468,6 +468,10 @@ app.include_router(commands_router, prefix=f"{settings.API_V1_STR}/commands", ta
 from app.api.setup import router as setup_router
 app.include_router(setup_router, prefix=f"{settings.API_V1_STR}/setup", tags=["setup"])
 
+# Plugin prompt files — CRUD for /data/prompts/ on the shared volume (Level 5 only)
+from app.api.prompt_files import router as prompt_files_router
+app.include_router(prompt_files_router, prefix=f"{settings.API_V1_STR}/prompts", tags=["prompts"])
+
 # Plugin routers — auto-discovered from installed_plugins.json (never edit this block)
 from app.plugin_loader import load_plugin_routers
 load_plugin_routers(app, settings.API_V1_STR)

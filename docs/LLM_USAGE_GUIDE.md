@@ -115,9 +115,107 @@ async function handleAsk() {
 ## 3. Advanced Features
 
 ### System Prompts
-You can shape the bot's persona using `system_prompt`.
--   **API**: `generateText({ prompt: "...", system_prompt: "You are a pirate." })`
--   **Bot**: Passed as an argument to `generate_response`.
+You can shape the bot's persona by passing `system_prompt` to the provider's `generate_response()` method directly. Note that `LLMService.chat()` does **not** accept `system_prompt` — it uses Redis-backed multi-turn history without a custom system prompt. For single-turn calls with a custom system prompt, use the provider directly:
+
+```python
+provider = self.llm.providers.get("google") or next(iter(self.llm.providers.values()))
+from bot.services.llm import LLMMessage
+msgs = [LLMMessage(role="user", content=user_message)]
+response = await provider.generate_response(msgs, system_prompt="You are a pirate.")
+```
+
+### Plugin Prompt Files
+
+Plugins that make LLM calls with custom prompts declare them in `plugin.json`. The framework stores them on the shared data volume and serves them through the **LLM Configs → Plugin Prompts** dashboard. Admins can edit any prompt without restarting the bot.
+
+**Directory layout on host:**
+```
+./data/prompts/
+  {plugin_name}/
+    manifest.json              ← written by the installer; never edit manually
+    {context_name}/            ← purpose folder chosen by the plugin
+      system_prompt.txt
+      user_prompt.txt
+```
+
+The **context** is the key design decision: each folder name describes what that set of prompts is used for — `ticket_intake`, `faq_answers`, `dm_support`, etc. One plugin can declare as many contexts as it needs.
+
+**Declaring contexts in `plugin.json`:**
+
+```json
+{
+  "components": { "prompts": true },
+  "prompts": [
+    {
+      "context": "ticket_intake",
+      "label": "Ticket Intake",
+      "description": "Handles DM messages when a user opens a ticket.",
+      "files": [
+        {
+          "name": "system_prompt",
+          "label": "System Prompt",
+          "description": "AI persona and rules for ticket intake.",
+          "default": "You are a helpful ticket assistant. Be concise and friendly."
+        },
+        {
+          "name": "user_prompt",
+          "label": "User Prompt Template",
+          "description": "Template for each user message. Use {message} and {username}.",
+          "default": "{message}"
+        }
+      ]
+    },
+    {
+      "context": "faq_answers",
+      "label": "FAQ Answers",
+      "description": "Answers frequently asked questions about the server.",
+      "files": [
+        {
+          "name": "system_prompt",
+          "label": "System Prompt",
+          "description": "AI persona for FAQ responses.",
+          "default": "You answer questions about this Discord server clearly and helpfully."
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Providing defaults:** Place `{file_name}.txt` files under `plugins/{name}/prompts/{context}/`. The installer copies them to `/data/prompts/{plugin_name}/{context}/`. If no source file exists, the `"default"` string from `plugin.json` is written as the initial content.
+
+**Loading prompts in a cog:**
+
+```python
+class TicketNode(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        self.llm = bot.services.llm
+
+    async def _process_dm(self, message):
+        # load_prompt(plugin_name, context, file_name) → str or "" if missing
+        system = self.llm.load_prompt("ticketnode", "ticket_intake", "system_prompt")
+        user_tmpl = self.llm.load_prompt("ticketnode", "ticket_intake", "user_prompt")
+
+        formatted = (user_tmpl or "{message}").format(
+            message=message.content,
+            username=message.author.display_name,
+        )
+
+        # chat() has no system_prompt — use provider.generate_response() directly
+        provider = self.llm.providers.get("google") or next(iter(self.llm.providers.values()))
+        from bot.services.llm import LLMMessage
+        return await provider.generate_response(
+            [LLMMessage(role="user", content=formatted)],
+            system_prompt=system or "You are a helpful ticket assistant.",
+        )
+```
+
+`load_prompt()` reads the file on each call (synchronous). Prompt edits in the dashboard take effect on the very next bot call — no restart required. If a file is missing it returns `""` — **always supply a fallback** in your cog.
+
+**Dashboard:** Go to **LLM Configs → Plugin Prompts** (Developer access). The left panel shows plugins, their context folders (click to expand), and individual files. Clicking a file opens a full textarea editor with Save and Reset-to-default buttons.
+
+**File paths on host:** `./data/prompts/{plugin_name}/{context}/{file_name}.txt` — plain text, editable outside the container with any editor.
 
 ### Structured Output (JSON Schemas)
 To get machine-readable output, define a JSON schema.
@@ -157,14 +255,8 @@ See [GEMINI_CAPABILITIES.md](GEMINI_CAPABILITIES.md) for aspect ratio options, i
 2.  Save to `backend/static/images/` or upload to S3.
 3.  Return the public URL to the frontend.
 
-### saving Files (System Prompts, Schemas)
-Do not hardcode large prompts.
-1.  **Store**: Create a folder `bot/data/prompts/` or `backend/data/schemas/`.
-2.  **Load**: Read the file at runtime.
-    ```python
-    with open("bot/data/prompts/judge.txt", "r") as f:
-        system_prompt = f.read()
-    ```
+### Storing Prompts as Files
+Do not hardcode large prompts inline. Use the plugin prompt file system described above — it stores prompts on the shared data volume, makes them editable from the dashboard, and loads them with `self.llm.load_prompt(plugin_name, context, file_name)`. This replaces the old pattern of reading from `bot/data/prompts/` manually.
 
 ## 4. Multi-User/Context Chat
 The new backend chat API supports **Context IDs**. 

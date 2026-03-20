@@ -327,6 +327,70 @@ def _insert_nav_card(card_id: str, install_path: str, perm: int, nav: dict):
                 log(f"PATCH  frontend/app/page.tsx — add {icon} to lucide-react imports")
 
 
+def install_prompts(plugin_dir: Path, plugin_name: str, manifest: dict):
+    """Install plugin prompt files into the shared data volume.
+
+    Layout after install:
+      data/prompts/{plugin_name}/
+        manifest.json                 ← context + file metadata for the framework
+        {context_name}/
+          system_prompt.txt           ← copied from plugins/{name}/prompts/{context}/
+          user_prompt.txt             ← or written from the "default" string in plugin.json
+
+    Each entry in the plugin.json "prompts" array represents one context folder.
+    Existing .txt files are preserved (user edits are never overwritten on re-install).
+    """
+    contexts = manifest.get("prompts", [])
+    if not contexts:
+        print(f"  [WARN]  components.prompts = true but 'prompts' array is empty in plugin.json — nothing to install")
+        return
+
+    dest_plugin_dir = ROOT / "data" / "prompts" / plugin_name
+    manifest_out = {
+        "plugin_name": plugin_name,
+        "display_name": manifest.get("display_name", plugin_name),
+        "contexts": contexts,
+    }
+
+    log(f"WRITE  data/prompts/{plugin_name}/manifest.json — {len(contexts)} context(s)")
+    if not DRY_RUN:
+        dest_plugin_dir.mkdir(parents=True, exist_ok=True)
+        (dest_plugin_dir / "manifest.json").write_text(
+            json.dumps(manifest_out, indent=2, ensure_ascii=False) + "\n"
+        )
+
+    for ctx in contexts:
+        ctx_name = ctx.get("context")
+        if not ctx_name:
+            print(f"  [WARN]  Prompt context entry missing 'context' key — skipped: {ctx}")
+            continue
+
+        dest_ctx_dir = dest_plugin_dir / ctx_name
+
+        for file_entry in ctx.get("files", []):
+            file_name = file_entry.get("name")
+            if not file_name:
+                print(f"  [WARN]  File entry in context '{ctx_name}' missing 'name' — skipped")
+                continue
+
+            dest_file = dest_ctx_dir / f"{file_name}.txt"
+
+            if dest_file.exists() and not DRY_RUN:
+                log(f"SKIP   data/prompts/{plugin_name}/{ctx_name}/{file_name}.txt — already exists (preserved)")
+                continue
+
+            src_file = plugin_dir / "prompts" / ctx_name / f"{file_name}.txt"
+            if src_file.exists():
+                copy_file(src_file, dest_file)
+            else:
+                # No source file — write the inline "default" string
+                default_content = file_entry.get("default", "")
+                log(f"WRITE  data/prompts/{plugin_name}/{ctx_name}/{file_name}.txt — from plugin.json default")
+                if not DRY_RUN:
+                    dest_ctx_dir.mkdir(parents=True, exist_ok=True)
+                    dest_file.write_text(default_content)
+
+
 def install_translations(plugin_dir: Path, plugin_name: str):
     marker = f"// ── Plugin: {plugin_name}"
     pending: list[tuple[Path, str]] = []  # (dst, patched_content) — built before any write
@@ -447,6 +511,9 @@ def main():
 
     if components.get("translations") and (plugin_dir / "translations").is_dir():
         install_translations(plugin_dir, plugin_name)
+
+    if components.get("prompts"):
+        install_prompts(plugin_dir, plugin_name, manifest)
 
     print(f"\n{'=' * 50}")
     if DRY_RUN:

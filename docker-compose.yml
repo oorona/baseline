@@ -24,6 +24,7 @@ services:
     volumes:
       - ./backend:/app
       - platform_data:/data   # Encrypted settings file shared across all backend replicas
+      - ./data/prompts:/data/prompts  # Plugin prompt files — editable on host, read by backend and bot
       - ./scripts:/scripts:ro  # plugin_validate.py and other dev scripts (test_plugin_validate.py needs this)
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped
@@ -68,6 +69,7 @@ services:
     volumes:
       - ./bot:/app            # Live-mount source for dev/test (matches backend pattern)
       - platform_data:/data   # Same encrypted settings as backend
+      - ./data/prompts:/data/prompts  # Plugin prompt files — same mount as backend
     networks:
       - bot       # First → gets the default route → outbound internet for Discord API
       - intranet  # Backend API communication

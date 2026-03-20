@@ -1473,6 +1473,33 @@ class APIClient {
         return response.data;
     }
 
+    // ── Plugin Prompt Files ───────────────────────────────────────────────
+    // Layout: /data/prompts/{plugin}/{context}/{file}.txt — DEVELOPER only
+    //
+    // Each "context" is a purpose folder chosen by the plugin (e.g. "ticket_intake",
+    // "faq_answers"). Within each context there are named files: "system_prompt",
+    // "user_prompt", etc.
+
+    async listPluginPrompts(): Promise<{ plugins: Array<{ plugin_name: string; display_name: string; contexts: any[] }> }> {
+        const response = await this.client.get('/prompts/');
+        return response.data;
+    }
+
+    async getPromptFile(pluginName: string, context: string, fileName: string): Promise<{ plugin_name: string; context_name: string; name: string; label: string; description: string; content: string }> {
+        const response = await this.client.get(`/prompts/${pluginName}/${context}/${fileName}`);
+        return response.data;
+    }
+
+    async savePromptFile(pluginName: string, context: string, fileName: string, content: string): Promise<{ ok: boolean }> {
+        const response = await this.client.put(`/prompts/${pluginName}/${context}/${fileName}`, { content });
+        return response.data;
+    }
+
+    async resetPromptFile(pluginName: string, context: string, fileName: string): Promise<{ ok: boolean; content: string }> {
+        const response = await this.client.post(`/prompts/${pluginName}/${context}/${fileName}/reset`);
+        return response.data;
+    }
+
     // ── Generic LLM (multi-provider) ──────────────────────────────────────
 
     async llmGenerate(prompt: string, options: { system_prompt?: string; provider?: string; model?: string; guild_id?: number } = {}) {

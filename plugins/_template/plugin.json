@@ -10,7 +10,8 @@
     "models": false,
     "migration": false,
     "frontend": true,
-    "translations": true
+    "translations": true,
+    "prompts": false
   },
   "router": {
     "prefix": "/guilds",

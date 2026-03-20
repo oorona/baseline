@@ -36,6 +36,61 @@ Valid `"type"` values: `"boolean"`, `"text"`, `"number"`, `"channel_select"`, `"
 
 > **Audit logging is automatic.** The `GuildAuditMiddleware` in `backend/main.py` writes an `AuditLog` row for every successful POST/PUT/PATCH/DELETE on `/{guild_id}/` routes. Plugin endpoints **must not** add `db.add(AuditLog(...))` — doing so produces duplicate entries and creates FK risk for cross-guild operations.
 
+> **`LLMService.chat()` has no `system_prompt` parameter.** For LLM calls that need a custom system prompt, use `provider.generate_response()` directly (stateless). Use `chat()` only for multi-turn conversations without a custom system prompt.
+
+## Plugin Prompt Files
+
+Any plugin that makes LLM calls with a custom prompt **must** use the prompt file system. Prompts are organized by **context** — a folder named after the purpose (`ticket_intake`, `faq_answers`, `dm_support`). Each context holds its own `system_prompt.txt`, `user_prompt.txt`, and any other files the plugin needs. Admins edit these from the dashboard without restarting.
+
+**Declare in `plugin.json`:**
+
+```json
+{
+  "components": { "prompts": true },
+  "prompts": [
+    {
+      "context": "ticket_intake",
+      "label": "Ticket Intake",
+      "description": "Handles DM messages when a user opens a ticket.",
+      "files": [
+        {
+          "name": "system_prompt",
+          "label": "System Prompt",
+          "description": "AI persona for ticket intake.",
+          "default": "You are a helpful ticket assistant."
+        },
+        {
+          "name": "user_prompt",
+          "label": "User Prompt Template",
+          "description": "Template for each user message. Use {message} and {username}.",
+          "default": "{message}"
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Provide source files** in `plugins/{name}/prompts/{context}/{file_name}.txt` — the installer copies them to `/data/prompts/{plugin_name}/{context}/`. The `"default"` string is used if no source file exists.
+
+**Load in a cog:**
+
+```python
+system = self.llm.load_prompt("my_plugin", "ticket_intake", "system_prompt")
+user_tmpl = self.llm.load_prompt("my_plugin", "ticket_intake", "user_prompt")
+
+formatted = (user_tmpl or "{message}").format(message=query, username=user.display_name)
+
+provider = self.llm.providers.get("google") or next(iter(self.llm.providers.values()))
+from bot.services.llm import LLMMessage
+response = await provider.generate_response(
+    [LLMMessage(role="user", content=formatted)],
+    system_prompt=system or "You are a helpful assistant.",
+)
+```
+
+`load_prompt()` returns `""` if the file is missing — **always supply a fallback**. Files live at `./data/prompts/{plugin_name}/{context}/{file_name}.txt` on the host. Admins edit them in **LLM Configs → Plugin Prompts** (Developer access).
+
 ## How to Build a Feature (Plugin Workflow)
 
 **Never write feature code directly into the live project.** Use the plugin staging system:
@@ -75,17 +130,20 @@ The validator enforces all five golden rules automatically and will reject code 
 | DB migration | `backend/alembic/versions/` (auto-generate: `alembic revision --autogenerate -m "desc"`) |
 | Framework version & changelog | `backend/app/core/version.py` |
 | i18n strings | `frontend/lib/i18n/translations/en.ts` **AND** `es.ts` |
+| Plugin prompt files (host) | `./data/prompts/{plugin_name}/{context}/{file_name}.txt` — bind-mounted at `/data/prompts/` in containers |
 
 ## Mandatory Checklist for Every New Feature
 
 - [ ] **Cog**: `description=` on every `@app_commands.command()` — never omit it
 - [ ] **Cog**: `SETTINGS_SCHEMA` if the cog reads from guild settings
+- [ ] **Cog**: use `self.llm.load_prompt(plugin_name, context, file_name)` + `provider.generate_response()` for LLM calls that need a custom system prompt — never pass `system_prompt` to `chat()`
 - [ ] **Backend**: use `Depends(get_guild_db)` for any endpoint under `/{guild_id}/`
 - [ ] **Backend**: import and register the new router in `backend/main.py`
 - [ ] **Backend**: do NOT add `db.add(AuditLog(...))` — audit logging is automatic via `GuildAuditMiddleware`
 - [ ] **Frontend**: export page as `withPermission(Page, PermissionLevel.X)`
 - [ ] **Frontend**: add a navigation card in `frontend/app/page.tsx` if the feature needs its own page
 - [ ] **i18n**: add all user-visible strings to `en.ts` **and** `es.ts` — never hardcode text
+- [ ] **Prompts**: if the plugin makes LLM calls with a custom prompt, declare `"prompts": true` in `components` and add a `"prompts"` array in `plugin.json` — place default `.txt` files in `plugins/{name}/prompts/{context}/`
 - [ ] **DB**: if adding tables, `alembic revision --autogenerate`, add RLS block if guild-scoped — `install_plugin.sh` writes the migration entry to `backend/migration_inventory.json` automatically; only manual step is `alembic upgrade head`
 
 ## Bot Service Access Patterns

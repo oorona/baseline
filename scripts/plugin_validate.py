@@ -123,13 +123,83 @@ def validate_manifest(plugin_dir: Path) -> dict:
     if manifest.get("components", {}).get("api") and "router" not in manifest:
         warn("'api' component declared but no 'router' section in plugin.json — installer defaults to prefix='/guilds'")
 
-    valid_components = {"cog", "api", "models", "migration", "frontend", "translations"}
+    valid_components = {"cog", "api", "models", "migration", "frontend", "translations", "prompts"}
     for key in manifest.get("components", {}):
         if key not in valid_components:
             warn(f"Unknown component key '{key}' in plugin.json — valid: {valid_components}")
 
+    # Prompts section consistency
+    if manifest.get("components", {}).get("prompts"):
+        _validate_prompts(manifest, plugin_dir)
+
     ok("plugin.json is valid")
     return manifest
+
+
+def _validate_prompts(manifest: dict, plugin_dir: Path):
+    """Validate the 'prompts' array in plugin.json when components.prompts = true.
+
+    Each entry in "prompts" is a context — a named purpose folder such as
+    "ticket_intake" or "faq_answers". Each context contains a "files" list
+    (typically system_prompt and user_prompt).
+    """
+    contexts = manifest.get("prompts")
+    if not isinstance(contexts, list) or len(contexts) == 0:
+        err("components.prompts = true but 'prompts' array is missing or empty in plugin.json")
+        return
+
+    seen_contexts: set[str] = set()
+    for i, ctx in enumerate(contexts):
+        ctx_name = ctx.get("context", f"<index {i}>")
+
+        if not ctx.get("context"):
+            err(f"prompts[{i}] missing required 'context' field (the folder name, e.g. 'ticket_intake')")
+        elif not re.match(r"^[a-z][a-z0-9_]*$", ctx["context"]):
+            err(f"prompts[{i}] context '{ctx['context']}' must be snake_case lowercase (e.g. 'ticket_intake')")
+        elif ctx["context"] in seen_contexts:
+            err(f"prompts[{i}] duplicate context name '{ctx['context']}'")
+        else:
+            seen_contexts.add(ctx["context"])
+
+        if not ctx.get("label"):
+            warn(f"prompts[{i}] (context='{ctx_name}') missing 'label' — will display raw context name in dashboard")
+
+        files = ctx.get("files", [])
+        if not isinstance(files, list) or len(files) == 0:
+            err(f"prompts[{i}] (context='{ctx_name}') 'files' must be a non-empty list")
+            continue
+
+        seen_file_names: set[str] = set()
+        for j, file_entry in enumerate(files):
+            fname = file_entry.get("name", f"<index {j}>")
+
+            if not file_entry.get("name"):
+                err(f"prompts[{i}].files[{j}] missing required 'name' field")
+                continue
+            if not re.match(r"^[a-z][a-z0-9_]*$", file_entry["name"]):
+                err(f"prompts[{i}].files[{j}] name '{file_entry['name']}' must be snake_case lowercase")
+            elif file_entry["name"] in seen_file_names:
+                err(f"prompts[{i}].files[{j}] duplicate file name '{file_entry['name']}' in context '{ctx_name}'")
+            else:
+                seen_file_names.add(file_entry["name"])
+
+            if not file_entry.get("label"):
+                warn(f"prompts[{i}].files[{j}] (name='{fname}') missing 'label'")
+
+            # Check that a source .txt or inline "default" string is available
+            src_txt = plugin_dir / "prompts" / ctx.get("context", "") / f"{file_entry.get('name', '')}.txt"
+            has_default_str = "default" in file_entry and isinstance(file_entry["default"], str)
+
+            if not src_txt.exists() and not has_default_str:
+                warn(
+                    f"prompts[{i}].files[{j}] (context='{ctx_name}', name='{fname}') "
+                    f"has no prompts/{ctx.get('context', '?')}/{fname}.txt "
+                    f"and no 'default' string — file will be created empty at install time"
+                )
+            elif src_txt.exists():
+                ok(f"prompts[{i}].files[{j}] context='{ctx_name}' name='{fname}' — source file found")
+            else:
+                ok(f"prompts[{i}].files[{j}] context='{ctx_name}' name='{fname}' — default string in plugin.json")
 
 
 # ── Cog ──────────────────────────────────────────────────────────────────────

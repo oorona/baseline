@@ -65,12 +65,42 @@ class MyPlugin(commands.Cog):
             return
 
         # Use the shared LLM service for inference.
+        # For multi-turn chat with no custom system prompt:
         response = await self.llm.chat(
             user_id=interaction.user.id,
             message=query,
             guild_id=interaction.guild_id,
         )
         await interaction.followup.send(response)
+
+    # ── Example: LLM call with plugin-managed prompt files ───────────────────
+    #
+    # If your plugin declares prompts (components.prompts = true in plugin.json),
+    # load them with self.llm.load_prompt(plugin, context, file_name).
+    #
+    # The "context" is the folder name you choose based on purpose — e.g.
+    # "ticket_intake", "faq_answers", "dm_support". Each context holds its own
+    # system_prompt.txt and user_prompt.txt (and any other files you declare).
+    # Admins can edit these from LLM Configs → Plugin Prompts without restarting.
+    #
+    # async def my_llm_command(self, interaction, query: str):
+    #     # Load from /data/prompts/my_plugin/my_context/
+    #     system = self.llm.load_prompt("my_plugin", "my_context", "system_prompt")
+    #     user_tmpl = self.llm.load_prompt("my_plugin", "my_context", "user_prompt")
+    #
+    #     # Apply user_prompt template ({message}, {username} placeholders)
+    #     user_message = (user_tmpl or "{message}").format(
+    #         message=query, username=interaction.user.display_name
+    #     )
+    #
+    #     # Use provider.generate_response() directly — chat() has no system_prompt
+    #     provider = self.llm.providers.get("google") or next(iter(self.llm.providers.values()))
+    #     from bot.services.llm import LLMMessage
+    #     response = await provider.generate_response(
+    #         [LLMMessage(role="user", content=user_message)],
+    #         system_prompt=system or "You are a helpful assistant.",
+    #     )
+    #     await interaction.followup.send(response)
 
     # ── Settings helper ──────────────────────────────────────────────────────
 

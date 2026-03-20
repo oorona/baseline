@@ -548,6 +548,35 @@ class LLMService:
         except Exception as e:
             return f"Error from {provider_name}: {str(e)}"
 
+    def load_prompt(self, plugin_name: str, context: str, file_name: str) -> str:
+        """Load a plugin prompt file from the shared data volume.
+
+        Files are stored at:
+          /data/prompts/{plugin_name}/{context}/{file_name}.txt
+
+        The context is a purpose folder declared by the plugin (e.g. "ticket_intake",
+        "faq_answers"). file_name is one of the files within that context, typically
+        "system_prompt" or "user_prompt".
+
+        Returns the file contents, or an empty string if the file is missing.
+        Missing files are not errors — always supply a hardcoded fallback:
+
+            system = self.llm.load_prompt("my_plugin", "ticket_intake", "system_prompt")
+            user_tmpl = self.llm.load_prompt("my_plugin", "ticket_intake", "user_prompt")
+
+            provider = self.llm.providers.get("google") or next(iter(self.llm.providers.values()))
+            from bot.services.llm import LLMMessage
+            response = await provider.generate_response(
+                [LLMMessage(role="user", content=(user_tmpl or "{message}").format(message=query))],
+                system_prompt=system or "You are a helpful assistant.",
+            )
+        """
+        from pathlib import Path
+        path = Path(f"/data/prompts/{plugin_name}/{context}/{file_name}.txt")
+        if path.exists():
+            return path.read_text()
+        return ""
+
     async def generate_structured(self, prompt: str, schema: Dict[str, Any], provider_name: str = "google", system_prompt: str = "You are a helpful assistant.") -> Dict[str, Any]:
         if provider_name not in self.providers:
              if "google" in self.providers: provider_name = "google"

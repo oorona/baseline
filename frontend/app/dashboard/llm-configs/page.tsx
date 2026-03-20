@@ -38,7 +38,7 @@ import { withPermission } from '@/lib/components/with-permission';
 import { PermissionLevel } from '@/lib/permissions';
 import { apiClient } from '@/app/api-client';
 
-type Tab = 'schemas' | 'functions' | 'logs' | 'try-structured' | 'try-tools';
+type Tab = 'schemas' | 'functions' | 'logs' | 'try-structured' | 'try-tools' | 'plugin-prompts';
 
 interface SchemaEntry {
   id: string;
@@ -138,6 +138,18 @@ function LLMConfigsPage() {
   const [logFilter, setLogFilter] = useState({ endpoint: '', model: '' });
   const [logsTotal, setLogsTotal] = useState(0);
 
+  // Plugin Prompts — three-level hierarchy: plugin → context → file
+  const [promptPlugins, setPromptPlugins] = useState<Array<{ plugin_name: string; display_name: string; contexts: any[] }>>([]);
+  const [promptsLoading, setPromptsLoading] = useState(false);
+  // Which file is open in the editor
+  const [selectedFile, setSelectedFile] = useState<{ plugin: string; context: string; file: string } | null>(null);
+  const [promptEditor, setPromptEditor] = useState('');
+  const [promptFileMeta, setPromptFileMeta] = useState<{ label: string; description: string } | null>(null);
+  const [promptSaveMsg, setPromptSaveMsg] = useState('');
+  const [promptSaving, setPromptSaving] = useState(false);
+  // Which contexts are expanded in the sidebar
+  const [expandedContexts, setExpandedContexts] = useState<Set<string>>(new Set());
+
   // Pending delete confirmations
   const [pendingDeleteSchema, setPendingDeleteSchema] = useState<string | null>(null);
   const [pendingDeleteFnSet, setPendingDeleteFnSet] = useState<string | null>(null);
@@ -215,9 +227,71 @@ function LLMConfigsPage() {
     }
   }, [logFilter]);
 
+  const loadPluginPrompts = useCallback(async () => {
+    setPromptsLoading(true);
+    try {
+      const data = await apiClient.listPluginPrompts();
+      setPromptPlugins(data.plugins || []);
+    } catch {
+      setPromptPlugins([]);
+    } finally {
+      setPromptsLoading(false);
+    }
+  }, []);
+
+  const openPromptFile = async (plugin: string, context: string, file: string, meta: { label: string; description: string }) => {
+    setSelectedFile({ plugin, context, file });
+    setPromptFileMeta(meta);
+    setPromptSaveMsg('');
+    try {
+      const data = await apiClient.getPromptFile(plugin, context, file);
+      setPromptEditor(data.content);
+    } catch {
+      setPromptEditor('');
+    }
+  };
+
+  const savePromptFile = async () => {
+    if (!selectedFile) return;
+    setPromptSaving(true);
+    setPromptSaveMsg('');
+    try {
+      await apiClient.savePromptFile(selectedFile.plugin, selectedFile.context, selectedFile.file, promptEditor);
+      setPromptSaveMsg('Saved.');
+    } catch (e: any) {
+      setPromptSaveMsg(e.message || 'Save failed');
+    } finally {
+      setPromptSaving(false);
+    }
+  };
+
+  const resetPromptFile = async () => {
+    if (!selectedFile) return;
+    setPromptSaving(true);
+    setPromptSaveMsg('');
+    try {
+      const data = await apiClient.resetPromptFile(selectedFile.plugin, selectedFile.context, selectedFile.file);
+      setPromptEditor(data.content);
+      setPromptSaveMsg('Reset to default.');
+    } catch (e: any) {
+      setPromptSaveMsg(e.message || 'Reset failed');
+    } finally {
+      setPromptSaving(false);
+    }
+  };
+
+  const toggleContext = (key: string) => {
+    setExpandedContexts(prev => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  };
+
   useEffect(() => { loadSchemas(); }, [loadSchemas]);
   useEffect(() => { loadFunctionSets(); }, [loadFunctionSets]);
   useEffect(() => { if (tab === 'logs') loadLogs(); }, [tab, loadLogs]);
+  useEffect(() => { if (tab === 'plugin-prompts') loadPluginPrompts(); }, [tab, loadPluginPrompts]);
 
   // ── Schema editor handlers ────────────────────────────────────────────────
 
@@ -355,6 +429,7 @@ function LLMConfigsPage() {
         {([
           { id: 'schemas',        label: 'Output Schemas' },
           { id: 'functions',      label: 'Function Sets' },
+          { id: 'plugin-prompts', label: 'Plugin Prompts' },
           { id: 'logs',           label: 'LLM Call Logs' },
           { id: 'try-structured', label: '▶ Try: Structured Output' },
           { id: 'try-tools',      label: '▶ Try: Function Calling' },
@@ -700,6 +775,149 @@ function LLMConfigsPage() {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Plugin Prompts Tab ── */}
+      {tab === 'plugin-prompts' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+          {/* Sidebar: plugin → context → file */}
+          <div className="lg:col-span-1 bg-card border border-border rounded-lg p-4 space-y-4 overflow-y-auto max-h-[75vh]">
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-foreground">Plugin Prompts</h2>
+              <button onClick={loadPluginPrompts} className="text-xs text-muted-foreground hover:text-foreground underline">Refresh</button>
+            </div>
+
+            {promptsLoading ? (
+              <p className="text-muted-foreground text-sm">Loading…</p>
+            ) : promptPlugins.length === 0 ? (
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <p>No plugin prompts registered yet.</p>
+                <p className="text-xs">Install a plugin with <code className="text-violet-600 dark:text-violet-400">components.prompts = true</code> in its <code>plugin.json</code>.</p>
+              </div>
+            ) : promptPlugins.map(group => (
+              <div key={group.plugin_name}>
+                {/* Plugin header */}
+                <div className="text-xs font-bold text-muted-foreground uppercase tracking-wide px-1 pb-1 pt-2 border-b border-border mb-2">
+                  {group.display_name}
+                  <span className="ml-1 font-mono font-normal normal-case">({group.plugin_name})</span>
+                </div>
+
+                {/* Contexts */}
+                {(group.contexts || []).map((ctx: any) => {
+                  const ctxKey = `${group.plugin_name}/${ctx.name}`;
+                  const isExpanded = expandedContexts.has(ctxKey);
+                  return (
+                    <div key={ctxKey} className="mb-1">
+                      {/* Context row — click to expand */}
+                      <button
+                        onClick={() => toggleContext(ctxKey)}
+                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 text-left transition-colors"
+                      >
+                        <span className={`text-xs transition-transform ${isExpanded ? 'rotate-90' : ''}`}>▶</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-foreground truncate">{ctx.label || ctx.name}</div>
+                          <div className="text-xs font-mono text-muted-foreground">{ctx.name}/</div>
+                        </div>
+                      </button>
+
+                      {/* Files within this context */}
+                      {isExpanded && (
+                        <div className="ml-4 mt-0.5 space-y-0.5">
+                          {(ctx.files || []).map((f: any) => {
+                            const isSelected = selectedFile?.plugin === group.plugin_name
+                              && selectedFile?.context === ctx.name
+                              && selectedFile?.file === f.name;
+                            return (
+                              <button
+                                key={f.name}
+                                onClick={() => openPromptFile(group.plugin_name, ctx.name, f.name, { label: f.label, description: f.description })}
+                                className={`w-full flex items-center gap-2 px-3 py-2 rounded border text-left transition-colors ${
+                                  isSelected
+                                    ? 'border-violet-500 bg-violet-500/10 text-foreground'
+                                    : 'border-transparent hover:border-border hover:bg-muted/40 text-muted-foreground hover:text-foreground'
+                                }`}
+                              >
+                                <span className="text-xs">📄</span>
+                                <div className="min-w-0">
+                                  <div className="text-xs font-medium truncate">{f.label || f.name}</div>
+                                  <div className="text-xs font-mono opacity-60">{f.name}.txt</div>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+
+          {/* Editor panel */}
+          <div className="lg:col-span-2 bg-card border border-border rounded-lg p-4 space-y-4">
+            {!selectedFile ? (
+              <div className="flex flex-col items-center justify-center h-72 text-center space-y-3 text-muted-foreground">
+                <p className="text-sm">Select a file from the left to edit it.</p>
+                <p className="text-xs max-w-sm">
+                  Each context folder (e.g. <code className="text-violet-500">ticket_intake/</code>) groups the prompts for one purpose.
+                  Files are saved to the host volume — the bot picks up changes on the next call, no restart needed.
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* Header */}
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <h3 className="font-semibold text-foreground">{promptFileMeta?.label || selectedFile.file}</h3>
+                    <div className="text-xs font-mono text-muted-foreground mt-0.5 truncate">
+                      {selectedFile.plugin} / {selectedFile.context} / {selectedFile.file}.txt
+                    </div>
+                    {promptFileMeta?.description && (
+                      <p className="text-xs text-muted-foreground mt-1">{promptFileMeta.description}</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {promptSaveMsg && (
+                      <span className={`text-xs ${promptSaveMsg.includes('failed') || promptSaveMsg.includes('Failed') ? 'text-red-500' : 'text-green-600 dark:text-green-400'}`}>
+                        {promptSaveMsg}
+                      </span>
+                    )}
+                    <button
+                      onClick={resetPromptFile}
+                      disabled={promptSaving}
+                      className="px-3 py-1.5 text-xs border border-border text-muted-foreground hover:border-red-500/50 hover:text-red-500 rounded transition-colors disabled:opacity-50"
+                    >Reset to default</button>
+                    <button
+                      onClick={savePromptFile}
+                      disabled={promptSaving}
+                      className="px-4 py-1.5 text-xs bg-violet-600 hover:bg-violet-700 text-white rounded disabled:opacity-50"
+                    >{promptSaving ? 'Saving…' : 'Save'}</button>
+                  </div>
+                </div>
+
+                {/* Text editor */}
+                <textarea
+                  value={promptEditor}
+                  onChange={e => { setPromptEditor(e.target.value); setPromptSaveMsg(''); }}
+                  rows={22}
+                  spellCheck={false}
+                  className="w-full font-mono text-sm bg-background border border-border rounded p-3 text-foreground resize-y focus:outline-none focus:ring-1 focus:ring-violet-500"
+                  placeholder="Prompt content…"
+                />
+
+                <p className="text-xs text-muted-foreground">
+                  Saved to{' '}
+                  <code className="text-violet-600 dark:text-violet-400">
+                    ./data/prompts/{selectedFile.plugin}/{selectedFile.context}/{selectedFile.file}.txt
+                  </code>{' '}
+                  on the host. Bot reads this file on each call — no restart required.
+                </p>
+              </>
+            )}
+          </div>
         </div>
       )}
 
